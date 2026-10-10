@@ -9,7 +9,11 @@ dependencies = ["typer>=0.27"]
 pits = "pits.cli:app"
 
 [dependency-groups]
-dev = ["pytest>=8", "ruff>=0.17"]
+dev = [
+    "boto3>=1.43.111",
+    "pytest>=8",
+    "ruff>=0.17",
+]
 
 [build-system]
 requires = ["uv_build>=0.8,<0.12"]
@@ -31,5 +35,7 @@ line-ending = "lf"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-addopts = "-ra --strict-markers --strict-config"
+pythonpath = ["tests/contract"]
+addopts = "-ra --strict-markers --strict-config -m 'not contract'"
+markers = ["contract: needs a live S3 endpoint (S3_ENDPOINT_URL); excluded by default"]
 xfail_strict = true

@@ -139,7 +139,36 @@ El host tiene ~26 GB libres (C: al 95%) y los tests de contrato usan objetos de 
 
 ## Tests de contrato
 
-(pendiente)
+Archivos: `tests/contract/s3_helpers.py` (lógica pura: `load_settings`, `build_client`, `purge_bucket`, `BucketFactory`), `tests/contract/conftest.py` (solo fixtures `s3_settings`, `make_client`, `s3`, `make_bucket`, `bucket`), `tests/contract/test_s3_contract.py` (marker `contract`, requiere S3 vivo) y `tests/contract/test_s3_helpers.py` (offline, corre en la suite por defecto). La validación de settings es una función pura que lanza `SettingsError`; el fixture la convierte en `pytest.fail`. Los tests importan `s3_helpers` gracias a `pythonpath = ["tests/contract"]` en `[tool.pytest.ini_options]`, que no depende del import mode (verificado con el default y con `--import-mode=importlib`: 25 passed, 2 deselected en ambos). Los tests offline de `purge_bucket` cubren abort de multipart, borrado de versiones y delete markers, `VersionId` ausente, error de `delete_objects` (RuntimeError sin borrar el bucket) y lotes de 1000 (1001 versiones: 1000 + 1). Dependencia: `boto3` (dev; el lock fija 1.43.111). Los tests cargan todo desde env (`.env.example`): fallan con `pytest.fail` (no skip) si falta `S3_ENDPOINT_URL`, rechazan hosts distintos de `127.0.0.1`/`localhost`, y pasan las credenciales explícitas al cliente (nunca vía `AWS_*`). Los buckets se llaman `pits-contract-<uuid8>` y se limpian al final (abort de multipart, borrado paginado de versiones y delete markers, borrado del bucket); `make_bucket.keep(name)` excluye de la limpieza los buckets con objetos COMPLIANCE (paso 6).
+
+Cómo correrlos:
+
+```text
+$ uv run pytest -q                                         # por defecto excluye contract
+$ uv run --env-file .env pytest -m contract -q             # contra el S3 vivo
+```
+
+Por qué un marker en `addopts` y no en el workflow: en DA se corre "todo" a mano; en DE el CI debe ser determinista y sin servicios externos. `-m 'not contract'` en `addopts` hace que cualquier `pytest` (local, CI, pre-commit) excluya por defecto los tests que necesitan un S3 vivo, sin tocar `.github/workflows/ci.yml`. Para incluirlos se pasa `-m contract`: el `-m` de la CLI queda después del de `addopts` y gana (comprobado abajo).
+
+Resultados del paso 3 (tras la revisión):
+
+```text
+$ uv run pytest -q
+25 passed, 2 deselected in 1.77s
+$ uv run --env-file .env pytest -m contract --collect-only -q
+tests/contract/test_s3_contract.py::test_create_bucket
+tests/contract/test_s3_contract.py::test_rejects_invalid_credentials
+2/27 tests collected (25 deselected)
+$ uv run --env-file .env pytest -m contract -q
+2 passed, 25 deselected in 2.48s
+$ env -u S3_ENDPOINT_URL uv run pytest -m contract -q
+ERROR ... Failed: S3_END...   (mensaje completo: "S3_ENDPOINT_URL is required for contract tests (see .env.example)")
+25 deselected, 2 errors in 0.37s
+```
+
+Credenciales inválidas: SeaweedFS 4.48 responde `Error.Code = InvalidAccessKeyId`, HTTP 403 (probado con boto3 1.43.111, `list_buckets` con clave falsa). El test exige que el código esté en `{InvalidAccessKeyId, SignatureDoesNotMatch, AccessDenied}`, sin aceptar un 403 cualquiera.
+
+Hipótesis a verificar en el paso 4: boto3 recientes calculan checksums por defecto en `put_object`/multipart, lo que podría no ser compatible con SeaweedFS. Este paso solo ejercitó `create_bucket`/`head_bucket`/`list_buckets` sin errores; no hay evidencia aún sobre uploads.
 
 ## Mediciones
 
