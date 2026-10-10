@@ -1,7 +1,7 @@
 # 06 — Estado del proyecto
 
 Última actualización: 2026-10-10
-Estado: actualizado tras cerrar Fase 0.5 y registrar D43–D46.
+Estado: actualizado tras cerrar Fase 0.5 y registrar D43–D48 (D47 grano de `fx_rate`; D48 demanda con parque RUNT, marca/modelo sintético).
 
 Este archivo se actualiza al final de cada sesión y funciona como punto de partida para una conversación nueva.
 
@@ -25,12 +25,12 @@ No existe código de Fase 1 en el repo: solo hay documentación y configuración
 
 | Archivo | Versión/estado |
 |---|---|
-| `00_review_findings.md` | "Auditoría de consistencia" v1, recreada el 2026-10-10 (la original nunca se versionó) |
+| `00_review_findings.md` | "Auditoría de consistencia" v1.1 (2026-10-10; R1–R3 resueltos por D47 y D48; la original nunca se versionó) |
 | `01_project_brief.md` | v2 (2026-10-03) |
 | `02_domain_taxonomy.md` | v11 (2026-10-03) |
-| `03_data_model.md` | v4 (2026-10-03) |
+| `03_data_model.md` | v5 (2026-10-10) |
 | `04_infra.md` | v2 (2026-10-03) |
-| `05_decisions_log.md` | v4 (2026-10-10); D1–D46 |
+| `05_decisions_log.md` | v5 (2026-10-10); D1–D48 |
 | `06_status.md` | vigente (2026-10-10) |
 | `07_lessons_learned.md` | vigente, sin versión (2026-10-10) |
 | `08_market_research.md` | fechas de consulta 2026-10-03 (antes `claude_08_market_research.md`) |
@@ -63,6 +63,12 @@ Justificación por ruta crítica: RUNT va antes que WA DOL porque es parque (STO
 
 La TRM tiene relevancia de dominio secundaria: los precios del marketplace se fijan primero en COP (confirmado por Henry). Sirve como referencia de costo de importación (Inferencia, `08_market_research.md`). Se elige primero por ingeniería: ejercita el patrón raw -> manifest -> parser sin el ruido del dominio.
 
+### Resueltos por D47 y D48 (2026-10-10)
+
+- R1 (grano de `fx_rate`): D47, fecha única; el normalizer expande el rango de la TRM a una fila por día.
+- R2 (entidad y grano del parque RUNT) y R3 (marcas validadas con flujo): D48, demanda solo con el parque RUNT `u3vn-bdcy` por clase/geografía; marca/modelo sintético, calibrado con investigación pública.
+- Pregunta de dominio (¿parque RUNT por clase como único insumo de demanda?): respondida por Henry, ver D48.
+
 ### Flujo de trabajo (D44, D45)
 
 - `/orquestar`: arquitecto -> implementador -> revisor-senior -> documentador.
@@ -92,7 +98,7 @@ Ordenado por ruta crítica: cada paso depende del anterior. Consistente con D40 
 2. Docker Compose local con perfil `core` (MinIO + Postgres, `04_infra.md` §10.1) y límites de memoria (D9). `04_infra.md` §8.1 guarda `manifest.json` junto al payload en MinIO, así que Postgres no es requisito del manifest. Se levanta aquí porque `04_infra.md` define `core` como Postgres + MinIO y la carga a Postgres llega después.
 3. Extractor SODA de TRM: paginación con `$order`, backoff, token opcional (`X-App-Token`, desde variable de entorno). Escribe el payload original en MinIO con la ruta de `04_infra.md` §8.1: `raw/<source_system>/extraction_date=YYYY-MM-DD/batch_id=<uuid>/payload.*`.
 4. Manifest de ingesta (`manifest.json`) con los campos de `03_data_model.md` §3 (`source_system`, `ingestion_batch_id`, `ingested_at`, `raw_object_path`, `record_hash` opcional), ID del dataset fijado y atribución. `source_record_id` no aplica: la TRM no trae ID de registro; la llave natural es `vigenciadesde`.
-5. Parser/normalizer: casteo de strings, validación de schema y salida normalizada con rango de vigencia (`vigenciadesde`, `vigenciahasta`), deduplicada por `vigenciadesde` para que reejecutar un batch no cree duplicados lógicos; tests unitarios. Documentar cómo reejecutar un batch. Antes de este paso: resolver R1 de `00_review_findings.md` (grano de `fx_rate` en `03_data_model.md` §26 vs D46) con D nueva aprobada por Henry.
+5. Parser/normalizer: casteo de strings, validación de schema y salida normalizada que expande cada rango (`vigenciadesde`-`vigenciahasta`) a una fila por día calendario (D47, grano `rate_date` de `03_data_model.md` §26), deduplicada por fecha para que reejecutar un batch no cree duplicados lógicos; tests unitarios. Documentar cómo reejecutar un batch.
 
 Después: Fase 1b con RUNT `u3vn-bdcy` (snapshot mensual). El DAG de Airflow (D5, D44) corresponde a Fase 4 (`01_project_brief.md` §10), con perfil `orchestration` (`04_infra.md` §10.1).
 
@@ -112,7 +118,7 @@ Después: Fase 1b con RUNT `u3vn-bdcy` (snapshot mensual). El DAG de Airflow (D5
 
 ### Riesgos
 
-- Fines de semana y festivos: una fila cubre varios días (`vigenciadesde` 2026-10-03, `vigenciahasta` 2026-10-05). Se modela rango de vigencia, no fecha única.
+- Fines de semana y festivos: una fila cubre varios días (`vigenciadesde` 2026-10-03, `vigenciahasta` 2026-10-05). El normalizer expande el rango a una fila por día (D47); raw y manifest conservan el rango original.
 - Hay al menos 9 datasets TRM duplicados con esquemas distintos (`mcec-87by`, `ceyp-9c7c`, `djvb-n8kv`, `dit9-nnvp`, otros). Fijar `32sa-8pi3` y verificar atribución en el manifest.
 - Rate limit sin token: número exacto no encontrado en la documentación. Registrar un token y manejar reintentos con backoff.
 - Paginar siempre con `$order=vigenciadesde` (o `:id`).
@@ -132,8 +138,7 @@ Condición de entrada cumplida (D46, `08_market_research.md` Ficha 2). Entregabl
 - Infraestructura: solo Docker está confirmado por Henry. El estado del VPS (Coolify, Metabase y demás servicios) no está auditado.
 - Pendiente: auditar el VPS (re-medir lo registrado en `04_infra.md` §4–§6, medición del 2026-10-03 no re-verificada, ver R9, y cumplir el checklist de §15). Requiere confirmación explícita de Henry antes de ejecutar cualquier comando contra el VPS. No bloquea el desarrollo local de Fase 1; bloquea cualquier despliegue.
 - Pendiente de dominio: pregunta abierta 2 (DANE), antes de Fase 1b.
-- Hallazgos de severidad alta en `00_review_findings.md` (requieren D nueva antes de implementar, regla 4): R1 (grano de `fx_rate`), antes del paso 5; R2 (entidad y grano del parque RUNT), antes de Fase 1b; R3 (marcas prioritarias validadas con matrículas, que son FLUJO, no con parque), antes de usar marcas en métricas.
-- Decisión de dominio abierta para Henry: ¿el parque RUNT por clase (sin marca) es el único insumo de demanda hasta encontrar parque por marca? Condiciona R2 y R3.
+- Hallazgos de severidad alta de `00_review_findings.md` (R1–R3): ninguno vigente; resueltos por D47 y D48 (ver §3).
 
 ## 8. Regla para la siguiente conversación
 
