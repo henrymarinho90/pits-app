@@ -1,7 +1,7 @@
 # 03 — Modelo de datos
 
 Última actualización: 2026-10-10
-Estado: v6 — alineado con `02_domain_taxonomy.md` v11.
+Estado: v7 — alineado con `02_domain_taxonomy.md` v12.
 
 ## 1. Propósito
 
@@ -96,7 +96,7 @@ erDiagram
     account ||--o{ marketplace_review : writes
 ```
 
-`fx_rate` y `vehicle_fleet_snapshot` no necesitan una relación FK directa con todas las entidades; se integran en dbt según fecha, moneda, clase de vehículo o geografía. La marca y el modelo del parque no vienen del RUNT real: salen del desglose sintético (D48, §27).
+`fx_rate` y `vehicle_fleet_snapshot` no necesitan una relación FK directa con todas las entidades; se integran en dbt según fecha, moneda, clase de vehículo o geografía. La marca y el modelo del parque no vienen del RUNT real: salen del desglose sintético (D48, §27). Ese desglose aplica solo al segmento PARTICULAR (D52, D55); el servicio PÚBLICO es un segmento de flotas aparte (D54); OFICIAL queda fuera de la demanda y OTROS y NO REGISTRA fuera del MVP (D56).
 
 ---
 
@@ -571,6 +571,20 @@ Entidad de parque (STOCK, no flujo; regla 5). Grano: un corte mensual (`a_o_de_p
 
 Los nombres de columna son los de origen; el nombre final de las columnas en el modelo (`snake_case` en inglés, §2) y los tipos físicos se deciden al implementar la Fase 1b. `08` declara los tipos de Socrata, pero el JSON los devuelve todos como string (`08`, Ficha 1; re-verificado el 2026-10-10: `cantidad` llega como `"1"`); se castean en el parser. `08` no define una llave única de fila ni ofrece historial: la fuente trae un único corte (agosto 2026), por lo que cada snapshot mensual debe guardarse en raw (`08`, Objetivo 4).
 
+Re-verificado 2026-10-10: el corte vigente en `u3vn-bdcy` es OCTUBRE 2026 y el corte agosto 2026 citado arriba ya no existe en la fuente. Inferencia: la fuente conserva solo el corte vigente y se sobrescribe cada mes.
+
+**Segmentación por servicio.** `nombre_servicio` tiene 5 valores reales (RUNT `u3vn-bdcy`, corte OCTUBRE 2026; ver `research/parque_por_marca.md`, sección 3):
+
+| Valor | Tratamiento |
+|---|---|
+| `PARTICULAR` | Segmento de demanda con desglose sintético de marca (D52, D55) |
+| `PÚBLICO` (con tilde) | Segmento de flotas, comprador `fleet_operator`; dato real por clase/geografía, desglose de marca sin calibrar (D54) |
+| `OFICIAL` | Fuera de la demanda; se conserva como dato real (D56) |
+| `OTROS` | Fuera del MVP; se conserva como dato real (D56) |
+| `NO REGISTRA` | Fuera del MVP; se conserva como dato real (D56) |
+
+El desglose sintético sigue el orden marca y luego línea (D53) y se calibra con Boyacá `em3d-hmim` y Risaralda `x9pp-pcn5`, con `AUTECO` reasignado a la marca real por línea (D52, D55). Hace falta un mapa de normalización entre fuentes: de clase (`CAMION` y `CAMIÓN` son la misma clase en RUNT; `MICRO BUS` en Boyacá frente a `MICROBUS` en RUNT; `TRACTO-CAMION` frente a `TRACTOCAMION`) y de servicio (`PÚBLICO` en RUNT frente a `PUBLICO` en Boyacá y Floridablanca; `OTRO` frente a `OTROS`).
+
 El RUNT no trae marca ni modelo (D48). El desglose del parque por marca/modelo se genera sintético (generador, Fase 2), calibrado con investigación pública con fuente verificable, y debe marcarse como sintético en su procedencia (§28). Esta entidad contiene solo el dato real del RUNT. Dónde vive el desglose sintético (entidad aparte o columna de origen, según §28) se decide en Fase 2. El desglose sintético no es dato real ni métrica oficial de demanda.
 
 ---
@@ -583,7 +597,8 @@ El RUNT no trae marca ni modelo (D48). El desglose del parque por marca/modelo s
 | `vehicle` | NHTSA vPIC + datos curados/específicos de Colombia según validación |
 | `fx_rate` | TRM Superfinanciera `32sa-8pi3` (D46, D47) |
 | `vehicle_fleet_snapshot` | RUNT `u3vn-bdcy` (real, por clase/geografía; D48) |
-| Desglose del parque por marca/modelo | Generador sintético calibrado con investigación pública (D48); ubicación (entidad o columna de origen) por definir en Fase 2 |
+| Desglose del parque por marca/modelo (segmento PARTICULAR) | Generador sintético calibrado con Boyacá `em3d-hmim` + Risaralda `x9pp-pcn5` (D52, D55); procedencia sintética y regional; ubicación (entidad o columna de origen) por definir en Fase 2 |
+| Segmento servicio público (flotas) | RUNT `u3vn-bdcy` real por clase/geografía; desglose de marca sin calibrar (D54) |
 | `catalog_source` | Metadatos de fuentes permitidas |
 | `part`, `part_code`, `fitment` | Sintético inicialmente; cualquier fuente real futura debe registrar procedencia |
 | `account`, `account_role`, `business_profile`, `account_vehicle` | Generador sintético |
@@ -607,6 +622,7 @@ Nunca se mezclarán en una presentación como si fueran observaciones reales del
 - `unique` en llaves naturales declaradas.
 - relaciones FK válidas.
 - accepted values para enums.
+- `accepted_values` de `nombre_servicio` en `vehicle_fleet_snapshot`: `PARTICULAR`, `PÚBLICO`, `OFICIAL`, `OTROS`, `NO REGISTRA` (valores reales del corte OCTUBRE 2026).
 
 ## 30. Tests de negocio
 
@@ -628,6 +644,7 @@ Ejemplos:
 - todos los listings de una orden deben pertenecer al `seller_account_id` de la orden.
 - reviewer de `part_code_review` debe ser un contributor válido.
 - `account_role.role_type` debe pertenecer a `buyer_type` cuando `role_code = buyer`, y a `seller_type` cuando `role_code = seller`.
+- conservación del desglose sintético: la suma del desglose por (corte, clase, geografía, PARTICULAR) debe ser igual a la `cantidad` del RUNT para esa misma combinación y el mismo filtro de `estado_del_vehiculo` que use el generador (D52).
 
 ## 31. Tests de calidad/observabilidad
 

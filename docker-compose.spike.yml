@@ -1,0 +1,31 @@
+name: pits-spike
+
+services:
+  seaweedfs:
+    image: chrislusf/seaweedfs:4.48
+    container_name: pits-spike-seaweedfs
+    # El entrypoint antepone -dir=/data -volume.max=0 -master.volumeSizeLimitMB=1024.
+    command: ["server", "-s3"]
+    environment:
+      # weed lee estas dos variables como identidad admin S3 (ver docs/spikes/seaweedfs.md).
+      AWS_ACCESS_KEY_ID: ${S3_ACCESS_KEY_ID:?set S3_ACCESS_KEY_ID in .env}
+      AWS_SECRET_ACCESS_KEY: ${S3_SECRET_ACCESS_KEY:?set S3_SECRET_ACCESS_KEY in .env}
+      GOMEMLIMIT: 400MiB
+    mem_limit: 512m
+    memswap_limit: 512m
+    restart: "no"
+    ports:
+      # Solo S3 y solo loopback: master (9333), filer (8888) y sus puertos gRPC no salen del contenedor.
+      - "127.0.0.1:8333:8333"
+    volumes:
+      - seaweedfs_data:/data
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8333/healthz"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
+
+volumes:
+  seaweedfs_data:
+    name: pits_spike_seaweedfs_data
