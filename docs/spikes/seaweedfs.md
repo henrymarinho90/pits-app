@@ -211,7 +211,7 @@ Hallazgo sobre checksums: con boto3 1.43.111 y la configuración por defecto (si
 
 - Subida: `RandomStream` (en `s3_helpers.py`, `io.RawIOBase`) genera bloques de 1 MiB con `random.Random(42).randbytes` (no comprimible) y calcula sha256 al vuelo; `upload_fileobj` con `TransferConfig(multipart_threshold=8 MiB, multipart_chunksize=8 MiB, max_concurrency=2)` y `max_in_memory_upload_chunks=4` (atributo del config de s3transfer; no es argumento del constructor de boto3).
 - Descarga: `get_object()["Body"].iter_chunks(1 MiB)` con sha256 al vuelo.
-- Asserts: sha256 subido == descargado, `ContentLength == size`, ETag de `head_object` con sufijo `-N` (N = ceil(size/8 MiB); 16 con 128 MiB), y memoria: `peak < budget` con `budget = (max_in_memory_upload_chunks + max_concurrency) * 8 MiB + 16 MiB` (= 64 MiB, atado a la config) y `peak < size` (el cliente nunca tiene el objeto entero). No se usa `size/2`: con el mínimo de 100 MiB quedaría a ~3 % del umbral.
+- Asserts: sha256 subido == descargado, `ContentLength == size`, ETag de `head_object` con sufijo `-N` (N = ceil(size/8 MiB); 16 con 128 MiB), y memoria: `peak < budget` con `budget = (max_in_memory_upload_chunks + max_concurrency) * 8 MiB + 16 MiB` (= 64 MiB, atado a la config) y `peak < size` (aserción documental: la implica el presupuesto, que es menor que `size` desde 100 MiB). No se usa `size/2`: con el mínimo de 100 MiB quedaría a ~3 % del umbral.
 - `test_manual_multipart_etag_format`: `create_multipart_upload` -> 2 partes de 5 MiB + 1 de 1000 B -> `complete`; el ETag de `complete` y de `head_object` es `md5(concat(md5(parte_i))) + "-3"` (formato S3) y el contenido vuelve idéntico.
 - Tests offline: `RandomStream` es determinista, no devuelve lecturas cortas, semillas distintas dan bytes distintos y `size=0` devuelve `b""` con el sha256 del vacío.
 
@@ -238,6 +238,72 @@ Hallazgos del paso 5 (checksums de boto3 en multipart y dos trampas propias):
 2. Trampa 1 (mi código): la primera versión de `RandomStream.readinto` devolvía como máximo 1 MiB por llamada. s3transfer decide "PUT simple vs multipart" por lo que devuelve el primer `read(multipart_threshold)` en un stream no seekable; con lecturas cortas hizo un PUT simple (ETag sin `-N`, que indica PUT simple) aunque el contenido era correcto (la aserción de ETag `-16` falló con `'"9db2f92011a1265523c089170f2c35c3"'`). Con `readinto` que llena el buffer, sube multipart (sonda de 20 MiB: ETag `...-3`). Moraleja: un stream con lecturas cortas cambia silenciosamente la estrategia de subida.
 3. Trampa 2: con la config por defecto (`max_in_memory_upload_chunks=10`, 8 MiB por parte) el pico de tracemalloc fue 95,8 MB y el primer criterio del test (`peak < size/2` = 67,1 MB) falló: `assert 95777375 < (134217728 / 2)`. Ojo: ni con el default el cliente cargaba el objeto entero (95,8 MB < 134 MB); no era un bug. Bajar a 4 chunks en memoria no corrige nada, fija una memoria conocida (~51 MB) y permite un presupuesto explícito. La memoria del cliente la acota ese parámetro, no el tamaño del objeto.
 4. Observación (sin investigar la causa): un objeto de 20 MiB subido con lecturas cortas (ETag sin `-N`, presumiblemente PUT simple) devolvió `PartsCount=5` en `get_object(PartNumber=1)`.
+
+### Paso 6: versioning y Object Lock
+
+Tests en `tests/contract/test_s3_contract.py` (marker `contract`). Antes de escribirlos se hizo una sonda manual (`probe_lock.py` en el scratchpad) con los mismos pasos para ver el comportamiento real (la sonda no se conserva; los tests reproducen sus pasos); no se ajustó ninguna expectativa: todo coincidió con la expectativa de los tests; no hizo falta `xfail`.
+
+Resultados por caso (`uv run --env-file .env pytest -m contract -q -rA`, 14 passed, 30 deselected in 20.25s; códigos literales de `ClientError`):
+
+| Caso | Resultado | Detalle observado |
+|---|---|---|
+| `test_versioning` | pasa | `put_bucket_versioning Enabled`; 2 puts -> 2 versiones distintas; `get(VersionId=v1)` = contenido viejo; `delete_object` sin VersionId -> `DeleteMarker: True` (1 marker en `list_object_versions`); v1 sigue legible; `get_object` sin versión -> `NoSuchKey` / 404 |
+| `test_object_lock_enabled_bucket` (a) | pasa | `get_object_lock_configuration` -> `ObjectLockEnabled: Enabled`; `get_bucket_versioning` -> `Enabled` (se activa solo al crear el bucket con `ObjectLockEnabledForBucket=True`) |
+| `test_object_lock_compliance` (b): `delete_object(VersionId=v1)` | pasa (falla como debe) | `AccessDenied` / 403 ("Access Denied.") |
+| (b) delete con `BypassGovernanceRetention=True` | pasa (falla como debe) | `AccessDenied` / 403 |
+| (b) `put_object_retention` acortando la fecha | pasa (falla como debe) | `AccessDenied` / 403 |
+| (b) `get_object_retention(VersionId=v1)` | pasa | `Mode: COMPLIANCE`, `RetainUntilDate` = la enviada, truncada a segundos (la sonda: enviada 21:38:56.7 -> devuelta 21:40:56) |
+| (b) control positivo: `put_object_retention` alargando la fecha de v1 (+1 min) | pasa | HTTP 200; `get_object_retention` devuelve la fecha nueva (a los segundos); acortarla da `AccessDenied` / 403, así que la retención COMPLIANCE solo se puede alargar |
+| (b) sobrescribir la misma key | pasa | `put_object` tiene éxito y crea `v2`; v1 conserva los bytes (sha256 igual) y su retención |
+| (b) control: v2 sin retención | pasa | `get_object_retention(v2)` -> `ObjectLockConfigurationNotFoundError` / 404 ("Object Lock configuration does not exist for this bucket"; mensaje poco preciso para una versión sin retención, no contrastado con AWS); `delete_object(VersionId=v2)` con la misma identidad tiene éxito, así que el 403 de v1 se debe a la retención y no a falta de permisos |
+| (b) `delete_object` sin VersionId | pasa | `DeleteMarker: True`; v1 legible por VersionId |
+| (b) desfase de reloj | pasa | cabecera `Date` del servidor frente a reloj del cliente: 0,1 s (el test exige < 30 s) |
+| `test_object_lock_governance_bypass` (c): delete sin bypass | pasa (falla como debe) | `AccessDenied` / 403 |
+| (c) delete con `BypassGovernanceRetention=True` | pasa | éxito (identidad admin); devuelve el `VersionId` borrado. Ojo: esto no prueba que una identidad sin el permiso de bypass (`s3:BypassGovernanceRetention`) sea rechazada; ver la limitación de la identidad única admin (d, abajo) |
+| `test_object_lock_legal_hold` (d) | pasa | hold ON -> `get_object_legal_hold` = `ON`, delete de la versión `AccessDenied` / 403; hold OFF -> delete con éxito |
+
+Sin divergencias respecto a la expectativa de los tests en los casos probados; no se registró ningún `xfail`. No se verificó contra la documentación de AWS ni de SeaweedFS (solo contra la expectativa de los tests), y no se probó el mismo flujo con una identidad no admin (la única identidad es la admin del env), que es donde Object Lock suele aportar valor real.
+
+Limpieza: los buckets con retención activa no se pueden vaciar hasta que expira (COMPLIANCE y, sin bypass, GOVERNANCE). Los tests los marcan con `make_bucket.keep()`. La fixture `s3` (sesión) llama a `purge_contract_buckets` al empezar cada corrida `contract`, como mejor esfuerzo: purga los restos de corridas anteriores cuya retención ya expiró e imprime (sin fallar) los que siguen retenidos, p. ej. `leftover contract bucket not purged (retention still active?): pits-contract-c2117663: RuntimeError("delete_objects failed ... 'Code': 'AccessDenied' ...")`. Es decir, los buckets COMPLIANCE de la corrida actual se purgan en la siguiente corrida o a mano con `purge.py` pasados ~3 min (el test alarga la retención de v1 a +3 min en total). Antes de que expiren, el purgado falla con la causa literal:
+
+```text
+$ uv run --env-file .env python -I purge.py     # purge_contract_buckets de s3_helpers, a los ~20 s
+before: ['pits-contract-01f609f1', 'pits-contract-187ef214', 'pits-contract-b444d762']
+ERR pits-contract-187ef214: RuntimeError("delete_objects failed in pits-contract-187ef214: [{'Key': 'k', 'VersionId': '6722b723fe76707d161dffc531ee736d', 'Code': 'AccessDenied', 'Message': 'Access Denied.'}]")
+ERR pits-contract-b444d762: RuntimeError("delete_objects failed in pits-contract-b444d762: [{'Key': 'raw/compliance.bin', 'VersionId': '6722b71b1306a990257d8c388ba01cb1', 'Code': 'AccessDenied', 'Message': 'Access Denied.'}]")
+after: ['pits-contract-187ef214', 'pits-contract-b444d762']
+```
+
+Pasada la retención (2 min en esta salida, anterior al control de alargado; ahora 3 min), el mismo comando los vacía y los borra:
+
+```text
+$ uv run --env-file .env python -I purge.py
+before: ['pits-contract-187ef214', 'pits-contract-b444d762']
+after: []
+```
+
+`purge.py` (se ejecuta con las credenciales del entorno; sin secretos en el script):
+
+```python
+import os, sys
+
+sys.path.insert(0, "tests/contract")
+from s3_helpers import *
+
+s = load_settings(os.environ)
+c = build_client(s, s.access_key_id, s.secret_access_key)
+print("before:", [b["Name"] for b in c.list_buckets()["Buckets"]])
+for e in purge_contract_buckets(c):
+    print("ERR", e[:230])
+print("after:", [b["Name"] for b in c.list_buckets()["Buckets"]])
+```
+
+(El bucket GOVERNANCE `pits-contract-01f609f1` se purgó en la primera pasada porque su única versión ya se había borrado con bypass.) Estado final tras la corrida completa de `-m contract` (dos buckets con retención, `pits-contract-1390e859` y `pits-contract-b47ddae8`; purgados ~2 min después con el mismo script):
+
+```text
+before: ['pits-contract-1390e859', 'pits-contract-b47ddae8']
+after: []
+```
 
 ## Mediciones
 
@@ -283,9 +349,8 @@ OOM=false
 | `memory.peak` en la corrida anterior (misma secuencia) | 440578048 B = 420,2 MiB |
 | `memory.current` tras el test (anon / file / kernel) | 230187008 B (225267712 / 1249280 / 2875392) |
 | OOMKilled | false |
-| Disco `/data` antes | 596.0K |
-| Disco tras subir 128 MiB (script manual, antes de borrar) | 128.7M |
-| Disco tras borrar el bucket (inmediato y 30 s después) | 656.0K / 656.0K |
+| Disco `/data` antes / tras subir 128 MiB (script manual, antes de borrar) | 1.3M / 129.3M (1.ª ejecución: 596.0K / 128.7M) |
+| Disco tras borrar el bucket (inmediato y 30 s después) | 1.3M / 1.3M (1.ª ejecución: 656.0K / 656.0K) |
 
 Notas:
 
@@ -295,7 +360,7 @@ Notas:
 - Disco: se midió con un script manual (no con el test) porque el fixture borra el bucket al terminar y el test no debe depender de `docker`. El script, tal cual se ejecutó (`uv run --env-file .env python -I disk.py`, credenciales por entorno vía `load_settings`/`build_client`):
 
 ```python
-import os, sys, subprocess, time
+import os, sys, subprocess, time, uuid
 
 sys.path.insert(0, "tests/contract")
 from s3_helpers import *
@@ -313,28 +378,34 @@ def du(label):
 
 s = load_settings(os.environ)
 c = build_client(s, s.access_key_id, s.secret_access_key)
-b = "pits-contract-disk1"
+b = f"pits-contract-disk-{uuid.uuid4().hex[:8]}"
 c.create_bucket(Bucket=b)
-du("before")
-cfg = TransferConfig(multipart_threshold=8 * MIB, multipart_chunksize=8 * MIB, max_concurrency=2)
-cfg.max_in_memory_upload_chunks = 4
-src = RandomStream(128 * MIB)
-c.upload_fileobj(src, b, "blob", Config=cfg)
-du("after_upload")
-purge_bucket(c, b)
+try:
+    du("before")
+    cfg = TransferConfig(
+        multipart_threshold=8 * MIB, multipart_chunksize=8 * MIB, max_concurrency=2
+    )
+    cfg.max_in_memory_upload_chunks = 4
+    src = RandomStream(128 * MIB)
+    c.upload_fileobj(src, b, "blob", Config=cfg)
+    du("after_upload")
+finally:
+    purge_bucket(c, b)
 du("after_delete_immediate")
 time.sleep(30)
 du("after_delete_30s")
 ```
 
 ```text
-before: 596.0K
-after_upload: 128.7M
-after_delete_immediate: 656.0K
-after_delete_30s: 656.0K
+before: 1.3M
+after_upload: 129.3M
+after_delete_immediate: 1.3M
+after_delete_30s: 1.3M
 ```
 
-- Al borrar el bucket el espacio se liberó de inmediato (128.7M -> 656.0K). Mi hipótesis previa ("SeaweedFS no libera hasta vacuum") no se cumplió para el borrado del bucket completo; no se probó borrar objetos dentro de un bucket que sigue existiendo (ahí sí podría hacer falta vacuum).
+(Segunda ejecución del script, ya con nombre de bucket único y `try/finally`; el "antes" de 1.3M incluye los objetos bloqueados por Object Lock del paso 6 aún retenidos. La primera ejecución, con bucket fijo, dio 596.0K / 128.7M / 656.0K / 656.0K: mismo comportamiento, subida de ~128 MiB y liberación inmediata al borrar el bucket.)
+
+- Al borrar el bucket el espacio se liberó de inmediato (129.3M -> 1.3M; 1.ª ejecución 128.7M -> 656.0K). Mi hipótesis previa ("SeaweedFS no libera hasta vacuum") no se cumplió para el borrado del bucket completo; no se probó borrar objetos dentro de un bucket que sigue existiendo (ahí sí podría hacer falta vacuum).
 - Se retiró la fila de `docker system df -v` (376,4 kB frente a 656K de `du`; otra lectura dio 610,6 kB frente a 904K): las cifras no cuadran y no hay evidencia para explicar la diferencia (podría ser cómo cuenta Docker el volumen frente a `du` dentro del contenedor, pero no se verificó).
 
 ## Qué funcionó / qué falló

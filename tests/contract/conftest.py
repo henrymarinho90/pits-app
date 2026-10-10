@@ -10,7 +10,14 @@ from collections.abc import Callable, Iterator
 
 import pytest
 from botocore.client import BaseClient
-from s3_helpers import BucketFactory, S3Settings, SettingsError, build_client, load_settings
+from s3_helpers import (
+    BucketFactory,
+    S3Settings,
+    SettingsError,
+    build_client,
+    load_settings,
+    purge_contract_buckets,
+)
 
 
 @pytest.fixture(scope="session")
@@ -28,7 +35,12 @@ def make_client(s3_settings: S3Settings) -> Callable[[str, str], BaseClient]:
 
 @pytest.fixture(scope="session")
 def s3(s3_settings: S3Settings) -> BaseClient:
-    return build_client(s3_settings, s3_settings.access_key_id, s3_settings.secret_access_key)
+    client = build_client(s3_settings, s3_settings.access_key_id, s3_settings.secret_access_key)
+    # Best-effort: purge leftovers of previous runs (COMPLIANCE buckets whose retention has
+    # expired). Buckets with active retention fail with AccessDenied; they are only reported.
+    for message in purge_contract_buckets(client):
+        print(f"leftover contract bucket not purged (retention still active?): {message[:200]}")
+    return client
 
 
 @pytest.fixture

@@ -179,3 +179,19 @@ class RandomStream(io.RawIOBase):
             self._block = self._block[n:]
             filled += n
         return filled
+
+
+def purge_contract_buckets(client: BaseClient, prefix: str = "pits-contract-") -> list[str]:
+    """Purge leftover test buckets (e.g. COMPLIANCE ones, once their retention has expired).
+
+    Returns one error message per bucket that could not be purged (e.g. retention still active).
+    """
+    errors: list[str] = []
+    for bucket in client.list_buckets()["Buckets"]:
+        if not bucket["Name"].startswith(prefix):
+            continue
+        try:
+            purge_bucket(client, bucket["Name"])
+        except Exception as exc:  # noqa: BLE001
+            errors.append(f"{bucket['Name']}: {exc!r}")
+    return errors

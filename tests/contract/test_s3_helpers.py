@@ -5,7 +5,15 @@ from typing import Any, cast
 
 import pytest
 from botocore.client import BaseClient
-from s3_helpers import MIB, BucketFactory, RandomStream, SettingsError, load_settings, purge_bucket
+from s3_helpers import (
+    MIB,
+    BucketFactory,
+    RandomStream,
+    SettingsError,
+    load_settings,
+    purge_bucket,
+    purge_contract_buckets,
+)
 
 BASE = {
     "S3_ENDPOINT_URL": "http://127.0.0.1:8333",
@@ -66,6 +74,7 @@ class FakeClient:
         delete_errors: list[dict[str, Any]] | None = None,
     ) -> None:
         self.failing: set[str] = set()
+        self.bucket_names: list[str] = []
         self.deleted: list[str] = []
         self.aborted: list[tuple[str, str]] = []
         self.delete_calls: list[list[dict[str, Any]]] = []
@@ -87,6 +96,9 @@ class FakeClient:
     def delete_objects(self, Bucket: str, Delete: dict[str, Any]) -> dict[str, Any]:  # noqa: N803
         self.delete_calls.append(Delete["Objects"])
         return {"Errors": self._delete_errors} if self._delete_errors else {}
+
+    def list_buckets(self) -> dict[str, Any]:
+        return {"Buckets": [{"Name": n} for n in self.bucket_names]}
 
     def delete_bucket(self, Bucket: str) -> None:  # noqa: N803
         if Bucket in self.failing:
@@ -194,3 +206,13 @@ def test_random_stream_empty() -> None:
     s = RandomStream(0)
     assert s.read() == b""
     assert s.sha256.hexdigest() == hashlib.sha256(b"").hexdigest()
+
+
+def test_purge_contract_buckets_only_touches_prefix_and_reports_failures() -> None:
+    client = FakeClient()
+    client.bucket_names = ["pits-contract-a", "pits-contract-b", "other-bucket"]
+    client.failing.add("pits-contract-a")
+    errors = purge_contract_buckets(_as_client(client))
+    assert client.deleted == ["pits-contract-b"]
+    assert len(errors) == 1
+    assert "pits-contract-a" in errors[0]

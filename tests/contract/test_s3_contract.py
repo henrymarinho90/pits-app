@@ -1,3 +1,4 @@
+import datetime as dt
 import hashlib
 import math
 import os
@@ -9,7 +10,7 @@ import pytest
 from boto3.s3.transfer import TransferConfig
 from botocore.client import BaseClient
 from botocore.exceptions import ClientError
-from s3_helpers import MIB, RandomStream, S3Settings
+from s3_helpers import MIB, BucketFactory, RandomStream, S3Settings
 
 pytestmark = pytest.mark.contract
 
@@ -152,7 +153,7 @@ def test_large_object_streaming(s3: BaseClient, bucket: str, s3_settings: S3Sett
     # Budget tied to the config: queued chunks + in-flight workers + 16 MiB of slack.
     budget = (config.max_in_memory_upload_chunks + config.max_concurrency) * part + 16 * MIB
     assert peak < budget
-    assert peak < size  # the client never holds the whole object
+    assert peak < size  # documentary: implied by the budget above (budget < size for >= 100 MiB)
 
 
 def test_manual_multipart_etag_format(s3: BaseClient, bucket: str) -> None:
@@ -178,3 +179,151 @@ def test_manual_multipart_etag_format(s3: BaseClient, bucket: str) -> None:
     assert done["ETag"] == expected
     assert s3.head_object(Bucket=bucket, Key=key)["ETag"] == expected
     assert s3.get_object(Bucket=bucket, Key=key)["Body"].read() == b"".join(parts)
+
+
+def error_of(exc: ClientError) -> tuple[str, int]:
+    return exc.response["Error"]["Code"], exc.response["ResponseMetadata"]["HTTPStatusCode"]
+
+
+def test_versioning(s3: BaseClient, bucket: str) -> None:
+    s3.put_bucket_versioning(Bucket=bucket, VersioningConfiguration={"Status": "Enabled"})
+    key = "raw/versioned.json"
+    v1 = s3.put_object(Bucket=bucket, Key=key, Body=b"old")["VersionId"]
+    v2 = s3.put_object(Bucket=bucket, Key=key, Body=b"new")["VersionId"]
+    assert v1 != v2
+    listing = s3.list_object_versions(Bucket=bucket, Prefix=key)
+    assert {v["VersionId"] for v in listing["Versions"]} == {v1, v2}
+    assert s3.get_object(Bucket=bucket, Key=key, VersionId=v1)["Body"].read() == b"old"
+    assert s3.get_object(Bucket=bucket, Key=key)["Body"].read() == b"new"
+
+    marker = s3.delete_object(Bucket=bucket, Key=key)
+    assert marker["DeleteMarker"] is True
+    listing = s3.list_object_versions(Bucket=bucket, Prefix=key)
+    assert [m["VersionId"] for m in listing["DeleteMarkers"]] == [marker["VersionId"]]
+    assert s3.get_object(Bucket=bucket, Key=key, VersionId=v1)["Body"].read() == b"old"
+    with pytest.raises(ClientError) as exc_info:
+        s3.get_object(Bucket=bucket, Key=key)
+    assert error_of(exc_info.value) == ("NoSuchKey", 404)
+
+
+def test_object_lock_enabled_bucket(s3: BaseClient, make_bucket: BucketFactory) -> None:
+    bucket = make_bucket(object_lock=True)
+    config = s3.get_object_lock_configuration(Bucket=bucket)["ObjectLockConfiguration"]
+    assert config["ObjectLockEnabled"] == "Enabled"
+    assert s3.get_bucket_versioning(Bucket=bucket)["Status"] == "Enabled"
+
+
+def test_object_lock_compliance(s3: BaseClient, make_bucket: BucketFactory) -> None:
+    bucket = make_bucket(object_lock=True)
+    make_bucket.keep(bucket)  # COMPLIANCE objects cannot be purged until retention expires
+    key = "raw/compliance.bin"
+    until = dt.datetime.now(dt.UTC) + dt.timedelta(minutes=2)
+    put = s3.put_object(
+        Bucket=bucket,
+        Key=key,
+        Body=b"v1",
+        ObjectLockMode="COMPLIANCE",
+        ObjectLockRetainUntilDate=until,
+    )
+    v1 = put["VersionId"]
+    server_date = dt.datetime.strptime(
+        put["ResponseMetadata"]["HTTPHeaders"]["date"], "%a, %d %b %Y %H:%M:%S GMT"
+    ).replace(tzinfo=dt.UTC)
+    skew = abs((dt.datetime.now(dt.UTC) - server_date).total_seconds())
+    print(f"compliance: bucket={bucket} v1={v1} server_date={server_date} clock_skew_s={skew:.1f}")
+    assert skew < 30, "client/server clock skew makes retention checks unreliable"
+
+    def denied(call: Callable[..., object], **kwargs: object) -> tuple[str, int]:
+        with pytest.raises(ClientError) as exc_info:
+            call(**kwargs)
+        return error_of(exc_info.value)
+
+    results = {
+        "delete_version": denied(s3.delete_object, Bucket=bucket, Key=key, VersionId=v1),
+        "delete_version_bypass": denied(
+            s3.delete_object,
+            Bucket=bucket,
+            Key=key,
+            VersionId=v1,
+            BypassGovernanceRetention=True,
+        ),
+        "shorten_retention": denied(
+            s3.put_object_retention,
+            Bucket=bucket,
+            Key=key,
+            VersionId=v1,
+            Retention={"Mode": "COMPLIANCE", "RetainUntilDate": until - dt.timedelta(minutes=1)},
+        ),
+    }
+    print(f"compliance denials: {results}")
+    assert all(code == "AccessDenied" and status == 403 for code, status in results.values())
+
+    initial = s3.get_object_retention(Bucket=bucket, Key=key, VersionId=v1)["Retention"]
+    assert initial["Mode"] == "COMPLIANCE"
+    # The server stores whole seconds.
+    assert abs((initial["RetainUntilDate"] - until).total_seconds()) < 1
+
+    # Positive control: COMPLIANCE retention can be extended (never shortened).
+    longer = until + dt.timedelta(minutes=1)
+    s3.put_object_retention(
+        Bucket=bucket,
+        Key=key,
+        VersionId=v1,
+        Retention={"Mode": "COMPLIANCE", "RetainUntilDate": longer},
+    )
+    retention = s3.get_object_retention(Bucket=bucket, Key=key, VersionId=v1)["Retention"]
+    assert retention["Mode"] == "COMPLIANCE"
+    assert abs((retention["RetainUntilDate"] - longer).total_seconds()) < 1
+
+    # Overwrite succeeds: it creates v2 and leaves the locked v1 untouched.
+    v2 = s3.put_object(Bucket=bucket, Key=key, Body=b"v2")["VersionId"]
+    assert v2 != v1
+    old = s3.get_object(Bucket=bucket, Key=key, VersionId=v1)["Body"].read()
+    assert hashlib.sha256(old).digest() == hashlib.sha256(b"v1").digest()
+    assert s3.get_object_retention(Bucket=bucket, Key=key, VersionId=v1)["Retention"] == retention
+
+    # Control: v2 has no retention, and the same identity CAN delete it, so the 403 on v1
+    # is caused by the retention and not by missing permissions.
+    with pytest.raises(ClientError) as v2_exc:
+        s3.get_object_retention(Bucket=bucket, Key=key, VersionId=v2)
+    print(f"retention of an unlocked version: {error_of(v2_exc.value)}")
+    assert error_of(v2_exc.value) == ("ObjectLockConfigurationNotFoundError", 404)
+    assert s3.delete_object(Bucket=bucket, Key=key, VersionId=v2)["VersionId"] == v2
+
+    # Delete without VersionId only adds a delete marker; v1 stays readable.
+    assert s3.delete_object(Bucket=bucket, Key=key)["DeleteMarker"] is True
+    assert s3.get_object(Bucket=bucket, Key=key, VersionId=v1)["Body"].read() == b"v1"
+
+
+def test_object_lock_governance_bypass(s3: BaseClient, make_bucket: BucketFactory) -> None:
+    bucket = make_bucket(object_lock=True)
+    make_bucket.keep(bucket)  # GOVERNANCE retention also blocks the purge until it expires
+    key = "raw/governance.bin"
+    until = dt.datetime.now(dt.UTC) + dt.timedelta(minutes=2)
+    v1 = s3.put_object(
+        Bucket=bucket,
+        Key=key,
+        Body=b"g",
+        ObjectLockMode="GOVERNANCE",
+        ObjectLockRetainUntilDate=until,
+    )["VersionId"]
+    with pytest.raises(ClientError) as exc_info:
+        s3.delete_object(Bucket=bucket, Key=key, VersionId=v1)
+    assert error_of(exc_info.value) == ("AccessDenied", 403)
+    deleted = s3.delete_object(Bucket=bucket, Key=key, VersionId=v1, BypassGovernanceRetention=True)
+    assert deleted["VersionId"] == v1
+
+
+def test_object_lock_legal_hold(s3: BaseClient, make_bucket: BucketFactory) -> None:
+    bucket = make_bucket(object_lock=True)
+    key = "raw/hold.bin"
+    v1 = s3.put_object(Bucket=bucket, Key=key, Body=b"h")["VersionId"]
+    s3.put_object_legal_hold(Bucket=bucket, Key=key, VersionId=v1, LegalHold={"Status": "ON"})
+    assert s3.get_object_legal_hold(Bucket=bucket, Key=key, VersionId=v1)["LegalHold"] == {
+        "Status": "ON"
+    }
+    with pytest.raises(ClientError) as exc_info:
+        s3.delete_object(Bucket=bucket, Key=key, VersionId=v1)
+    assert error_of(exc_info.value) == ("AccessDenied", 403)
+    s3.put_object_legal_hold(Bucket=bucket, Key=key, VersionId=v1, LegalHold={"Status": "OFF"})
+    assert s3.delete_object(Bucket=bucket, Key=key, VersionId=v1)["VersionId"] == v1
