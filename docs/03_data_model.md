@@ -1,0 +1,640 @@
+# 03 — Modelo de datos
+
+Última actualización: 2026-10-03
+Estado: v4 — alineado con `02_domain_taxonomy.md` v11.
+
+## 1. Propósito
+
+Este documento define el **modelo de entidades fuente** que producirían el marketplace, el generador sintético y las fuentes externas.
+
+Los modelos analíticos de dbt (`stg_*`, `int_*`, `dim_*`, `fct_*`, marts) se diseñarán en la Fase 3 a partir de estas entidades.
+
+Objetivos del modelo:
+
+- representar el negocio sin duplicar identidades;
+- preservar eventos e historial relevantes;
+- permitir ingestas idempotentes;
+- facilitar lineage y replay;
+- generar hechos suficientes para analítica de demanda, oferta, negociación, transacciones y reputación.
+
+## 2. Convenciones
+
+- Tablas y columnas: inglés, `snake_case`.
+- Taxonomías controladas: llave natural `*_code`.
+- Entidades operativas: llave sustituta `*_id`.
+- Timestamps en UTC en almacenamiento; conversión de zona horaria en consumo.
+- Monedas con código ISO 4217 cuando aplique.
+- Países con ISO 3166-1 alpha-2 cuando aplique.
+- Los valores derivados no se almacenan si pueden recalcularse con seguridad.
+- Excepción: snapshots necesarios para preservar el contexto histórico al momento de un evento.
+- Eventos de negocio que necesiten auditoría se prefieren append-only.
+
+## 3. Contrato técnico de ingesta
+
+Cuando una entidad proviene de una fuente externa o de un batch generado, la plataforma debe poder reconstruir su procedencia mediante metadata técnica.
+
+Campos o metadata de control esperados:
+
+| Campo | Propósito |
+|---|---|
+| `source_system` | Sistema/API/generador de origen |
+| `source_record_id` | Identificador original cuando exista |
+| `ingestion_batch_id` | Batch que introdujo el registro |
+| `ingested_at` | Momento de llegada a la plataforma |
+| `raw_object_path` | Ubicación del payload raw en MinIO |
+| `record_hash` | Opcional; detección de cambios/duplicados |
+
+No es obligatorio duplicar estas columnas en todas las tablas de negocio. La implementación puede combinar columnas técnicas y tablas de control.
+
+## 4. Diagrama entidad-relación conceptual
+
+```mermaid
+erDiagram
+    part_family ||--o{ part_subfamily : contains
+    part_subfamily ||--o{ part_type : contains
+    part_type ||--o{ part : classifies
+    part ||--o{ part_code : identified_by
+    part ||--o{ fitment : fits
+    vehicle ||--o{ fitment : accepts
+
+    account ||--o{ account_role : has
+    account ||--o| business_profile : may_have
+    account ||--o| catalog_contributor : may_be
+
+    catalog_contributor ||--o{ part_code_edit : submits
+    part_code ||--o{ part_code_edit : may_target
+    part_code_edit ||--o{ part_code_review : reviewed_in
+    catalog_contributor ||--o{ part_code_review : reviews
+
+    symptom ||--o{ repair_job : triggers
+    vehicle ||--o{ repair_job : applies_to
+    repair_job ||--|{ repair_job_part : requires
+    part_type ||--o{ repair_job_part : needed_as
+
+    account ||--o{ listing : sells
+    part ||--o{ listing : offered_as
+    location ||--o{ listing : stocked_at
+    catalog_source ||--o{ listing : may_document
+
+    account ||--o{ account_vehicle : owns
+    vehicle ||--o{ account_vehicle : registered_as
+
+    account ||--o{ search_event : performs
+
+    listing ||--o{ negotiation : negotiated_on
+    account ||--o{ negotiation : buys_in
+    negotiation ||--|{ offer_event : contains
+    account ||--o{ offer_event : acts_in
+
+    account ||--o{ sales_order : buys
+    account ||--o{ sales_order : sells
+    sales_order ||--|{ sales_order_item : contains
+    listing ||--o{ sales_order_item : purchased_from
+    negotiation ||--o| sales_order : may_create
+
+    sales_order ||--o{ marketplace_review : supports
+    account ||--o{ marketplace_review : writes
+```
+
+`fx_rate` y `vehicle_registration_stat` no necesitan una relación FK directa con todas las entidades; se integran en dbt según fecha, moneda, marca, modelo o geografía.
+
+---
+
+# A. Identidad y participantes
+
+## 5. `account`
+
+Grano: **una identidad participante de la plataforma**.
+
+| Campo | Tipo lógico | Notas |
+|---|---|---|
+| `account_id` | bigint | PK |
+| `account_type` | text | `individual`, `business` |
+| `display_name` | text | Nombre visible |
+| `country_code` | text | ISO alpha-2 |
+| `created_at` | timestamp | UTC |
+| `status` | text | Por definir al implementar |
+
+Una cuenta puede comprar, vender y/o contribuir datos técnicos.
+
+## 6. `account_role`
+
+Grano: **un rol activo por cuenta**.
+
+PK lógica: (`account_id`, `role_code`).
+
+| Campo | Notas |
+|---|---|
+| `account_id` | FK a `account` |
+| `role_code` | `buyer`, `seller`, `catalog_contributor` |
+| `role_type` | Nullable. Para `buyer`, un valor de `buyer_type`; para `seller`, un valor de `seller_type`; nulo para `catalog_contributor` (su tipo vive en `catalog_contributor.contributor_type`) |
+| `granted_at` | UTC |
+
+Por qué `role_type` va aquí y no en `business_profile`: las cuentas individuales no tienen
+perfil comercial, pero sí necesitan clasificación (`driver`, `independent_mechanic`,
+`individual`).
+
+Esto reemplaza el diseño anterior con tablas separadas de `buyer` y `seller` como identidades independientes.
+
+## 7. `business_profile`
+
+Grano: **perfil comercial de una cuenta de negocio**.
+
+| Campo | Notas |
+|---|---|
+| `account_id` | PK/FK a `account` |
+| `legal_name` | Opcional en sintético |
+| `city` / `location_id` | Según decisión de geografía |
+
+Una cuenta individual no necesita `business_profile`.
+
+## 8. `account_vehicle`
+
+Grano: **un vehículo registrado por una cuenta**.
+
+PK lógica: (`account_id`, `vehicle_id`).
+
+Campos:
+
+- `registered_at`
+- alias opcional futuro
+
+---
+
+# B. Catálogo técnico
+
+## 9. Catálogo de partes
+
+| Tabla | Grano | Llave | Columnas principales |
+|---|---|---|---|
+| `part_family` | familia | `part_family_code` | `name` |
+| `part_subfamily` | subfamilia | `part_subfamily_code` | `part_family_code`, `name`, `vehicle_scope` |
+| `part_type` | clase de pieza | `part_type_code` | `part_subfamily_code`, `name` |
+| `part` | pieza concreta | `part_id` | `part_type_code`, `part_brand`, `name`, `description` |
+| `part_code` | código activo/histórico de una pieza | `part_code_id` | `part_id`, `code_type`, `code_value`, `brand`, `valid_from`, `valid_to`, `source_reference` |
+
+Regla inicial de unicidad de `part_code`:
+
+```text
+(code_type, brand, code_value)
+```
+
+Esta regla debe probarse contra datos reales antes de asumir que no existen excepciones.
+
+`confidence_score` no se almacena en origen; se deriva en dbt.
+
+## 10. Vehículos
+
+### `vehicle`
+
+Grano: **configuración de vehículo representada por combinación de modelo/versión/rango**.
+
+Campos principales:
+
+- `vehicle_id`
+- `vehicle_type`
+- `make`
+- `model`
+- `year_from`
+- `year_to`
+- `engine_displacement_cc`
+- `fuel_type`
+- `trim`
+- `manufacture_country`
+
+La representación por rango de años es una simplificación del MVP.
+
+### `fitment`
+
+Grano: **compatibilidad entre una pieza y una configuración de vehículo**.
+
+PK lógica:
+
+```text
+(part_id, vehicle_id)
+```
+
+Campos:
+
+- `source_reference`
+- `notes`
+- metadata técnica de procedencia cuando aplique
+
+El fitment sintético debe marcarse inequívocamente como sintético.
+
+---
+
+# C. Contribución y moderación del catálogo
+
+## 11. `catalog_contributor`
+
+Grano: **perfil de una cuenta habilitada para contribuir datos técnicos**.
+
+| Campo | Notas |
+|---|---|
+| `contributor_id` | PK |
+| `account_id` | FK a `account`, único |
+| `contributor_type` | `manufacturer_rep`, `distributor`, `seller`, `community` |
+| `business_profile_verified` | input de confianza |
+| `gbp_rating` | input, nullable |
+| `gbp_review_count` | input |
+| `is_certified` | input |
+| `initial_test_score` | 0–100 |
+| `created_at` | UTC |
+
+No guarda `contributor_trust_score`; se calcula en dbt.
+
+## 12. `part_code_edit`
+
+Grano: **una propuesta append-only para crear, actualizar o eliminar un código de parte**.
+
+| Campo | Notas |
+|---|---|
+| `part_code_edit_id` | PK |
+| `part_code_id` | Nullable; no existe todavía en una creación pendiente |
+| `contributor_id` | Autor |
+| `action` | `create`, `update`, `delete` |
+| `previous_snapshot` | JSONB nullable |
+| `change_payload` | JSONB con valores propuestos |
+| `contributor_trust_score_at_submit` | Snapshot histórico |
+| `is_senior_at_submit` | Snapshot histórico |
+| `submitted_at` | UTC |
+
+### Por qué se usa payload
+
+El diseño anterior tenía solo `old_value` y `new_value`, pero un código posee varios atributos. Un payload permite representar una creación completa o un cambio multicolumna sin perder el carácter append-only.
+
+El schema del payload debe validarse según `action` mediante tests o validación de aplicación/generador.
+
+## 13. `part_code_review`
+
+Grano: **una decisión de revisión sobre una propuesta**.
+
+| Campo | Notas |
+|---|---|
+| `part_code_review_id` | PK |
+| `part_code_edit_id` | FK |
+| `reviewer_contributor_id` | FK |
+| `decision` | `approved`, `rejected` |
+| `reviewed_at` | UTC |
+| `notes` | Opcional |
+
+Estado analítico de la edición:
+
+1. Si hay revisiones, manda la revisión más reciente.
+2. Si no hay revisión y `is_senior_at_submit = true`, queda `certified`.
+3. En otro caso queda `suggested`.
+
+La revisión posterior puede corregir una certificación automática.
+
+---
+
+# D. Conocimiento técnico
+
+## 14. `symptom`
+
+Grano: **síntoma o problema técnico genérico**.
+
+Llave: `symptom_code`.
+
+Campos:
+
+- `name`
+- `vehicle_scope`
+
+## 15. `repair_job`
+
+Grano: **trabajo de reparación/mantenimiento aplicable a un vehículo o alcance**.
+
+Campos:
+
+- `repair_job_id`
+- `job_category`
+- `symptom_code`
+- `vehicle_type`
+- `vehicle_id`
+- `interval_km`
+- `interval_months`
+- `interval_source`
+
+Reglas:
+
+- `corrective_repair` exige `symptom_code`;
+- `preventive_maintenance` no lleva síntoma y exige al menos uno entre `interval_km` / `interval_months`;
+- `preventive_maintenance` exige `interval_source` cuando el intervalo se presenta como real;
+- `vehicle_id` nulo significa alcance amplio dentro de `vehicle_type`.
+
+## 16. `repair_job_part`
+
+Grano: **tipo de parte requerido por un repair job**.
+
+PK lógica:
+
+```text
+(repair_job_id, part_type_code)
+```
+
+Campos:
+
+- `is_required`
+- `quantity`
+- `quantity_unit`
+
+Regla: `quantity > 0`.
+
+Valores provisionales de `quantity_unit`: `piece`, `pair`, `set`, `liter`.
+
+---
+
+# E. Marketplace
+
+## 17. `location`
+
+Grano: **ubicación normalizada usada por inventario y cuentas**.
+
+Diseño provisional:
+
+- `location_id`
+- `country_code`
+- `department_name`
+- `city_name`
+- `official_code` nullable
+
+La decisión de usar código DANE desde el MVP depende de la inspección de fuentes oficiales en Fase 0.5.
+
+## 18. `catalog_source`
+
+Grano: **fuente/catalogo técnico identificado**.
+
+Campos:
+
+- `catalog_source_id`
+- `brand`
+- `catalog_name`
+- `url`
+- `access_type`
+- `scraping_allowed`
+- `last_checked_at`
+
+## 19. `listing`
+
+Grano: **una publicación actual de una pieza por vendedor, condición y ubicación**.
+
+Campos:
+
+- `listing_id`
+- `seller_account_id`
+- `part_id`
+- `condition`
+- `location_id`
+- `stock_qty`
+- `price`
+- `currency`
+- `catalog_source_id` nullable
+- `created_at`
+- `updated_at`
+
+Regla lógica de unicidad:
+
+```text
+(seller_account_id, part_id, condition, location_id)
+```
+
+Esto corrige el modelo anterior, que omitía ubicación aunque un vendedor pudiera tener inventario en varias ciudades.
+
+`in_stock` se deriva como `stock_qty > 0`.
+
+### Historial futuro
+
+El MVP puede mantener el estado actual de `listing`. En una fase posterior se agregará historial mediante snapshots o SCD2 para analizar precio e inventario en el tiempo.
+
+## 20. `search_event`
+
+Grano: **una búsqueda realizada en el marketplace**.
+
+Campos:
+
+- `search_event_id`
+- `occurred_at`
+- `session_id`
+- `account_id` nullable para anónimo
+- `query_text`
+- `make`
+- `model`
+- `year`
+- `secondary_filters` JSONB
+- `results_count`
+
+Los filtros primarios quedan como columnas porque se consultarán frecuentemente.
+
+Las búsquedas con `results_count = 0` alimentan el mart de demanda insatisfecha.
+
+## 21. `negotiation`
+
+Grano: **una negociación entre un comprador y un vendedor alrededor de una publicación**.
+
+Campos:
+
+- `negotiation_id`
+- `listing_id`
+- `buyer_account_id`
+- `opened_at`
+- `closed_at` nullable
+
+El vendedor se obtiene del `listing`; no se duplica salvo que se necesite snapshot histórico explícito.
+
+## 22. `offer_event`
+
+Grano: **un evento append-only dentro de una negociación**.
+
+Campos:
+
+- `offer_event_id`
+- `negotiation_id`
+- `actor_account_id`
+- `event_type`
+- `amount` nullable
+- `currency` nullable
+- `quantity` nullable
+- `created_at`
+- `related_offer_event_id` nullable
+
+`event_type`:
+
+- `offer_created`
+- `counteroffer_created`
+- `accepted`
+- `rejected`
+- `withdrawn`
+- `expired`
+
+Reglas:
+
+- eventos de propuesta (`offer_created`, `counteroffer_created`) requieren `amount`, `currency` y `quantity`;
+- eventos de resolución pueden apuntar mediante `related_offer_event_id` a la propuesta afectada;
+- el estado actual de una negociación se deriva de sus eventos.
+
+Este diseño permite estudiar event modeling, ventanas temporales y reconstrucción de estado.
+
+## 23. `sales_order`
+
+Grano: **una orden creada por un comprador**.
+
+Campos:
+
+- `sales_order_id`
+- `buyer_account_id`
+- `seller_account_id`
+- `negotiation_id` nullable
+- `created_at`
+- `status`
+- `currency`
+
+Regla de grano: una orden pertenece a un comprador y un vendedor. Si una experiencia futura permite un carrito con múltiples vendedores, el checkout crea una orden por vendedor.
+
+Todos los `sales_order_item` de una orden deben apuntar a listings del mismo `seller_account_id`.
+
+Estados iniciales:
+
+- `created`
+- `confirmed`
+- `completed`
+- `cancelled`
+- `returned`
+
+## 24. `sales_order_item`
+
+Grano: **una línea de orden**.
+
+Campos:
+
+- `sales_order_item_id`
+- `sales_order_id`
+- `listing_id`
+- `quantity`
+- `unit_price`
+- `returned_at` nullable
+- `return_reason` nullable
+
+`unit_price` conserva el precio pactado aunque el listing cambie después.
+
+## 25. `marketplace_review`
+
+Grano: **una reseña de una cuenta a otra vinculada a una orden**.
+
+Campos:
+
+- `marketplace_review_id`
+- `sales_order_id`
+- `reviewer_account_id`
+- `reviewed_account_id`
+- `reviewed_role` (`buyer`, `seller`)
+- `rating` 1–5
+- `comment` nullable
+- `created_at`
+
+Restricción lógica recomendada:
+
+```text
+unique(sales_order_id, reviewer_account_id, reviewed_account_id)
+```
+
+La reputación comercial se calcula en dbt; no se guarda como score fuente.
+
+---
+
+# F. Fuentes externas
+
+## 26. `fx_rate`
+
+Grano:
+
+```text
+rate_date + currency_from + currency_to
+```
+
+Campos:
+
+- `rate`
+- `source_reference`
+
+## 27. `vehicle_registration_stat`
+
+El esquema queda deliberadamente abierto hasta inspeccionar el dataset real del RUNT/datos.gov.co.
+
+No se inventarán columnas antes de revisar la fuente.
+
+---
+
+# G. Origen esperado por entidad
+
+| Entidades | Origen |
+|---|---|
+| `part_family`, `part_subfamily`, `part_type`, `symptom` | Seeds CSV versionados |
+| `vehicle` | NHTSA vPIC + datos curados/específicos de Colombia según validación |
+| `fx_rate` | Fuente oficial por validar en Fase 0.5 |
+| `vehicle_registration_stat` | RUNT/datos.gov.co por validar |
+| `catalog_source` | Metadatos de fuentes permitidas |
+| `part`, `part_code`, `fitment` | Sintético inicialmente; cualquier fuente real futura debe registrar procedencia |
+| `account`, `account_role`, `business_profile`, `account_vehicle` | Generador sintético |
+| `catalog_contributor`, `part_code_edit`, `part_code_review` | Generador sintético |
+| `listing`, `search_event`, `negotiation`, `offer_event` | Generador sintético |
+| `sales_order`, `sales_order_item`, `marketplace_review` | Generador sintético |
+
+## 28. Regla de etiquetado sintético
+
+Los datos sintéticos deben poder distinguirse sin ambigüedad de los datos reales mediante metadata de origen.
+
+Nunca se mezclarán en una presentación como si fueran observaciones reales del mercado colombiano.
+
+---
+
+# H. Tests de datos previstos
+
+## 29. Tests de esquema
+
+- `not_null` en PKs y campos obligatorios.
+- `unique` en llaves naturales declaradas.
+- relaciones FK válidas.
+- accepted values para enums.
+
+## 30. Tests de negocio
+
+Ejemplos:
+
+- `year_from <= year_to`.
+- `stock_qty >= 0`.
+- `price >= 0`.
+- `rating between 1 and 5`.
+- `quantity > 0`.
+- `corrective_repair` requiere síntoma.
+- `preventive_maintenance` requiere intervalo.
+- evento de oferta requiere monto/moneda/cantidad.
+- `accepted` debe referenciar una propuesta existente.
+- `marketplace_review` debe involucrar cuentas relacionadas con la orden.
+- listing seller debe tener rol `seller`.
+- order buyer debe tener rol `buyer`.
+- order seller debe tener rol `seller`.
+- todos los listings de una orden deben pertenecer al `seller_account_id` de la orden.
+- reviewer de `part_code_review` debe ser un contributor válido.
+- `account_role.role_type` debe pertenecer a `buyer_type` cuando `role_code = buyer`, y a `seller_type` cuando `role_code = seller`.
+
+## 31. Tests de calidad/observabilidad
+
+A definir por fuente:
+
+- freshness;
+- volumen esperado;
+- duplicados por batch;
+- cambios inesperados de schema;
+- porcentaje de nulos;
+- distribución anómala de métricas críticas.
+
+---
+
+# I. Preguntas abiertas
+
+1. ¿Las unidades `piece`, `pair`, `set`, `liter` cubren los kits reales o se requieren más?
+2. ¿Se normaliza geografía con código DANE desde el MVP?
+3. ¿La reputación comercial será un único score o scores separados como comprador y vendedor? La decisión debe tomarse después de generar y analizar eventos fuente.
+4. ¿En qué fase se incorpora historial de inventario/precio: inmediatamente en Fase 3 o como extensión SCD2?

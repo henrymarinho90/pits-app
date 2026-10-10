@@ -1,0 +1,31 @@
+# Secretos
+.env
+.env.*
+!.env.example
+secrets/
+
+# Python
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.ruff_cache/
+
+# dbt
+target/
+dbt_packages/
+logs/
+
+# Datos locales
+data/
+*.parquet
+*.csv
+!tests/fixtures/**/*.csv
+
+# Claude local
+.claude/settings.local.json
+
+# SO / editor
+.DS_Store
+Thumbs.db
+.vscode/
