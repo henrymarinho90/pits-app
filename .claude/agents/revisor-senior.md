@@ -15,6 +15,6 @@ Califica de 0 a 20 cada criterio (total /100):
 
 Revisa además: idempotencia, manejo de fallos, uso de memoria, secretos expuestos, comandos destructivos.
 
-Corre `pytest -q` y `ruff check .` para verificar.
+Corre `uv sync --locked`, `uv run pytest -q`, `uv run ruff check .` y `uv run ruff format --check .` para verificar.
 
 Entrega: puntaje por criterio, lista numerada de problemas con archivo:línea y la corrección exacta. Menos de 18/20 en un criterio = problema obligatorio. Veredicto final: APROBADO o CAMBIOS.

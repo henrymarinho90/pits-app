@@ -19,7 +19,19 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      # ruff vive en el entorno del lock (D49), no global en el runner.
+      - uses: astral-sh/setup-uv@v10.3.0
+        with:
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+
+      - name: Sync dependencies
+        # Sin instalar el proyecto: la auditoria solo necesita ruff.
+        run: uv sync --locked --no-install-project
 
       - uses: anthropics/claude-code-action@v1
         with:
@@ -33,6 +45,7 @@ jobs:
             Crea UN issue titulado "Auditoría semanal YYYY-MM-DD" con el resultado, en español.
           claude_args: |
             --max-turns 15
-            --allowedTools "Read,Grep,Glob,Bash(ruff check:*),Bash(gh issue create:*)"
+            --allowedTools "Read,Grep,Glob,Bash(uv run ruff check:*),Bash(gh issue create:*)"
         env:
           GH_TOKEN: ${{ github.token }}
+          UV_NO_SYNC: "1"
