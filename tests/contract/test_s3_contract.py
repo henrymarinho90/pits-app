@@ -1,10 +1,15 @@
 import hashlib
+import math
+import os
+import tracemalloc
 import unicodedata
 from collections.abc import Callable
 
 import pytest
+from boto3.s3.transfer import TransferConfig
 from botocore.client import BaseClient
 from botocore.exceptions import ClientError
+from s3_helpers import MIB, RandomStream, S3Settings
 
 pytestmark = pytest.mark.contract
 
@@ -95,9 +100,12 @@ def test_reupload_same_key_is_idempotent(s3: BaseClient, bucket: str) -> None:
     s3.put_object(Bucket=bucket, Key=key, Body=b'{"a": 0}')  # older content, overwritten below
     responses = [s3.put_object(Bucket=bucket, Key=key, Body=body) for _ in range(2)]
     etags = [r["ETag"] for r in responses]
-    expected_etag = '"' + hashlib.md5(body).hexdigest() + '"'  # noqa: S324 (S3 ETag, not security)
+    # md5 here reproduces the S3 ETag of a single-part PUT; it is not used for security.
+    expected_etag = '"' + hashlib.md5(body).hexdigest() + '"'
     assert etags[0] == etags[1] == expected_etag
-    assert s3.get_object(Bucket=bucket, Key=key)["Body"].read() == body
+    got = s3.get_object(Bucket=bucket, Key=key)
+    assert got["Body"].read() == body
+    assert got.get("VersionId") is None
     assert s3.head_object(Bucket=bucket, Key=key)["ETag"] == expected_etag
     assert list_keys(s3, bucket) == [key]
     listing = s3.list_object_versions(Bucket=bucket)
@@ -107,3 +115,66 @@ def test_reupload_same_key_is_idempotent(s3: BaseClient, bucket: str) -> None:
     # while list_object_versions reports the single version as VersionId "null".
     assert {r.get("VersionId") for r in responses} == {None}
     assert [v["VersionId"] for v in listing["Versions"]] == ["null"]
+
+
+def test_large_object_streaming(s3: BaseClient, bucket: str, s3_settings: S3Settings) -> None:
+    """Multipart upload and streamed download of an incompressible object, bounded memory."""
+    size = s3_settings.large_mb * MIB
+    part = 8 * MIB
+    key = "raw/large/blob.bin"
+    source = RandomStream(size)
+    # max_in_memory_upload_chunks bounds the s3transfer read-ahead queue (default 10 chunks =
+    # 80 MiB of 8 MiB parts); lowering it pins a known client memory budget.
+    config = TransferConfig(
+        multipart_threshold=part,
+        multipart_chunksize=part,
+        max_concurrency=2,
+    )
+    config.max_in_memory_upload_chunks = 4  # attribute of s3transfer's config, not a ctor arg
+
+    tracemalloc.start()
+    try:
+        s3.upload_fileobj(source, bucket, key, Config=config)
+        head = s3.head_object(Bucket=bucket, Key=key)
+        digest = hashlib.sha256()
+        body = s3.get_object(Bucket=bucket, Key=key)["Body"]
+        for chunk in body.iter_chunks(MIB):
+            digest.update(chunk)
+        peak = tracemalloc.get_traced_memory()[1]
+    finally:
+        tracemalloc.stop()
+
+    print(f"large object: size={size} peak_tracemalloc={peak} ETag={head['ETag']}")
+    assert head["ContentLength"] == size
+    assert digest.hexdigest() == source.sha256.hexdigest()
+    parts = math.ceil(size / part)
+    assert head["ETag"].strip('"').endswith(f"-{parts}")
+    # Budget tied to the config: queued chunks + in-flight workers + 16 MiB of slack.
+    budget = (config.max_in_memory_upload_chunks + config.max_concurrency) * part + 16 * MIB
+    assert peak < budget
+    assert peak < size  # the client never holds the whole object
+
+
+def test_manual_multipart_etag_format(s3: BaseClient, bucket: str) -> None:
+    """Complete ETag is md5(concat(md5(part))) + "-N" (S3 format), same in head_object."""
+    key = "raw/multipart/manual.bin"
+    parts = [os.urandom(5 * MIB), os.urandom(5 * MIB), os.urandom(1000)]
+    upload = s3.create_multipart_upload(Bucket=bucket, Key=key)
+    done_parts = []
+    for number, data in enumerate(parts, start=1):
+        resp = s3.upload_part(
+            Bucket=bucket, Key=key, UploadId=upload["UploadId"], PartNumber=number, Body=data
+        )
+        done_parts.append({"PartNumber": number, "ETag": resp["ETag"]})
+    done = s3.complete_multipart_upload(
+        Bucket=bucket,
+        Key=key,
+        UploadId=upload["UploadId"],
+        MultipartUpload={"Parts": done_parts},
+    )
+    # md5 reproduces the S3 multipart ETag format; it is not used for security.
+    inner = hashlib.md5(b"".join(hashlib.md5(p).digest() for p in parts)).hexdigest()
+    expected = f'"{inner}-3"'
+    assert done["ETag"] == expected
+    assert s3.head_object(Bucket=bucket, Key=key)["ETag"] == expected
+    assert s3.get_object(Bucket=bucket, Key=key)["Body"].read() == b"".join(parts)

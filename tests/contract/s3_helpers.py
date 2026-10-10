@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import hashlib
+import io
+import random
 import uuid
 from collections.abc import Mapping
 from dataclasses import dataclass
@@ -16,6 +19,7 @@ ALLOWED_HOSTS = frozenset({"127.0.0.1", "localhost"})
 MIN_LARGE_MB = 100
 DEFAULT_LARGE_MB = 128
 DEFAULT_REGION = "us-east-1"
+MIB = 1024 * 1024
 
 
 class SettingsError(ValueError):
@@ -135,3 +139,43 @@ class BucketFactory:
                 # Keep going: one stuck bucket must not leak the rest; errors are reported.
                 errors.append(f"{name}: {exc!r}")
         return errors
+
+
+class RandomStream(io.RawIOBase):
+    """Non-seekable stream of `size` incompressible bytes, generated in 1 MiB blocks.
+
+    Deterministic for a given seed. The sha256 of everything read is computed on the fly,
+    so memory stays at ~1 MiB regardless of `size`.
+    """
+
+    def __init__(self, size: int, seed: int = 42) -> None:
+        super().__init__()
+        self.size = size
+        self.sha256 = hashlib.sha256()
+        self._rng = random.Random(seed)
+        self._remaining = size
+        self._block = b""
+
+    def readable(self) -> bool:
+        return True
+
+    def readinto(self, buffer: Any) -> int:
+        """Fill `buffer` completely unless the stream ends (no short reads).
+
+        Short reads matter: s3transfer decides single PUT vs multipart by how much the first
+        `read(multipart_threshold)` returns on a non-seekable stream.
+        """
+        view = memoryview(buffer).cast("B")
+        filled = 0
+        while filled < len(view):
+            if not self._block:
+                if not self._remaining:
+                    break
+                self._block = self._rng.randbytes(min(MIB, self._remaining))
+                self._remaining -= len(self._block)
+                self.sha256.update(self._block)
+            n = min(len(view) - filled, len(self._block))
+            view[filled : filled + n] = self._block[:n]
+            self._block = self._block[n:]
+            filled += n
+        return filled

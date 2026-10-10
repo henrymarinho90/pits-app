@@ -1,10 +1,11 @@
 """Offline tests for the contract-test helpers (no S3 endpoint needed)."""
 
+import hashlib
 from typing import Any, cast
 
 import pytest
 from botocore.client import BaseClient
-from s3_helpers import BucketFactory, SettingsError, load_settings, purge_bucket
+from s3_helpers import MIB, BucketFactory, RandomStream, SettingsError, load_settings, purge_bucket
 
 BASE = {
     "S3_ENDPOINT_URL": "http://127.0.0.1:8333",
@@ -168,3 +169,28 @@ def test_keep_excludes_bucket_from_cleanup() -> None:
     factory.keep(kept)
     assert factory.cleanup() == []
     assert client.deleted == [other]
+
+
+def test_random_stream_is_deterministic_without_short_reads() -> None:
+    size = 2 * MIB + 123
+    a, b = RandomStream(size, seed=7), RandomStream(size, seed=7)
+    first = a.read(3 * MIB)  # one read larger than the stream: must return everything
+    assert len(first) == size
+    assert a.read(10) == b""
+    assert first == b.read()
+    assert a.sha256.hexdigest() == hashlib.sha256(first).hexdigest()
+
+
+def test_random_stream_fills_requested_size() -> None:
+    s = RandomStream(5 * MIB)
+    assert [len(s.read(2 * MIB)) for _ in range(3)] == [2 * MIB, 2 * MIB, MIB]
+
+
+def test_random_stream_different_seeds_differ() -> None:
+    assert RandomStream(MIB, seed=1).read() != RandomStream(MIB, seed=2).read()
+
+
+def test_random_stream_empty() -> None:
+    s = RandomStream(0)
+    assert s.read() == b""
+    assert s.sha256.hexdigest() == hashlib.sha256(b"").hexdigest()

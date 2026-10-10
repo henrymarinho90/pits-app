@@ -176,7 +176,7 @@ Tests en `tests/contract/test_s3_contract.py`:
 
 - `test_put_get_list`: 5 objetos bajo `data/` + 1 bajo `other/`; get con contenido exacto; `list_objects_v2` paginado con `PageSize=2` → páginas de 2+2+1; filtro por prefijo.
 - `test_zero_byte_object`: `ContentLength == 0` y body `b""`.
-- `test_unicode_and_space_keys`: keys NFC (`.../año fiscal/Bogotá D.C./señal.json`) , otra con espacios dobles y `+`, y `raw/pct/100%25 done%2Fx %.json` (porcentajes que parecen URL-encoding); head/get/list devuelven la key idéntica en las tres (pasó sin xfail).
+- `test_unicode_and_space_keys`: keys NFC (`.../año fiscal/Bogotá D.C./señal.json`), otra con espacios dobles y `+`, y `raw/pct/100%25 done%2Fx %.json` (porcentajes que parecen URL-encoding); head/get/list devuelven la key idéntica en las tres (pasó sin xfail).
 - `test_nfd_key_does_not_collide_with_nfc`: la misma key en NFC y en NFD son dos objetos distintos con su propio contenido (resultado del spike: SeaweedFS no normaliza Unicode).
 - `test_reupload_same_key_is_idempotent`: un `put_object` de otro contenido (`{"a": 0}`) y luego dos del mismo contenido final en bucket sin versioning → mismo ETag igual a `"` + md5(body) + `"`, contenido final == body, 1 objeto en `list_objects_v2` y exactamente 1 versión (sin delete markers) en `list_object_versions` tras 3 PUT. Hallazgo: `put_object` no devuelve `VersionId` (`None`) y `list_object_versions` reporta la versión como `"null"` (verificado también con `get_object`: sin `VersionId`).
 
@@ -192,17 +192,150 @@ $ uv run pytest -q
 Evidencia de limpieza: tras la corrida no quedan buckets (la identidad admin no tiene otros buckets en este stack de spike):
 
 ```text
-$ uv run --env-file .env python -I -c "...list_buckets()..."   # usa build_client de s3_helpers
+$ uv run --env-file .env python -I -c "
+import os,sys
+sys.path.insert(0,'tests/contract')
+from s3_helpers import *
+s=load_settings(os.environ);c=build_client(s,s.access_key_id,s.secret_access_key)
+print([b['Name'] for b in c.list_buckets()['Buckets']])"
 []
 ```
 
 En la primera ejecución del test de reupload, la aserción `VersionId == "null"` falló con `AssertionError: assert {None} == {'null'}`; se corrigió la expectativa a lo observado (`None` en put, `"null"` en el listado) y no se tocó nada del servidor.
 
-Hallazgo sobre checksums: con boto3 1.43.111 y la configuración por defecto (sin `request_checksum_calculation`/`response_checksum_validation`), `put_object`/`get_object` funcionaron contra SeaweedFS 4.48 sin error. La hipótesis no se confirmó para `put_object` con body pequeño; no se aplicó ningún `Config` especial. Queda por ver el multipart (paso 5).
+Hallazgo sobre checksums: con boto3 1.43.111 y la configuración por defecto (sin `request_checksum_calculation`/`response_checksum_validation`), `put_object`/`get_object` funcionaron contra SeaweedFS 4.48 sin error. La hipótesis no se confirmó para `put_object` con body pequeño; no se aplicó ningún `Config` especial. El multipart se prueba en el paso 5 (abajo). Además, `get_object` sin versioning devuelve `VersionId` `None` (ahora asertado).
+
+### Paso 5: objeto grande en streaming (multipart)
+
+`test_large_object_streaming` (marker `contract`, tamaño `S3_CONTRACT_LARGE_MB`, 128 MiB por defecto):
+
+- Subida: `RandomStream` (en `s3_helpers.py`, `io.RawIOBase`) genera bloques de 1 MiB con `random.Random(42).randbytes` (no comprimible) y calcula sha256 al vuelo; `upload_fileobj` con `TransferConfig(multipart_threshold=8 MiB, multipart_chunksize=8 MiB, max_concurrency=2)` y `max_in_memory_upload_chunks=4` (atributo del config de s3transfer; no es argumento del constructor de boto3).
+- Descarga: `get_object()["Body"].iter_chunks(1 MiB)` con sha256 al vuelo.
+- Asserts: sha256 subido == descargado, `ContentLength == size`, ETag de `head_object` con sufijo `-N` (N = ceil(size/8 MiB); 16 con 128 MiB), y memoria: `peak < budget` con `budget = (max_in_memory_upload_chunks + max_concurrency) * 8 MiB + 16 MiB` (= 64 MiB, atado a la config) y `peak < size` (el cliente nunca tiene el objeto entero). No se usa `size/2`: con el mínimo de 100 MiB quedaría a ~3 % del umbral.
+- `test_manual_multipart_etag_format`: `create_multipart_upload` -> 2 partes de 5 MiB + 1 de 1000 B -> `complete`; el ETag de `complete` y de `head_object` es `md5(concat(md5(parte_i))) + "-3"` (formato S3) y el contenido vuelve idéntico.
+- Tests offline: `RandomStream` es determinista, no devuelve lecturas cortas, semillas distintas dan bytes distintos y `size=0` devuelve `b""` con el sha256 del vacío.
+
+Resultado:
+
+```text
+$ uv run --env-file .env pytest -m contract -k large -q -s
+large object: size=134217728 peak_tracemalloc=51798361 ETag="62ded3c249f6b76906d97f940270577e-16"
+1 passed, 37 deselected in 7.60s
+$ S3_CONTRACT_LARGE_MB=100 uv run --env-file .env pytest -m contract -k large -q -s
+large object: size=104857600 peak_tracemalloc=51749572 ETag="99f26a313bdf5d6aa2a309387c467451-13"
+1 passed, 37 deselected in 7.05s
+$ uv run --env-file .env pytest -m contract -q
+9 passed, 29 deselected in 11.40s
+$ uv run pytest -q
+29 passed, 9 deselected in 1.86s
+```
+
+Pico de memoria del cliente (tracemalloc): 51,8 MB con 128 MiB y 51,7 MB con 100 MiB (presupuesto: 64 MiB = 67,1 MB; el pico es casi independiente del tamaño del objeto, como se espera de un stream). Corridas anteriores dieron 50,9 y 51,8 MB.
+
+Hallazgos del paso 5 (checksums de boto3 en multipart y dos trampas propias):
+
+1. Checksums: el multipart completo (16 partes con `upload_fileobj`, y el multipart manual de 3 partes) funcionó con boto3 1.43.111 y la config por defecto, sin error. La hipótesis de incompatibilidad de checksums no se confirmó tampoco en multipart; no hizo falta `request_checksum_calculation="when_required"`.
+2. Trampa 1 (mi código): la primera versión de `RandomStream.readinto` devolvía como máximo 1 MiB por llamada. s3transfer decide "PUT simple vs multipart" por lo que devuelve el primer `read(multipart_threshold)` en un stream no seekable; con lecturas cortas hizo un PUT simple (ETag sin `-N`, que indica PUT simple) aunque el contenido era correcto (la aserción de ETag `-16` falló con `'"9db2f92011a1265523c089170f2c35c3"'`). Con `readinto` que llena el buffer, sube multipart (sonda de 20 MiB: ETag `...-3`). Moraleja: un stream con lecturas cortas cambia silenciosamente la estrategia de subida.
+3. Trampa 2: con la config por defecto (`max_in_memory_upload_chunks=10`, 8 MiB por parte) el pico de tracemalloc fue 95,8 MB y el primer criterio del test (`peak < size/2` = 67,1 MB) falló: `assert 95777375 < (134217728 / 2)`. Ojo: ni con el default el cliente cargaba el objeto entero (95,8 MB < 134 MB); no era un bug. Bajar a 4 chunks en memoria no corrige nada, fija una memoria conocida (~51 MB) y permite un presupuesto explícito. La memoria del cliente la acota ese parámetro, no el tamaño del objeto.
+4. Observación (sin investigar la causa): un objeto de 20 MiB subido con lecturas cortas (ETag sin `-N`, presumiblemente PUT simple) devolvió `PartsCount=5` en `get_object(PartNumber=1)`.
 
 ## Mediciones
 
-(pendiente)
+Parciales del paso 5 (el paso 7 las consolida). Contenedor `pits-spike-seaweedfs`, `mem_limit=512m`, `GOMEMLIMIT=400MiB`, host Windows/WSL (Docker 29.8.2). Comandos:
+
+```text
+docker stats --no-stream --format "{{.Name}} {{.MemUsage}} {{.MemPerc}}" pits-spike-seaweedfs
+docker exec pits-spike-seaweedfs cat /sys/fs/cgroup/memory.peak
+docker exec pits-spike-seaweedfs sh -c 'grep -E "^(anon|file|kernel) " /sys/fs/cgroup/memory.stat'
+docker exec pits-spike-seaweedfs du -sh /data
+docker inspect -f "{{.State.OOMKilled}}" pits-spike-seaweedfs
+```
+
+Secuencia limpia de memoria (la que dio los valores de la tabla de pico):
+
+```text
+$ docker restart pits-spike-seaweedfs      # espera healthy + 5 s
+$ docker exec pits-spike-seaweedfs cat /sys/fs/cgroup/memory.peak
+140484608
+$ docker exec pits-spike-seaweedfs sh -c 'grep -E "^(anon|file|kernel) " /sys/fs/cgroup/memory.stat'
+anon 132231168
+file 1212416
+kernel 1990656
+$ uv run --env-file .env pytest -m contract -k large -q -s     # SOLO este test
+1 passed, 37 deselected in 7.60s
+$ docker exec pits-spike-seaweedfs cat /sys/fs/cgroup/memory.peak
+461914112
+$ docker exec pits-spike-seaweedfs cat /sys/fs/cgroup/memory.current
+230187008
+$ docker exec pits-spike-seaweedfs sh -c 'grep -E "^(anon|file|kernel) " /sys/fs/cgroup/memory.stat'
+anon 225267712
+file 1249280
+kernel 2875392
+$ docker inspect -f "OOM={{.State.OOMKilled}}" pits-spike-seaweedfs
+OOM=false
+```
+
+| Medición | Valor |
+|---|---|
+| RAM en reposo (3 muestras de `docker stats` tras otro restart) | 129,2 / 128,4 / 128,3 MiB (25 %) |
+| RAM durante el test (corrida anterior; 4 muestras, `docker stats` tarda ~3 s por muestra, resolución baja) | 128,3 -> 228,5 -> 236,7 -> 248,6 MiB |
+| `memory.peak` tras restart + solo `-k large` (reposo: 140484608 B) | 461914112 B = 440,5 MiB |
+| `memory.peak` en la corrida anterior (misma secuencia) | 440578048 B = 420,2 MiB |
+| `memory.current` tras el test (anon / file / kernel) | 230187008 B (225267712 / 1249280 / 2875392) |
+| OOMKilled | false |
+| Disco `/data` antes | 596.0K |
+| Disco tras subir 128 MiB (script manual, antes de borrar) | 128.7M |
+| Disco tras borrar el bucket (inmediato y 30 s después) | 656.0K / 656.0K |
+
+Notas:
+
+- `memory.peak` es el máximo del cgroup completo (anon + page cache + kernel), no el heap de Go: no es comparable con `GOMEMLIMIT` (que acota el heap del runtime). El pico varió entre corridas (420,2 y 440,5 MiB); con 2 muestras no hay un intervalo fiable.
+- Riesgo a medir en el paso 7: el pico del cgroup (420-441 MiB) queda a ~70-90 MiB del límite de 512 MiB con un solo objeto de 128 MiB y concurrencia 2; con más concurrencia u objetos mayores el margen podría agotarse. Es una hipótesis de riesgo, no un hecho medido.
+- `memory.peak` es acumulado desde el arranque del contenedor y es de solo lectura (`echo 0 > /sys/fs/cgroup/memory.peak` -> `Read-only file system`), por eso se mide tras un `docker restart`. Una medición previa sin reiniciar dio 475086848 B porque incluía corridas anteriores.
+- Disco: se midió con un script manual (no con el test) porque el fixture borra el bucket al terminar y el test no debe depender de `docker`. El script, tal cual se ejecutó (`uv run --env-file .env python -I disk.py`, credenciales por entorno vía `load_settings`/`build_client`):
+
+```python
+import os, sys, subprocess, time
+
+sys.path.insert(0, "tests/contract")
+from s3_helpers import *
+from boto3.s3.transfer import TransferConfig
+
+
+def du(label):
+    out = subprocess.run(
+        ["docker", "exec", "pits-spike-seaweedfs", "du", "-sh", "/data"],
+        capture_output=True,
+        text=True,
+    ).stdout.split()[0]
+    print(f"{label}: {out}", flush=True)
+
+
+s = load_settings(os.environ)
+c = build_client(s, s.access_key_id, s.secret_access_key)
+b = "pits-contract-disk1"
+c.create_bucket(Bucket=b)
+du("before")
+cfg = TransferConfig(multipart_threshold=8 * MIB, multipart_chunksize=8 * MIB, max_concurrency=2)
+cfg.max_in_memory_upload_chunks = 4
+src = RandomStream(128 * MIB)
+c.upload_fileobj(src, b, "blob", Config=cfg)
+du("after_upload")
+purge_bucket(c, b)
+du("after_delete_immediate")
+time.sleep(30)
+du("after_delete_30s")
+```
+
+```text
+before: 596.0K
+after_upload: 128.7M
+after_delete_immediate: 656.0K
+after_delete_30s: 656.0K
+```
+
+- Al borrar el bucket el espacio se liberó de inmediato (128.7M -> 656.0K). Mi hipótesis previa ("SeaweedFS no libera hasta vacuum") no se cumplió para el borrado del bucket completo; no se probó borrar objetos dentro de un bucket que sigue existiendo (ahí sí podría hacer falta vacuum).
+- Se retiró la fila de `docker system df -v` (376,4 kB frente a 656K de `du`; otra lectura dio 610,6 kB frente a 904K): las cifras no cuadran y no hay evidencia para explicar la diferencia (podría ser cómo cuenta Docker el volumen frente a `du` dentro del contenedor, pero no se verificó).
 
 ## Qué funcionó / qué falló
 
