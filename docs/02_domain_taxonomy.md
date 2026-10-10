@@ -1,7 +1,7 @@
 # 02 — Taxonomía del dominio
 
-Última actualización: 2026-10-03
-Estado: v11 — referencia vigente para el dominio.
+Última actualización: 2026-10-10
+Estado: v12 — referencia vigente para el dominio.
 
 Los valores en `código` son los valores previstos para tablas, seeds y columnas: inglés en `snake_case`.
 
@@ -321,6 +321,9 @@ Cuando una cuenta compra, puede clasificarse funcionalmente como:
 | `wholesale_distributor` | Distribuidor mayorista |
 | `manufacturer` | Fabricante |
 | `driver` | Conductor o dueño del vehículo |
+| `fleet_operator` | Operador de flota / empresa de transporte |
+
+`fleet_operator` (D54) compra por flota para vehículos de servicio PÚBLICO (taxis, buses, camiones de servicio), con demanda por contrato y volumen. Los vehículos de servicio PARTICULAR (incluidas las motos de domicilio y mensajería) se atienden con los demás tipos (D56). Las entidades oficiales y el gobierno no son compradores (D56): no existe un `buyer_type` gubernamental.
 
 ## 13. Seller types
 
