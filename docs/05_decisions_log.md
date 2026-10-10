@@ -1,7 +1,7 @@
 # 05 — Registro de decisiones
 
 Última actualización: 2026-10-10
-Estado: v5
+Estado: v6
 
 Regla: una decisión nunca se borra. Si cambia, se agrega una nueva decisión y la anterior queda marcada como reemplazada.
 
@@ -77,6 +77,7 @@ Regla: una decisión nunca se borra. Si cambia, se agrega una nueva decisión y 
 |---|---|---|---|---|
 | D44 | Vigente (2026-10-10) | Desarrollo asistido por agentes de Claude Code: 1 orquestador (`/orquestar`) + 4 subagentes (`arquitecto`, `implementador`, `revisor-senior`, `documentador`) con aprobación humana entre plan, commit y decisión. Tareas recurrentes de agentes solo de lectura (auditoría semanal vía GitHub Actions que abre un issue). Ingestas recurrentes de datos (TRM, RUNT) van en Airflow, no en agentes. | Acelera el trabajo sin perder control ni aprendizaje: Henry debe poder explicar cada línea en entrevista. Los agentes no escriben en `main` ni tocan el VPS. Los LLM no son deterministas: no sirven como scheduler de datos. | Agentes autónomos con push y despliegue sin aprobación; agentes reemplazando DAGs de Airflow |
 | D45 | Vigente (2026-10-10) | Ajusta las aprobaciones de D44: Henry aprueba solo (1) el plan y (2) el Pull Request (revisa y hace merge). Los agentes trabajan en rama propia y hacen commits, push de la rama y abren el PR sin pedir permiso. Siguen requiriendo aprobación: decisiones D nuevas, preguntas de dominio, comandos destructivos, comandos al VPS y fallar 3 revisiones seguidas. `main` solo cambia vía PR. | Aprobar cada commit y cada push frena el trabajo sin agregar control: la revisión real ocurre en el PR (Files changed), igual que en un equipo profesional. | Aprobar cada commit y push (D44 original); agentes con merge automático a main |
+| D49 | Vigente (2026-10-10) | Esqueleto Python de Fase 1: `uv` como gestor de entorno y dependencias, con `uv.lock` y `.python-version` versionados; Python 3.12 (`requires-python >=3.12,<3.13`); paquete `pits` en src layout (distribución `pits-app`) con CLI Typer `pits` como único punto de entrada; ruff (lint y format) y pytest configurados en `pyproject.toml`. CI mínimo en GitHub Actions (`ci.yml`: `ruff check`, `ruff format --check`, `pytest -q` en PR y push a `main`) como habilitador desde Fase 1. No mueve la Fase 5 de `01_project_brief.md` §10: la capacidad "CI completo" (con `dbt build`) sigue allí (D40). Atiende R6 de `00_review_findings.md` sin cambiar el orden de fases. | El lock da el mismo entorno en local Windows, CI Linux y los contenedores futuros. Una sola versión de Python alineada con dbt/Airflow (compatibilidad por confirmar al implementar) evita sorpresas en Fases 3–4. El CI temprano hace verificable cada PR (D45: Henry aprueba en el PR). | pip + requirements.txt sin lock; conda; Poetry; scripts sueltos sin CLI; CI solo en Fase 5 |
 
 ## F. Decisiones todavía abiertas
 
