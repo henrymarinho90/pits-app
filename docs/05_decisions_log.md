@@ -1,7 +1,7 @@
 # 05 — Registro de decisiones
 
 Última actualización: 2026-10-10
-Estado: v3
+Estado: v4
 
 Regla: una decisión nunca se borra. Si cambia, se agrega una nueva decisión y la anterior queda marcada como reemplazada.
 
@@ -67,6 +67,7 @@ Regla: una decisión nunca se borra. Si cambia, se agrega una nueva decisión y 
 | # | Estado | Decisión | Por qué | Alternativa descartada |
 |---|---|---|---|---|
 | D43 | Vigente (2026-10-09) | Primera fuente de ingesta incremental de EE. UU.: WA DOL "Vehicle Registration Transactions" (`brw6-jymh`, data.wa.gov, Socrata SODA). No reemplaza la fuente de Fase 1 de Colombia (TRM `32sa-8pi3`): se agrega después. | Abierta y sin costo; trae make, model, model_year y ZIP; es mensual (2020-01 a 2026-08, 44.875.179 filas) con llave incremental `start_of_month`; reutiliza el extractor SODA de la TRM. Riesgos por probar: reescritura de meses pasados (lookback + upsert), `make` sin normalizar, cifras como string, licencia ODbL (share-alike si se publica una base derivada). Es FLUJO (transacciones), no STOCK. Ver `09_us_market_research.md`, T2. | FRED (requiere key; poca relación con el dominio), NY `w4pv-hbkt` (STOCK sin columna model, 12,5 M filas), vPIC (dimensión sin llave incremental) |
+| D46 | Vigente (2026-10-10) | Primera fuente de ingesta de Fase 1 (Colombia): TRM Superfinanciera, dataset `32sa-8pi3` (datos.gov.co, Socrata SODA), carga incremental por `vigenciadesde` modelando el rango de vigencia (`vigenciadesde`-`vigenciahasta`). Segunda fuente (Fase 1b): parque RUNT `u3vn-bdcy` como snapshot mensual. | Sin costo ni autenticación obligatoria, API estable, 8.360 filas al 2026-10-03, diaria, backfill desde 1991: ejercita el patrón raw -> manifest -> parser sin el ruido del dominio. Relevancia de dominio secundaria: los precios del marketplace se fijan primero en COP (confirmado por Henry); la TRM sirve como referencia de costo de importación (Inferencia, `08_market_research.md`). Ver `08_market_research.md`, "Recomendación para la Fase 1". | `u3vn-bdcy` como primera fuente (sin historial, sin marca, sin DANE); DIVIPOLA (casi estática); vPIC (cobertura pobre de Colombia); ANDI-FENALCO (PDF, scraping); `akpq-tuqi` (timeouts, descripciones inestables) |
 
 ## E. Flujo de trabajo y herramientas
 
