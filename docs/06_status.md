@@ -32,7 +32,7 @@ No existe código de Fase 1 en el repo: solo hay documentación y configuración
 | `04_infra.md` | v2 (2026-10-03) |
 | `05_decisions_log.md` | v4 (2026-10-10); D1–D46 |
 | `06_status.md` | vigente (2026-10-10) |
-| `07_lessons_learned.md` | vigente, sin versión (2026-10-09) |
+| `07_lessons_learned.md` | vigente, sin versión (2026-10-10) |
 | `08_market_research.md` | fechas de consulta 2026-10-03 (antes `claude_08_market_research.md`) |
 | `09_us_market_research.md` | tercera ronda, 2026-10-09 (antes `claude_09_us_market_research.md`) |
 

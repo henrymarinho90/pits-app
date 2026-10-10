@@ -1,6 +1,6 @@
 # 07 — Bitácora de lecciones
 
-Última actualización: 2026-10-09
+Última actualización: 2026-10-10
 
 Objetivo: convertir errores, decisiones y descubrimientos del proyecto en conocimiento reutilizable. Cada lección debe responder, idealmente, **qué pasó, por qué importa y qué hacer la próxima vez**.
 
@@ -55,6 +55,13 @@ Objetivo: convertir errores, decisiones y descubrimientos del proyecto en conoci
 | 40 | Las series oficiales pueden tener huecos por causas externas | El CPI de BLS no tiene octubre 2025 ("lapse in appropriations"). Los tests de completitud deben permitir huecos documentados en vez de fallar o interpolar. |
 | 41 | Una reclasificación de códigos rompe joins históricos | NAICS 2022 movió 441310→441330 y fusionó 811112/811113/811118 en 811114, mientras CBP 2023 sigue en NAICS 2017. Una dimensión de equivalencias (`dim_naics`) con edición y vigencia evita mezclar ediciones. |
 | 42 | Unidades con el mismo nombre no siempre son comparables | "Establecimiento" en RUES (matrícula mercantil) no es igual a "establishment" en CBP (con nómina). Documentar la unidad antes de comparar países. |
+| 43 | El estado del proyecto caduca en días si no se actualiza al cerrar cada paso | `06_status.md` decía "siguiente: Fase 0.5" siete días después de cerrarla y con D43 ya registrada. El estado es un artefacto operativo, como un runbook: actualizarlo en el mismo PR que cierra el paso, no "cuando haya tiempo". |
+| 44 | Una premisa de la tarea puede ser falsa: leer la fuente antes de actuar | La tarea decía "D43 fijó la TRM", pero D43 solo la mencionaba; la elección estaba en `08_market_research.md` sin fila D. Verificar la fuente antes de actuar. Una decisión implícita se formaliza como D nueva (se creó D46). |
+| 45 | Referenciar solo archivos versionados | `00_review_findings.md` se citaba en `06` pero nunca se subió a git. Lo que no está en git no existe para el equipo. Antes de citar un archivo, comprobar que está versionado (`git ls-files`). |
+| 46 | Citar docs volátiles por sección y docs estables por línea | Una cita `archivo:línea` a `06`, que se reescribe cada sesión, se desfasa en el mismo PR. Citar `06` por sección (§) y los docs estables por línea. |
+| 47 | Un revisor que verifica citas vale tanto como uno que corre tests | El revisor encontró una cita inventada (frase entre comillas atribuida a `04_infra.md` que no existía) y Airflow en Fase 1, cuando `01_project_brief.md` §10 lo ubica en Fase 4. En docs: verificar cada cita con grep y cada fase contra la fuente. |
+| 48 | Las contradicciones entre docs se formalizan con D nueva, no se corrigen en silencio | La auditoría (`00_review_findings.md`) encontró 3 contradicciones de severidad alta: R1 (grano de `fx_rate` en `03` vs rango de vigencia de D46), R2 (parque RUNT sin marca vs modelo por marca) y R3 (marcas validadas con matrículas, que son flujo, vs regla de parque/stock). Cada una requiere D nueva aprobada antes de implementar (regla 4). |
+| 49 | Verificar herramientas antes de asumirlas en CI | `ruff` no estaba instalado globalmente; `uvx ruff` lo ejecuta sin instalar. `pytest -q` sin tests devuelve rc 5, no 0: cuando haya CI, ese job fallará. Tener al menos un test o manejar el código 5 antes de activar CI. |
 
 ## Formato para nuevas lecciones
 
