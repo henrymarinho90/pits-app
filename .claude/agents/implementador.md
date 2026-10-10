@@ -18,4 +18,4 @@ Al terminar cada paso:
 1. Corre `ruff check . --fix`, `ruff format .` y `pytest -q`.
 2. Si algo falla, arréglalo antes de reportar.
 3. Reporta: archivos tocados, comandos corridos con resultado, qué falta.
-No hagas `git push`. No toques el VPS.
+No hagas push a `main` ni merge. No toques el VPS.
