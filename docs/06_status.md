@@ -1,13 +1,15 @@
 # 06 — Estado del proyecto
 
 Última actualización: 2026-10-10
-Estado: actualizado tras cerrar Fase 1, paso 1 (esqueleto Python, D49). Antes: Fase 0.5 y D43–D48 (D47 grano de `fx_rate`; D48 demanda con parque RUNT, marca/modelo sintético).
+Estado: actualizado tras cerrar Fase 1, paso 1 (esqueleto Python, D49); paso 2 bloqueado (storage S3); D50 y D51. Antes: Fase 0.5 y D43–D48 (D47 grano de `fx_rate`; D48 demanda con parque RUNT, marca/modelo sintético).
 
 Este archivo se actualiza al final de cada sesión y funciona como punto de partida para una conversación nueva.
 
 ## 1. Fase actual
 
-**Fase 0.5 — investigación de mercado y validación de fuentes: CERRADA, con brechas documentadas.**
+**Fase actual: Fase 1 — primera ingesta real: EN CURSO (paso 1 cerrado, D49; paso 2 bloqueado).**
+
+Fase 0.5 — investigación de mercado y validación de fuentes: CERRADA, con brechas documentadas.
 
 Brechas (ver `08_market_research.md`, "No encontrado"):
 
@@ -15,26 +17,25 @@ Brechas (ver `08_market_research.md`, "No encontrado"):
 - Ensamble de carros (Chevrolet, Renault y otras): sin evidencia con fuente oficial.
 - Cifras de ANDI-FENALCO leídas por resumen automático; nadie abrió el PDF original (`08_market_research.md`, método y "No encontrado"). Verificar antes de publicar.
 
-Siguiente fase:
+Objetivo de la Fase 1: primera ingesta real (`source -> raw MinIO -> manifest -> parser/normalizer -> tests`).
 
-**Fase 1 — primera ingesta real (`source -> raw MinIO -> manifest -> parser/normalizer -> tests`).**
-
-Fase 1 en curso. Paso 1 (esqueleto Python) cerrado (D49): hay `pyproject.toml`, `uv.lock`, paquete `pits` (src layout), CLI `pits` (`--help`, `version`), 7 tests y CI mínimo en `.github/workflows/ci.yml`. Sigue sin haber `docker-compose.yml` (paso 2).
+Paso 1 (esqueleto Python) cerrado (D49): hay `pyproject.toml`, `uv.lock`, paquete `pits` (src layout), CLI `pits` (`--help`, `version`), 7 tests y CI mínimo en `.github/workflows/ci.yml`. Sigue sin haber `docker-compose.yml` (paso 2, bloqueado: ver §5).
 
 ## 2. Documentación vigente
 
 | Archivo | Versión/estado |
 |---|---|
-| `00_review_findings.md` | "Auditoría de consistencia" v1.2 (2026-10-10; R1–R3 resueltos por D47 y D48, R6 por D49; la original nunca se versionó) |
+| `00_review_findings.md` | "Auditoría de consistencia" v1.3 (2026-10-10; R1–R3 resueltos por D47 y D48, R6 por D49, R2 renombrada por D51; la original nunca se versionó) |
 | `01_project_brief.md` | v2 (2026-10-03) |
 | `02_domain_taxonomy.md` | v11 (2026-10-03) |
-| `03_data_model.md` | v5 (2026-10-10) |
+| `03_data_model.md` | v6 (2026-10-10); `vehicle_registration_stat` renombrada a `vehicle_fleet_snapshot` (D51) |
 | `04_infra.md` | v2 (2026-10-03) |
-| `05_decisions_log.md` | v6 (2026-10-10); D1–D49 |
+| `05_decisions_log.md` | v7 (2026-10-10); D1–D51 |
 | `06_status.md` | vigente (2026-10-10) |
 | `07_lessons_learned.md` | vigente, sin versión (2026-10-10) |
 | `08_market_research.md` | fechas de consulta 2026-10-03 (antes `claude_08_market_research.md`) |
 | `09_us_market_research.md` | tercera ronda, 2026-10-09 (antes `claude_09_us_market_research.md`) |
+| `research/parque_por_marca.md` | investigación 2026-10-10 (D50) |
 
 ## 3. Terminado
 
@@ -76,6 +77,12 @@ La TRM tiene relevancia de dominio secundaria: los precios del marketplace se fi
 - R2 (entidad y grano del parque RUNT) y R3 (marcas validadas con flujo): D48, demanda solo con el parque RUNT `u3vn-bdcy` por clase/geografía; marca/modelo sintético, calibrado con investigación pública.
 - Pregunta de dominio (¿parque RUNT por clase como único insumo de demanda?): respondida por Henry, ver D48.
 
+### Decisiones D50 y D51 (2026-10-10)
+
+- T1: derecho de petición a MinTransporte por parque por marca — descartado (D50); se trabaja con fuentes públicas y el sintético de D48.
+- Investigación de fuentes de parque por marca: `docs/research/parque_por_marca.md`.
+- D51: `vehicle_registration_stat` renombrada a `vehicle_fleet_snapshot` (stock, no flujo).
+
 ### Flujo de trabajo (D44, D45)
 
 - `/orquestar`: arquitecto -> implementador -> revisor-senior -> documentador.
@@ -102,7 +109,9 @@ Ordenado por ruta crítica: cada paso depende del anterior. Consistente con D40 
 
 ### Primer paso para la próxima sesión
 
-**Paso 2: Docker Compose local con perfil `core` (MinIO + Postgres, `04_infra.md` §10.1) y límites de memoria (D9).** `04_infra.md` §8.1 guarda `manifest.json` junto al payload en MinIO, así que Postgres no es requisito del manifest. Se levanta aquí porque `04_infra.md` define `core` como Postgres + MinIO y la carga a Postgres llega después.
+**Spike de storage S3 (SeaweedFS) + fila D52 aprobada por Henry**, antes de retomar el paso 2.
+
+**Paso 2 (Docker Compose local, perfil `core`: storage S3 + Postgres, `04_infra.md` §10.1, límites de memoria D9): BLOQUEADO.** MinIO comunitario ya no se distribuye: repo `minio/minio` archivado (2026-04-25), imágenes `minio/minio` y `minio/mc` en 404 en Docker Hub, CVE altos sin parche libre (p. ej. CVE-2026-41145, GHSA-hv4r-mvr4-25vw). Requiere un spike de SeaweedFS (candidato: `chrislusf/seaweedfs:4.48`) y una fila D de storage (siguiente número libre, D52) aprobada por Henry antes de continuar. `04_infra.md` §8.1 guarda `manifest.json` junto al payload en el storage, así que Postgres no es requisito del manifest.
 
 ### Pasos siguientes
 
@@ -144,7 +153,10 @@ Condición de entrada cumplida (D46, `08_market_research.md` Ficha 2). Entregabl
 
 ## 7. Bloqueos y pendientes
 
-- Bloqueos para el paso 2 (Docker Compose local): ninguno.
+- Bloqueo del paso 2 (Docker Compose local): MinIO comunitario ya no se distribuye; falta spike de SeaweedFS y D52 (ver §5).
+- Pendiente (Henry): la auditoría semanal (`.github/workflows/claude-recurrente.yml`, D44) no funciona. El `workflow_dispatch` del PR #6 (run 38072914197, 2026-10-10) pasó checkout, setup-uv y `uv sync --locked --no-install-project`, pero falló en `anthropics/claude-code-action@v1`: "Claude Code is not installed on this repository". Acción (Henry): instalar la GitHub App https://github.com/apps/claude en el repo, confirmar el secret `CLAUDE_CODE_OAUTH_TOKEN` y relanzar con `gh workflow run claude-recurrente.yml`.
+- Pendiente (Henry): Docker Desktop instalado (cliente 29.8.2); falta arrancar el motor y verificar `docker version` en una sesión nueva.
+- Pendiente (Henry): decidir D52 (storage S3).
 - Infraestructura: solo Docker está confirmado por Henry. El estado del VPS (Coolify, Metabase y demás servicios) no está auditado.
 - Pendiente: auditar el VPS (re-medir lo registrado en `04_infra.md` §4–§6, medición del 2026-10-03 no re-verificada, ver R9, y cumplir el checklist de §15). Requiere confirmación explícita de Henry antes de ejecutar cualquier comando contra el VPS. No bloquea el desarrollo local de Fase 1; bloquea cualquier despliegue.
 - Pendiente de dominio: pregunta abierta 2 (DANE), antes de Fase 1b.
