@@ -1,7 +1,7 @@
 # 03 — Modelo de datos
 
 Última actualización: 2026-10-10
-Estado: v7 — alineado con `02_domain_taxonomy.md` v12.
+Estado: v8 — alineado con `02_domain_taxonomy.md` v12.
 
 ## 1. Propósito
 
@@ -41,7 +41,7 @@ Campos o metadata de control esperados:
 | `source_record_id` | Identificador original cuando exista |
 | `ingestion_batch_id` | Batch que introdujo el registro |
 | `ingested_at` | Momento de llegada a la plataforma |
-| `raw_object_path` | Ubicación del payload raw en MinIO |
+| `raw_object_path` | Ubicación del payload raw en el storage S3 (SeaweedFS, D57) |
 | `record_hash` | Opcional; detección de cambios/duplicados |
 
 No es obligatorio duplicar estas columnas en todas las tablas de negocio. La implementación puede combinar columnas técnicas y tablas de control.
@@ -583,7 +583,9 @@ Re-verificado 2026-10-10: el corte vigente en `u3vn-bdcy` es OCTUBRE 2026 y el c
 | `OTROS` | Fuera del MVP; se conserva como dato real (D56) |
 | `NO REGISTRA` | Fuera del MVP; se conserva como dato real (D56) |
 
-El desglose sintético sigue el orden marca y luego línea (D53) y se calibra con Boyacá `em3d-hmim` y Risaralda `x9pp-pcn5`, con `AUTECO` reasignado a la marca real por línea (D52, D55). Hace falta un mapa de normalización entre fuentes: de clase (`CAMION` y `CAMIÓN` son la misma clase en RUNT; `MICRO BUS` en Boyacá frente a `MICROBUS` en RUNT; `TRACTO-CAMION` frente a `TRACTOCAMION`) y de servicio (`PÚBLICO` en RUNT frente a `PUBLICO` en Boyacá y Floridablanca; `OTRO` frente a `OTROS`).
+**Filtro de estado (D59).** La demanda y el desglose sintético usan solo `estado_del_vehiculo` = `ACTIVO`; `INCONSISTENTE` (41.349 vehículos, corte OCTUBRE 2026) se conserva en `vehicle_fleet_snapshot` pero no entra en la demanda.
+
+El desglose sintético sigue el orden marca y luego línea (D53) y se calibra con Boyacá `em3d-hmim` y Risaralda `x9pp-pcn5`, con `AUTECO` reasignado a la marca real por línea (D52, D55). Hace falta un mapa de normalización entre fuentes: de clase (`CAMION` y `CAMIÓN` son la misma clase en RUNT; `MICRO BUS` en Boyacá frente a `MICROBUS` en RUNT; `TRACTO-CAMION` frente a `TRACTOCAMION`) y de servicio (`PÚBLICO` en RUNT frente a `PUBLICO` en Boyacá y Floridablanca; `OTRO` frente a `OTROS`). El filtro aplica a la `cantidad` RUNT que se desglosa; las proporciones de calibración siguen D55 (Risaralda no permite filtrar estado).
 
 El RUNT no trae marca ni modelo (D48). El desglose del parque por marca/modelo se genera sintético (generador, Fase 2), calibrado con investigación pública con fuente verificable, y debe marcarse como sintético en su procedencia (§28). Esta entidad contiene solo el dato real del RUNT. Dónde vive el desglose sintético (entidad aparte o columna de origen, según §28) se decide en Fase 2. El desglose sintético no es dato real ni métrica oficial de demanda.
 
@@ -644,7 +646,7 @@ Ejemplos:
 - todos los listings de una orden deben pertenecer al `seller_account_id` de la orden.
 - reviewer de `part_code_review` debe ser un contributor válido.
 - `account_role.role_type` debe pertenecer a `buyer_type` cuando `role_code = buyer`, y a `seller_type` cuando `role_code = seller`.
-- conservación del desglose sintético: la suma del desglose por (corte, clase, geografía, PARTICULAR) debe ser igual a la `cantidad` del RUNT para esa misma combinación y el mismo filtro de `estado_del_vehiculo` que use el generador (D52).
+- conservación del desglose sintético: la suma del desglose por (corte, clase, geografía, PARTICULAR) debe ser igual a la `cantidad` del RUNT para esa misma combinación y el filtro `estado_del_vehiculo` = `ACTIVO` (D59).
 
 ## 31. Tests de calidad/observabilidad
 

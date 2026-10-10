@@ -1,7 +1,7 @@
 # 04 — Infraestructura y operación
 
-Última actualización: 2026-10-03
-Estado: v2 — arquitectura operativa revisada.
+Última actualización: 2026-10-10
+Estado: v3 — arquitectura operativa revisada.
 
 ## 1. Objetivo
 
@@ -122,7 +122,7 @@ Internet / sources
        |
        v
 +-------------------+
-| MinIO             |
+| SeaweedFS (D57)   |
 | raw immutable     |
 +-------------------+
        |
@@ -148,7 +148,9 @@ Airflow orchestrates ingestion -> load -> dbt -> quality checks.
 
 ## 8. Zonas de almacenamiento
 
-### 8.1 MinIO raw
+### 8.1 SeaweedFS raw (D57)
+
+Nota: MinIO fue reemplazado por SeaweedFS (D57; el repo comunitario de MinIO está archivado; ver `05_decisions_log.md`, D57). El principio de raw inmutable (D29) sigue: write-once por `batch_id` más versioning en el bucket raw.
 
 Objetivo: preservar la fuente original para replay y auditoría.
 
@@ -202,7 +204,7 @@ Los rangos siguientes son **presupuesto de planificación**, no garantías de co
 |---|---:|---|
 | Airflow + metadata DB | 2.5–4 GB | Medir por proceso y ajustar |
 | PostgreSQL warehouse | 0.5–1.5 GB | Ajustar conexiones/cache al VPS |
-| MinIO | 0.3–0.8 GB | Vigilar memoria y disco |
+| SeaweedFS 768m (D57) | 0.75 GiB ≈ 0.8 GB (`mem_limit` 768 MiB; pico medido 420–457 MiB con 512m) | Validar 768m con `-m contract`; vigilar memoria y disco |
 | dbt runner | Burst; no siempre residente | Ejecutar como job cuando sea posible |
 | Redpanda | ~1 GB o más | Solo fase opcional y después de nueva medición |
 
@@ -214,7 +216,7 @@ No desplegar Redpanda mientras el stack base no tenga margen medido suficiente.
 
 Docker Compose con perfiles cuando ayude:
 
-- `core`: Postgres + MinIO;
+- `core`: Postgres + SeaweedFS (D57);
 - `orchestration`: Airflow;
 - `bi`: Metabase opcional local;
 - `streaming`: Redpanda solo fase futura.
@@ -231,7 +233,7 @@ Reglas:
 - límites de memoria;
 - credenciales mediante secrets/env vars del entorno;
 - no guardar `.env` real en Git;
-- no exponer Postgres/MinIO directamente a internet sin una necesidad documentada.
+- no exponer Postgres/SeaweedFS (D57) directamente a internet sin una necesidad documentada.
 
 ## 11. Red y acceso
 
@@ -250,13 +252,13 @@ Datos que requieren volumen persistente:
 
 - PostgreSQL;
 - metadata DB de Airflow si está separada;
-- MinIO;
+- SeaweedFS (D57);
 - configuración persistente necesaria de BI.
 
 Plan mínimo antes de considerar producción “cerrada”:
 
 1. backup de PostgreSQL;
-2. backup o replicación de objetos críticos de MinIO;
+2. backup o replicación de objetos críticos de SeaweedFS (D57);
 3. política de retención;
 4. prueba de restauración documentada.
 
@@ -307,7 +309,7 @@ Antes de borrar raw data para liberar espacio, documentar qué capacidad de repl
 - [ ] Configurar healthchecks.
 - [ ] Aplicar límites de memoria.
 - [ ] Configurar backup de Postgres.
-- [ ] Definir backup/retención de MinIO.
+- [ ] Definir backup/retención de SeaweedFS (D57).
 - [ ] Ejecutar prueba de restauración.
 - [ ] Medir RAM/disco después del deploy base.
 - [ ] Documentar cómo hacer rollback.
