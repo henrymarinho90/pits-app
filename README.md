@@ -21,6 +21,7 @@ uv run pits --help
 uv run pits version
 uv run ruff check .
 uv run ruff format .
+uv run ruff format --check .   # lo que corre CI
 uv run pytest -q
 ```
 

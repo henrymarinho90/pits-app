@@ -103,6 +103,7 @@ Ordenado por ruta crítica: cada paso depende del anterior. Consistente con D40 
 ### Primer paso para la próxima sesión
 
 **Paso 2: Docker Compose local con perfil `core` (MinIO + Postgres, `04_infra.md` §10.1) y límites de memoria (D9).** `04_infra.md` §8.1 guarda `manifest.json` junto al payload en MinIO, así que Postgres no es requisito del manifest. Se levanta aquí porque `04_infra.md` define `core` como Postgres + MinIO y la carga a Postgres llega después.
+
 ### Pasos siguientes
 
 3. Extractor SODA de TRM: paginación con `$order`, backoff, token opcional (`X-App-Token`, desde variable de entorno). Escribe el payload original en MinIO con la ruta de `04_infra.md` §8.1: `raw/<source_system>/extraction_date=YYYY-MM-DD/batch_id=<uuid>/payload.*`.

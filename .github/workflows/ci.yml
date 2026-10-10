@@ -12,7 +12,7 @@ permissions:
 
 concurrency:
   group: ci-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   ci:
@@ -20,16 +20,15 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
 
       - uses: astral-sh/setup-uv@v10.3.0
         with:
           enable-cache: true
           cache-dependency-glob: uv.lock
 
-      # uv lee .python-version (3.12) e instala el interprete si falta.
-      - name: Install Python from .python-version
-        run: uv python install
-
+      # uv sync lee .python-version (3.12) e instala el interprete si falta.
       - name: Sync dependencies
         run: uv sync --locked
 
@@ -41,3 +40,6 @@ jobs:
 
       - name: Tests
         run: uv run pytest -q
+
+      - name: CLI smoke
+        run: uv run pits version
