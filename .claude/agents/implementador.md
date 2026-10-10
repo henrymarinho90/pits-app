@@ -15,7 +15,7 @@ Reglas:
 - Inspecciona datos reales antes de escribir transformaciones.
 
 Al terminar cada paso:
-1. Corre `ruff check . --fix`, `ruff format .` y `pytest -q`.
+1. Corre `uv run ruff check . --fix`, `uv run ruff format .` y `uv run pytest -q` (ruff no está instalado globalmente; uv usa el entorno del lock). Si cambias `pyproject.toml`, corre `uv lock` y commitea `uv.lock`.
 2. Si algo falla, arréglalo antes de reportar.
 3. Reporta: archivos tocados, comandos corridos con resultado, qué falta.
 No hagas push a `main` ni merge. No toques el VPS.

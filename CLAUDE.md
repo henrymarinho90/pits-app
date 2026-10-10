@@ -19,7 +19,7 @@ Python (Typer, pytest, ruff), Docker Compose, MinIO, PostgreSQL, dbt, Airflow (L
 5. Demanda de repuestos se mide con parque automotor (stock), no con ventas/matrículas (flujo).
 6. Toda afirmación de mercado lleva fuente verificable.
 7. Lecciones y errores van a docs/07_lessons_learned.md (insumo de un curso futuro).
-8. Antes de cerrar una tarea: `ruff check .`, `ruff format .`, `pytest -q`.
+8. Antes de cerrar una tarea: `uv run ruff check .`, `uv run ruff format .`, `uv run pytest -q`.
 9. Nunca leer ni imprimir .env ni secretos; usar .env.example.
 10. No ejecutar comandos contra el VPS sin confirmación explícita.
 
