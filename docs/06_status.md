@@ -1,7 +1,7 @@
 # 06 — Estado del proyecto
 
 Última actualización: 2026-10-10
-Estado: actualizado tras cerrar Fase 0.5 y registrar D43–D48 (D47 grano de `fx_rate`; D48 demanda con parque RUNT, marca/modelo sintético).
+Estado: actualizado tras cerrar Fase 1, paso 1 (esqueleto Python, D49). Antes: Fase 0.5 y D43–D48 (D47 grano de `fx_rate`; D48 demanda con parque RUNT, marca/modelo sintético).
 
 Este archivo se actualiza al final de cada sesión y funciona como punto de partida para una conversación nueva.
 
@@ -19,18 +19,18 @@ Siguiente fase:
 
 **Fase 1 — primera ingesta real (`source -> raw MinIO -> manifest -> parser/normalizer -> tests`).**
 
-No existe código de Fase 1 en el repo: solo hay documentación y configuración de Claude. No hay `pyproject.toml`, `docker-compose.yml` ni tests.
+Fase 1 en curso. Paso 1 (esqueleto Python) cerrado (D49): hay `pyproject.toml`, `uv.lock`, paquete `pits` (src layout), CLI `pits` (`--help`, `version`), 7 tests y CI mínimo en `.github/workflows/ci.yml`. Sigue sin haber `docker-compose.yml` (paso 2).
 
 ## 2. Documentación vigente
 
 | Archivo | Versión/estado |
 |---|---|
-| `00_review_findings.md` | "Auditoría de consistencia" v1.1 (2026-10-10; R1–R3 resueltos por D47 y D48; la original nunca se versionó) |
+| `00_review_findings.md` | "Auditoría de consistencia" v1.2 (2026-10-10; R1–R3 resueltos por D47 y D48, R6 por D49; la original nunca se versionó) |
 | `01_project_brief.md` | v2 (2026-10-03) |
 | `02_domain_taxonomy.md` | v11 (2026-10-03) |
 | `03_data_model.md` | v5 (2026-10-10) |
 | `04_infra.md` | v2 (2026-10-03) |
-| `05_decisions_log.md` | v5 (2026-10-10); D1–D48 |
+| `05_decisions_log.md` | v6 (2026-10-10); D1–D49 |
 | `06_status.md` | vigente (2026-10-10) |
 | `07_lessons_learned.md` | vigente, sin versión (2026-10-10) |
 | `08_market_research.md` | fechas de consulta 2026-10-03 (antes `claude_08_market_research.md`) |
@@ -63,6 +63,13 @@ Justificación por ruta crítica: RUNT va antes que WA DOL porque es parque (STO
 
 La TRM tiene relevancia de dominio secundaria: los precios del marketplace se fijan primero en COP (confirmado por Henry). Sirve como referencia de costo de importación (Inferencia, `08_market_research.md`). Se elige primero por ingeniería: ejercita el patrón raw -> manifest -> parser sin el ruido del dominio.
 
+### Fase 1, paso 1: esqueleto Python (D49)
+
+- `pyproject.toml` y `uv.lock`; paquete `pits` (src layout); CLI Typer `pits` con `--help` y `version`.
+- 7 tests pytest; `ruff check` y `ruff format` en verde.
+- Demostrado: `uv sync --locked`; `uv run pits version` → 0.1.0 (Windows); CI verde en GitHub Actions (`.github/workflows/ci.yml`, `setup-uv` fijado a `@v10.3.0`; PR #5).
+- Atiende R6 de `00_review_findings.md`: CI mínimo en Fase 1. El CI completo (`dbt build`) sigue en Fase 5 (D40).
+
 ### Resueltos por D47 y D48 (2026-10-10)
 
 - R1 (grano de `fx_rate`): D47, fecha única; el normalizer expande el rango de la TRM a una fila por día.
@@ -89,13 +96,15 @@ Las de `05_decisions_log.md` §F. Ninguna bloquea el primer paso de Fase 1.
 
 Ordenado por ruta crítica: cada paso depende del anterior. Consistente con D40 (fases por capacidad demostrada), `04_infra.md` §3, §7, §8, §10 y D5/D44.
 
+### Paso 1 — hecho (D49)
+
+**Paso 1: esqueleto del proyecto Python.** Cerrado; ver §3. `pyproject.toml` con `uv`, paquete, CLI Typer, pytest y ruff. Incluye un workflow mínimo de GitHub Actions que solo corre `ruff check`, `ruff format --check` y `pytest -q`, como habilitador. Esto difiere de `01_project_brief.md` §10, que ubica GitHub Actions en Fase 5: allí la capacidad demostrada es el CI completo (lint, unit tests y `dbt build`), que sigue en Fase 5 (D40). Mover CI mínimo a Fase 1 se formalizó en D49 (atiende R6 de `00_review_findings.md`); el CI completo sigue en Fase 5. Va primero porque sin poder testear y correr código ningún otro paso es verificable. Flujo: `/orquestar`, plan aprobado por Henry, rama propia, PR.
+
 ### Primer paso para la próxima sesión
 
-**Paso 1: esqueleto del proyecto Python.** `pyproject.toml` con `uv`, paquete, CLI Typer, pytest y ruff. Incluye un workflow mínimo de GitHub Actions que solo corre `ruff check`, `ruff format --check` y `pytest -q`, como habilitador. Esto difiere de `01_project_brief.md` §10, que ubica GitHub Actions en Fase 5: allí la capacidad demostrada es el CI completo (lint, unit tests y `dbt build`), que sigue en Fase 5 (D40). Si Henry quiere mover formalmente CI a Fase 1, requiere D nueva (ver R6 en `00_review_findings.md`). Va primero porque sin poder testear y correr código ningún otro paso es verificable. Flujo: `/orquestar`, plan aprobado por Henry, rama propia, PR.
-
+**Paso 2: Docker Compose local con perfil `core` (MinIO + Postgres, `04_infra.md` §10.1) y límites de memoria (D9).** `04_infra.md` §8.1 guarda `manifest.json` junto al payload en MinIO, así que Postgres no es requisito del manifest. Se levanta aquí porque `04_infra.md` define `core` como Postgres + MinIO y la carga a Postgres llega después.
 ### Pasos siguientes
 
-2. Docker Compose local con perfil `core` (MinIO + Postgres, `04_infra.md` §10.1) y límites de memoria (D9). `04_infra.md` §8.1 guarda `manifest.json` junto al payload en MinIO, así que Postgres no es requisito del manifest. Se levanta aquí porque `04_infra.md` define `core` como Postgres + MinIO y la carga a Postgres llega después.
 3. Extractor SODA de TRM: paginación con `$order`, backoff, token opcional (`X-App-Token`, desde variable de entorno). Escribe el payload original en MinIO con la ruta de `04_infra.md` §8.1: `raw/<source_system>/extraction_date=YYYY-MM-DD/batch_id=<uuid>/payload.*`.
 4. Manifest de ingesta (`manifest.json`) con los campos de `03_data_model.md` §3 (`source_system`, `ingestion_batch_id`, `ingested_at`, `raw_object_path`, `record_hash` opcional), ID del dataset fijado y atribución. `source_record_id` no aplica: la TRM no trae ID de registro; la llave natural es `vigenciadesde`.
 5. Parser/normalizer: casteo de strings, validación de schema y salida normalizada que expande cada rango (`vigenciadesde`-`vigenciahasta`) a una fila por día calendario (D47, grano `rate_date` de `03_data_model.md` §26), deduplicada por fecha para que reejecutar un batch no cree duplicados lógicos; tests unitarios. Documentar cómo reejecutar un batch.
@@ -134,7 +143,7 @@ Condición de entrada cumplida (D46, `08_market_research.md` Ficha 2). Entregabl
 
 ## 7. Bloqueos y pendientes
 
-- Bloqueos para el paso 1 (esqueleto Python): ninguno.
+- Bloqueos para el paso 2 (Docker Compose local): ninguno.
 - Infraestructura: solo Docker está confirmado por Henry. El estado del VPS (Coolify, Metabase y demás servicios) no está auditado.
 - Pendiente: auditar el VPS (re-medir lo registrado en `04_infra.md` §4–§6, medición del 2026-10-03 no re-verificada, ver R9, y cumplir el checklist de §15). Requiere confirmación explícita de Henry antes de ejecutar cualquier comando contra el VPS. No bloquea el desarrollo local de Fase 1; bloquea cualquier despliegue.
 - Pendiente de dominio: pregunta abierta 2 (DANE), antes de Fase 1b.
