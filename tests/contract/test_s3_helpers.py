@@ -1,8 +1,9 @@
 """Offline tests for the contract-test helpers (no S3 endpoint needed)."""
 
-from typing import Any
+from typing import Any, cast
 
 import pytest
+from botocore.client import BaseClient
 from s3_helpers import BucketFactory, SettingsError, load_settings, purge_bucket
 
 BASE = {
@@ -92,6 +93,10 @@ class FakeClient:
         self.deleted.append(Bucket)
 
 
+def _as_client(fake: FakeClient) -> BaseClient:
+    return cast(BaseClient, fake)
+
+
 def _page(versions: int = 0, markers: int = 0, with_id: bool = True) -> dict[str, Any]:
     def mk(i: int, prefix: str) -> dict[str, Any]:
         item: dict[str, Any] = {"Key": f"{prefix}{i}"}
@@ -112,7 +117,7 @@ def _client_with_page(page: dict[str, Any], **kwargs: Any) -> FakeClient:
 def test_purge_aborts_multipart_and_deletes_versions_and_markers() -> None:
     uploads = [{"Key": "big", "UploadId": "u1"}, {"Key": "big2", "UploadId": "u2"}]
     client = _client_with_page(_page(versions=2, markers=1), uploads=uploads)
-    purge_bucket(client, "b")  # type: ignore[arg-type]
+    purge_bucket(_as_client(client), "b")
     assert client.aborted == [("big", "u1"), ("big2", "u2")]
     assert len(client.delete_calls) == 1
     assert client.delete_calls[0] == [
@@ -125,7 +130,7 @@ def test_purge_aborts_multipart_and_deletes_versions_and_markers() -> None:
 
 def test_purge_omits_missing_version_id() -> None:
     client = _client_with_page(_page(versions=1, with_id=False))
-    purge_bucket(client, "b")  # type: ignore[arg-type]
+    purge_bucket(_as_client(client), "b")
     assert client.delete_calls == [[{"Key": "k0"}]]
 
 
@@ -133,22 +138,21 @@ def test_purge_raises_on_delete_errors() -> None:
     errors = [{"Key": f"k{i}", "Code": "AccessDenied"} for i in range(5)]
     client = _client_with_page(_page(versions=1), delete_errors=errors)
     with pytest.raises(RuntimeError) as exc_info:
-        purge_bucket(client, "b")  # type: ignore[arg-type]
-    assert "k2" in str(exc_info.value)
-    assert "k3" not in str(exc_info.value)  # only the first 3 errors are reported
+        purge_bucket(_as_client(client), "b")
+    assert str(exc_info.value).count("AccessDenied") == 3  # only the first 3 errors
     assert client.deleted == []
 
 
 def test_purge_batches_by_1000() -> None:
     client = _client_with_page(_page(versions=1001))
-    purge_bucket(client, "b")  # type: ignore[arg-type]
+    purge_bucket(_as_client(client), "b")
     assert [len(c) for c in client.delete_calls] == [1000, 1]
     assert client.deleted == ["b"]
 
 
 def test_cleanup_continues_after_error_and_reports() -> None:
     client = FakeClient()
-    factory = BucketFactory(client)  # type: ignore[arg-type]
+    factory = BucketFactory(_as_client(client))
     names = [factory() for _ in range(3)]
     client.failing.add(names[0])
     errors = factory.cleanup()
@@ -159,7 +163,7 @@ def test_cleanup_continues_after_error_and_reports() -> None:
 
 def test_keep_excludes_bucket_from_cleanup() -> None:
     client = FakeClient()
-    factory = BucketFactory(client)  # type: ignore[arg-type]
+    factory = BucketFactory(_as_client(client))
     kept, other = factory(), factory()
     factory.keep(kept)
     assert factory.cleanup() == []

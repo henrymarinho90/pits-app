@@ -168,7 +168,37 @@ ERROR ... Failed: S3_END...   (mensaje completo: "S3_ENDPOINT_URL is required fo
 
 Credenciales inválidas: SeaweedFS 4.48 responde `Error.Code = InvalidAccessKeyId`, HTTP 403 (probado con boto3 1.43.111, `list_buckets` con clave falsa). El test exige que el código esté en `{InvalidAccessKeyId, SignatureDoesNotMatch, AccessDenied}`, sin aceptar un 403 cualquiera.
 
-Hipótesis a verificar en el paso 4: boto3 recientes calculan checksums por defecto en `put_object`/multipart, lo que podría no ser compatible con SeaweedFS. Este paso solo ejercitó `create_bucket`/`head_bucket`/`list_buckets` sin errores; no hay evidencia aún sobre uploads.
+Hipótesis del paso 3 (checksums por defecto de boto3 en `put_object` podrían no ser compatibles con SeaweedFS): ver resultado del paso 4 abajo.
+
+### Paso 4: objetos (put/get/list, vacíos, unicode, idempotencia)
+
+Tests en `tests/contract/test_s3_contract.py`:
+
+- `test_put_get_list`: 5 objetos bajo `data/` + 1 bajo `other/`; get con contenido exacto; `list_objects_v2` paginado con `PageSize=2` → páginas de 2+2+1; filtro por prefijo.
+- `test_zero_byte_object`: `ContentLength == 0` y body `b""`.
+- `test_unicode_and_space_keys`: keys NFC (`.../año fiscal/Bogotá D.C./señal.json`) , otra con espacios dobles y `+`, y `raw/pct/100%25 done%2Fx %.json` (porcentajes que parecen URL-encoding); head/get/list devuelven la key idéntica en las tres (pasó sin xfail).
+- `test_nfd_key_does_not_collide_with_nfc`: la misma key en NFC y en NFD son dos objetos distintos con su propio contenido (resultado del spike: SeaweedFS no normaliza Unicode).
+- `test_reupload_same_key_is_idempotent`: un `put_object` de otro contenido (`{"a": 0}`) y luego dos del mismo contenido final en bucket sin versioning → mismo ETag igual a `"` + md5(body) + `"`, contenido final == body, 1 objeto en `list_objects_v2` y exactamente 1 versión (sin delete markers) en `list_object_versions` tras 3 PUT. Hallazgo: `put_object` no devuelve `VersionId` (`None`) y `list_object_versions` reporta la versión como `"null"` (verificado también con `get_object`: sin `VersionId`).
+
+Resultado:
+
+```text
+$ uv run --env-file .env pytest -m contract -q
+7 passed, 25 deselected in 4.23s
+$ uv run pytest -q
+25 passed, 7 deselected in 1.93s
+```
+
+Evidencia de limpieza: tras la corrida no quedan buckets (la identidad admin no tiene otros buckets en este stack de spike):
+
+```text
+$ uv run --env-file .env python -I -c "...list_buckets()..."   # usa build_client de s3_helpers
+[]
+```
+
+En la primera ejecución del test de reupload, la aserción `VersionId == "null"` falló con `AssertionError: assert {None} == {'null'}`; se corrigió la expectativa a lo observado (`None` en put, `"null"` en el listado) y no se tocó nada del servidor.
+
+Hallazgo sobre checksums: con boto3 1.43.111 y la configuración por defecto (sin `request_checksum_calculation`/`response_checksum_validation`), `put_object`/`get_object` funcionaron contra SeaweedFS 4.48 sin error. La hipótesis no se confirmó para `put_object` con body pequeño; no se aplicó ningún `Config` especial. Queda por ver el multipart (paso 5).
 
 ## Mediciones
 
