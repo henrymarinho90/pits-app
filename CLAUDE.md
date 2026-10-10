@@ -33,7 +33,6 @@ Python (Typer, pytest, ruff), Docker Compose, MinIO, PostgreSQL, dbt, Airflow (L
 - docs/07_lessons_learned.md — bitácora
 - docs/claude_08_market_research.md — mercado Colombia
 - docs/claude_09_us_market_research.md — mercado EE. UU.
-- docs/D44_propuesta.md — propuesta pendiente de aprobación (agentes)
 
 ## Agentes
 Usa `/orquestar <tarea>` para tareas medianas: arquitecto → (aprobación) → implementador → revisor-senior → (aprobación commit) → documentador.

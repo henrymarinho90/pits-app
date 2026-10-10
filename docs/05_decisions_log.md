@@ -1,6 +1,6 @@
 # 05 — Registro de decisiones
 
-Última actualización: 2026-10-09
+Última actualización: 2026-10-10
 Estado: v3
 
 Regla: una decisión nunca se borra. Si cambia, se agrega una nueva decisión y la anterior queda marcada como reemplazada.
@@ -68,7 +68,13 @@ Regla: una decisión nunca se borra. Si cambia, se agrega una nueva decisión y 
 |---|---|---|---|---|
 | D43 | Vigente (2026-10-09) | Primera fuente de ingesta incremental de EE. UU.: WA DOL "Vehicle Registration Transactions" (`brw6-jymh`, data.wa.gov, Socrata SODA). No reemplaza la fuente de Fase 1 de Colombia (TRM `32sa-8pi3`): se agrega después. | Abierta y sin costo; trae make, model, model_year y ZIP; es mensual (2020-01 a 2026-08, 44.875.179 filas) con llave incremental `start_of_month`; reutiliza el extractor SODA de la TRM. Riesgos por probar: reescritura de meses pasados (lookback + upsert), `make` sin normalizar, cifras como string, licencia ODbL (share-alike si se publica una base derivada). Es FLUJO (transacciones), no STOCK. Ver `09_us_market_research.md`, T2. | FRED (requiere key; poca relación con el dominio), NY `w4pv-hbkt` (STOCK sin columna model, 12,5 M filas), vPIC (dimensión sin llave incremental) |
 
-## E. Decisiones todavía abiertas
+## E. Flujo de trabajo y herramientas
+
+| # | Estado | Decisión | Por qué | Alternativa descartada |
+|---|---|---|---|---|
+| D44 | Vigente (2026-10-10) | Desarrollo asistido por agentes de Claude Code: 1 orquestador (`/orquestar`) + 4 subagentes (`arquitecto`, `implementador`, `revisor-senior`, `documentador`) con aprobación humana entre plan, commit y decisión. Tareas recurrentes de agentes solo de lectura (auditoría semanal vía GitHub Actions que abre un issue). Ingestas recurrentes de datos (TRM, RUNT) van en Airflow, no en agentes. | Acelera el trabajo sin perder control ni aprendizaje: Henry debe poder explicar cada línea en entrevista. Los agentes no escriben en `main` ni tocan el VPS. Los LLM no son deterministas: no sirven como scheduler de datos. | Agentes autónomos con push y despliegue sin aprobación; agentes reemplazando DAGs de Airflow |
+
+## F. Decisiones todavía abiertas
 
 Estas no reciben ID hasta ser resueltas:
 
@@ -77,7 +83,7 @@ Estas no reciben ID hasta ser resueltas:
 3. Reputación comercial: score único vs score separado como comprador y vendedor.
 4. Historial de precio/inventario: Fase 3 base o extensión SCD2.
 
-## F. Cómo agregar una decisión nueva
+## G. Cómo agregar una decisión nueva
 
 Formato mínimo:
 
