@@ -1,109 +1,139 @@
 # 06 — Estado del proyecto
 
-Última actualización: 2026-10-03
-Estado: actualizado después de la revisión integral.
+Última actualización: 2026-10-10
+Estado: actualizado tras cerrar Fase 0.5 y registrar D43–D46.
 
 Este archivo se actualiza al final de cada sesión y funciona como punto de partida para una conversación nueva.
 
 ## 1. Fase actual
 
-**Fase 0 — dominio y arquitectura conceptual: cerrada nuevamente después de la revisión.**
+**Fase 0.5 — investigación de mercado y validación de fuentes: CERRADA, con brechas documentadas.**
+
+Brechas (ver `08_market_research.md`, "No encontrado"):
+
+- Parque por marca a nivel nacional: no encontrado. `u3vn-bdcy` trae clase, servicio, estado, departamento y municipio, pero no `marca`.
+- Ensamble de carros (Chevrolet, Renault y otras): sin evidencia con fuente oficial.
+- Cifras de ANDI-FENALCO leídas por resumen automático; nadie abrió el PDF original (`08_market_research.md`, método y "No encontrado"). Verificar antes de publicar.
 
 Siguiente fase:
 
-**Fase 0.5 — investigación de mercado y validación de fuentes reales.**
+**Fase 1 — primera ingesta real (`source -> raw MinIO -> manifest -> parser/normalizer -> tests`).**
+
+No existe código de Fase 1 en el repo: solo hay documentación y configuración de Claude. No hay `pyproject.toml`, `docker-compose.yml` ni tests.
 
 ## 2. Documentación vigente
 
 | Archivo | Versión/estado |
 |---|---|
-| `00_review_findings.md` | Auditoría integral |
-| `01_project_brief.md` | v2 |
-| `02_domain_taxonomy.md` | v11 |
-| `03_data_model.md` | v4 |
-| `04_infra.md` | v2 |
-| `05_decisions_log.md` | v2; D1–D42 |
-| `06_status.md` | vigente |
-| `07_lessons_learned.md` | vigente |
+| `00_review_findings.md` | "Auditoría de consistencia" v1, recreada el 2026-10-10 (la original nunca se versionó) |
+| `01_project_brief.md` | v2 (2026-10-03) |
+| `02_domain_taxonomy.md` | v11 (2026-10-03) |
+| `03_data_model.md` | v4 (2026-10-03) |
+| `04_infra.md` | v2 (2026-10-03) |
+| `05_decisions_log.md` | v4 (2026-10-10); D1–D46 |
+| `06_status.md` | vigente (2026-10-10) |
+| `07_lessons_learned.md` | vigente, sin versión (2026-10-10) |
+| `08_market_research.md` | fechas de consulta 2026-10-03 (antes `claude_08_market_research.md`) |
+| `09_us_market_research.md` | tercera ronda, 2026-10-09 (antes `claude_09_us_market_research.md`) |
 
-## 3. Terminado en Fase 0
+## 3. Terminado
 
-- Visión del proyecto redefinida como data platform para un marketplace simulado.
-- Alcance de producto separado del alcance de UI/pagos.
-- Taxonomía de partes y vehículos definida.
-- Sistema de confianza de contributor de catálogo definido.
-- Reputación comercial separada de la confianza técnica.
-- Identidad unificada mediante `account` + roles.
-- Modelo de publicaciones, búsquedas, negociaciones y ofertas definido.
-- Modelo de órdenes y reseñas comerciales definido; una orden pertenece a un comprador y un vendedor.
-- ERD conceptual actualizado.
-- Convenciones de procedencia e ingesta definidas.
-- Raw storage redefinido como payload inmutable antes de parquet.
-- Infraestructura local/producción documentada.
-- Reglas mínimas de backups, secrets, healthchecks y límites definidas.
-- Decision Log actualizado hasta D42.
-- Bitácora de lecciones actualizada.
+### Fase 0 (dominio y arquitectura conceptual)
+
+- Visión del proyecto como data platform para un marketplace simulado; alcance de producto separado de UI/pagos.
+- Taxonomía de partes y vehículos; confianza de contributor y reputación comercial separadas; identidad unificada `account` + roles.
+- Modelo de publicaciones, búsquedas, negociaciones, ofertas, órdenes y reseñas; ERD conceptual.
+- Convenciones de procedencia e ingesta; raw como payload inmutable antes de parquet (D29).
+- Infraestructura local/producción documentada, con reglas mínimas de backups, secrets, healthchecks y límites.
+
+### Fase 0.5 (investigación de fuentes)
+
+- `08_market_research.md` con fichas de datasets, hipótesis validadas/refutadas y lista de "No encontrado".
+- D43 (WA DOL como primera fuente de EE. UU., se agrega después de la de Colombia) y D46 (orden de fuentes de Fase 1).
+- `09_us_market_research.md`: comparación EE. UU. vs Colombia.
+- Flujo de trabajo con agentes: D44 y D45.
+
+### Orden de fuentes (D46, D43)
+
+1. Fase 1: TRM Superfinanciera `32sa-8pi3`.
+2. Fase 1b: parque RUNT `u3vn-bdcy`, snapshot mensual.
+3. Después: WA DOL `brw6-jymh` (D43).
+
+Justificación por ruta crítica: RUNT va antes que WA DOL porque es parque (STOCK) de Colombia, el mercado principal, y aplica la regla demanda = parque. WA DOL es FLUJO (transacciones) y de EE. UU.
+
+La TRM tiene relevancia de dominio secundaria: los precios del marketplace se fijan primero en COP (confirmado por Henry). Sirve como referencia de costo de importación (Inferencia, `08_market_research.md`). Se elige primero por ingeniería: ejercita el patrón raw -> manifest -> parser sin el ruido del dominio.
+
+### Flujo de trabajo (D44, D45)
+
+- `/orquestar`: arquitecto -> implementador -> revisor-senior -> documentador.
+- Henry aprueba solo el plan y el Pull Request. `main` cambia solo vía PR.
+- Las ingestas recurrentes van en Airflow, no en agentes.
+- Siguen requiriendo aprobación: decisiones D nuevas, preguntas de dominio, comandos destructivos, comandos al VPS y 3 revisiones fallidas seguidas.
 
 ## 4. Preguntas abiertas
 
-No bloquean la investigación de mercado:
+Las de `05_decisions_log.md` §F. Ninguna bloquea el primer paso de Fase 1.
 
 1. Unidades finales de `quantity_unit`.
-2. Uso de código DANE desde el MVP para geografía.
+2. Normalización geográfica con código DANE desde el MVP o después. Evidencia nueva (`08_market_research.md`, Obj. 6): DIVIPOLA existe como dataset oficial de DANE (`gdxc-w37w`, 1.122 filas, corte 30-dic-2024), pero `u3vn-bdcy` no trae código DANE, solo nombre de municipio. Inferencia de 08: si se usa DANE, Fase 3 necesita una tabla de equivalencias de nombres (tildes, "BOGOTA" vs "BOGOTÁ, D.C."). La decisión sigue siendo de Henry y se vuelve necesaria al llegar a Fase 1b.
 3. Reputación comercial: score único o separado buyer/seller.
-4. Historial de precio e inventario: core Fase 3 o extensión posterior.
+4. Historial de precio e inventario: core Fase 3 o extensión SCD2.
 
-## 5. Próximo paso — Fase 0.5
+## 5. Próximo paso — Fase 1
 
-La siguiente sesión debe usar investigación web y fuentes primarias cuando estén disponibles.
+Ordenado por ruta crítica: cada paso depende del anterior. Consistente con D40 (fases por capacidad demostrada), `04_infra.md` §3, §7, §8, §10 y D5/D44.
 
-### Objetivos
+### Primer paso para la próxima sesión
 
-1. Medir participación por marca en el parque automotor de Colombia, separando autos y motos cuando la fuente lo permita.
-2. Confirmar el portafolio actual de marcas de Auteco.
-3. Confirmar qué marcas fabrican o ensamblan vehículos/motos en Colombia.
-4. Verificar qué datasets relevantes de datos.gov.co siguen disponibles y documentar su esquema real.
-5. Verificar cobertura real de NHTSA vPIC para las marcas prioritarias.
-6. Evaluar si existen fuentes oficiales útiles para ciudades/códigos DANE.
-7. Identificar una primera fuente real suficientemente estable para la Fase 1.
+**Paso 1: esqueleto del proyecto Python.** `pyproject.toml` con `uv`, paquete, CLI Typer, pytest y ruff. Incluye un workflow mínimo de GitHub Actions que solo corre `ruff check`, `ruff format --check` y `pytest -q`, como habilitador. Esto difiere de `01_project_brief.md` §10, que ubica GitHub Actions en Fase 5: allí la capacidad demostrada es el CI completo (lint, unit tests y `dbt build`), que sigue en Fase 5 (D40). Si Henry quiere mover formalmente CI a Fase 1, requiere D nueva (ver R6 en `00_review_findings.md`). Va primero porque sin poder testear y correr código ningún otro paso es verificable. Flujo: `/orquestar`, plan aprobado por Henry, rama propia, PR.
 
-### Entregable
+### Pasos siguientes
 
-`08_market_research.md`
+2. Docker Compose local con perfil `core` (MinIO + Postgres, `04_infra.md` §10.1) y límites de memoria (D9). `04_infra.md` §8.1 guarda `manifest.json` junto al payload en MinIO, así que Postgres no es requisito del manifest. Se levanta aquí porque `04_infra.md` define `core` como Postgres + MinIO y la carga a Postgres llega después.
+3. Extractor SODA de TRM: paginación con `$order`, backoff, token opcional (`X-App-Token`, desde variable de entorno). Escribe el payload original en MinIO con la ruta de `04_infra.md` §8.1: `raw/<source_system>/extraction_date=YYYY-MM-DD/batch_id=<uuid>/payload.*`.
+4. Manifest de ingesta (`manifest.json`) con los campos de `03_data_model.md` §3 (`source_system`, `ingestion_batch_id`, `ingested_at`, `raw_object_path`, `record_hash` opcional), ID del dataset fijado y atribución. `source_record_id` no aplica: la TRM no trae ID de registro; la llave natural es `vigenciadesde`.
+5. Parser/normalizer: casteo de strings, validación de schema y salida normalizada con rango de vigencia (`vigenciadesde`, `vigenciahasta`), deduplicada por `vigenciadesde` para que reejecutar un batch no cree duplicados lógicos; tests unitarios. Documentar cómo reejecutar un batch. Antes de este paso: resolver R1 de `00_review_findings.md` (grano de `fx_rate` en `03_data_model.md` §26 vs D46) con D nueva aprobada por Henry.
 
-Debe incluir por cada hallazgo:
+Después: Fase 1b con RUNT `u3vn-bdcy` (snapshot mensual). El DAG de Airflow (D5, D44) corresponde a Fase 4 (`01_project_brief.md` §10), con perfil `orchestration` (`04_infra.md` §10.1).
 
-- afirmación;
-- fuente;
-- fecha de consulta;
-- cobertura;
-- limitaciones;
-- cómo afecta el modelo o el roadmap.
+### Contrato de la fuente TRM (`08_market_research.md`, Ficha 2)
+
+| Atributo | Valor |
+|---|---|
+| Dataset | `32sa-8pi3`, Superintendencia Financiera de Colombia |
+| Endpoint | `https://www.datos.gov.co/resource/32sa-8pi3.json` |
+| Licencia | CC BY-SA 4.0 |
+| Frecuencia | Diaria |
+| Filas | 8.360 al 2026-10-03, desde 1991-12-02 |
+| Columnas | `valor` number; `unidad` text; `vigenciadesde` calendar_date; `vigenciahasta` calendar_date |
+| Tipos en el JSON | Todo llega como string; se castea en el parser |
+| Llave incremental | `vigenciadesde` |
+| Autenticación | Ninguna; token opcional `X-App-Token` |
+
+### Riesgos
+
+- Fines de semana y festivos: una fila cubre varios días (`vigenciadesde` 2026-10-03, `vigenciahasta` 2026-10-05). Se modela rango de vigencia, no fecha única.
+- Hay al menos 9 datasets TRM duplicados con esquemas distintos (`mcec-87by`, `ceyp-9c7c`, `djvb-n8kv`, `dit9-nnvp`, otros). Fijar `32sa-8pi3` y verificar atribución en el manifest.
+- Rate limit sin token: número exacto no encontrado en la documentación. Registrar un token y manejar reintentos con backoff.
+- Paginar siempre con `$order=vigenciadesde` (o `:id`).
+- Tope por petición: 50.000 es el límite documentado para Socrata API 2.0; 08 no verificó qué versión sirve datos.gov.co. Con 8.360 filas cabría en una petición, pero se pagina para demostrar el patrón.
+
+### Entregable de Fase 1 (criterios de salida)
+
+- Llamada reproducible, raw payload preservado, batch ID, schema validado, idempotencia, manejo de errores, tests unitarios y documentación de cómo reejecutar un batch.
 
 ## 6. Entrada a Fase 1
 
-La Fase 1 empieza cuando exista una fuente real elegida y su schema haya sido inspeccionado.
+Condición de entrada cumplida (D46, `08_market_research.md` Ficha 2). Entregable: ver §5.
 
-Entregable esperado:
+## 7. Bloqueos y pendientes
 
-```text
-source -> raw MinIO -> manifest -> parser/normalizer -> tests
-```
-
-Debe demostrar:
-
-- llamada reproducible;
-- raw payload preservado;
-- batch ID;
-- schema validado;
-- idempotencia;
-- manejo de errores;
-- tests unitarios;
-- documentación de cómo reejecutar un batch.
-
-## 7. Bloqueos
-
-Ninguno para iniciar Fase 0.5.
+- Bloqueos para el paso 1 (esqueleto Python): ninguno.
+- Infraestructura: solo Docker está confirmado por Henry. El estado del VPS (Coolify, Metabase y demás servicios) no está auditado.
+- Pendiente: auditar el VPS (re-medir lo registrado en `04_infra.md` §4–§6, medición del 2026-10-03 no re-verificada, ver R9, y cumplir el checklist de §15). Requiere confirmación explícita de Henry antes de ejecutar cualquier comando contra el VPS. No bloquea el desarrollo local de Fase 1; bloquea cualquier despliegue.
+- Pendiente de dominio: pregunta abierta 2 (DANE), antes de Fase 1b.
+- Hallazgos de severidad alta en `00_review_findings.md` (requieren D nueva antes de implementar, regla 4): R1 (grano de `fx_rate`), antes del paso 5; R2 (entidad y grano del parque RUNT), antes de Fase 1b; R3 (marcas prioritarias validadas con matrículas, que son FLUJO, no con parque), antes de usar marcas en métricas.
+- Decisión de dominio abierta para Henry: ¿el parque RUNT por clase (sin marca) es el único insumo de demanda hasta encontrar parque por marca? Condiciona R2 y R3.
 
 ## 8. Regla para la siguiente conversación
 

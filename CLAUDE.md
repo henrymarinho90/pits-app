@@ -31,8 +31,8 @@ Python (Typer, pytest, ruff), Docker Compose, MinIO, PostgreSQL, dbt, Airflow (L
 - docs/05_decisions_log.md — decisiones (leer SIEMPRE antes de diseñar)
 - docs/06_status.md — estado actual y siguiente paso (leer SIEMPRE al empezar)
 - docs/07_lessons_learned.md — bitácora
-- docs/claude_08_market_research.md — mercado Colombia
-- docs/claude_09_us_market_research.md — mercado EE. UU.
+- docs/08_market_research.md — mercado Colombia
+- docs/09_us_market_research.md — mercado EE. UU.
 
 ## Agentes
 Usa `/orquestar <tarea>` para tareas medianas: arquitecto → (aprobación) → implementador → revisor-senior → (aprobación commit) → documentador.
