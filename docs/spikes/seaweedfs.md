@@ -619,7 +619,7 @@ Para volver a levantarlo: `docker compose -f docker-compose.spike.yml up -d` (us
 
 Para borrar el volumen (destructivo; decisión de Henry, no se ejecutó): `docker compose -f docker-compose.spike.yml down -v`, o solo el volumen con `docker volume rm pits_spike_seaweedfs_data`.
 
-## Borrador D57
+## Borrador D57 (aprobada 2026-10-10; ver Resultado al final)
 
 Estado: Propuesta (pendiente de aprobación de Henry; no está en `docs/05_decisions_log.md`). Formato idéntico a las filas de `05`:
 
@@ -635,8 +635,10 @@ Estado: Propuesta (pendiente de aprobación de Henry; no está en `docs/05_decis
 - A (recomendada): convención write-once por `batch_id` (la ruta `raw/<source_system>/extraction_date=.../batch_id=<uuid>/payload.*` ya es única por lote, `04_infra.md` §8.1) + versioning activado en el bucket raw para proteger contra sobrescrituras accidentales. Sin dependencia de permisos IAM finos. Diferencia con B: el versioning protege de sobrescrituras accidentales, no de borrados deliberados de versiones por la misma identidad; B sí los impide solo con COMPLIANCE, o con GOVERNANCE si la identidad de ingesta no tiene `s3:BypassGovernanceRetention` (requiere identidades separadas, no probadas).
 - B: Object Lock GOVERNANCE en el bucket raw. Evidencia: funciona (delete sin bypass `AccessDenied`, con bypass éxito para la identidad admin), pero con la identidad única admin el bypass está disponible, así que no protege contra el propio proceso de ingesta; requeriría identidades separadas (no probadas en este spike). COMPLIANCE impide vaciar el bucket hasta que expira la retención (impráctico para raw con reprocesos).
 
-## Borrador D58
+## Borrador D58 (aprobada 2026-10-10; ver Resultado al final)
 
 Estado: Propuesta (pendiente de aprobación de Henry; no está en `docs/05_decisions_log.md`).
 
 | D58 | Propuesta (2026-10-10) | Los tests de contrato del storage S3 (`tests/contract`, marker `contract`) quedan excluidos por defecto con `-m 'not contract'` en `addopts` (`pyproject.toml`) y se corren a mano con `uv run --env-file .env pytest -m contract` contra un endpoint local (`127.0.0.1`/`localhost`, validado por `load_settings`). El CI (`.github/workflows/ci.yml`) no los corre hasta que exista un job con service container de SeaweedFS (se retomará cuando haya Docker Compose del stack core). Los tests offline de `s3_helpers` sí corren siempre. Los buckets de prueba (`pits-contract-<uuid8>`) se limpian solos; los que tienen retención se purgan en la corrida siguiente o con `purge_contract_buckets`. | Un `pytest` por defecto debe ser determinista y no depender de servicios externos (CI y pre-commit verdes sin Docker); el `-m` de la CLI gana sobre el de `addopts` (verificado en el paso 3). | Marker con `skip` automático si falta el endpoint (oculta fallos de configuración: aquí un endpoint ausente falla con `pytest.fail`); correr los contract tests siempre en CI con service container ahora (aún no hay compose del stack ni job); un directorio fuera de `tests/` con su propio runner (duplica configuración) |
+
+Resultado: Henry aprobó D57 (M1, opción A) y D58 el 2026-10-10; ver `05_decisions_log.md`.

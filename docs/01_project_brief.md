@@ -1,7 +1,7 @@
 # 01 — Project Brief: Data Platform for an Auto Parts Marketplace
 
-Última actualización: 2026-10-03
-Estado: v2 — revisado después de la auditoría integral del proyecto.
+Última actualización: 2026-10-10
+Estado: v3 — revisado después de la auditoría integral del proyecto.
 
 ## 1. Objetivo personal
 
@@ -198,7 +198,7 @@ Real APIs / files          Synthetic marketplace generator
           ------ ingestion ------
                    |
                    v
-             MinIO raw zone
+             S3 raw zone (SeaweedFS, D57)
         immutable source payloads
                    |
                    v
@@ -225,7 +225,7 @@ Real APIs / files          Synthetic marketplace generator
 |---|---|---|
 | 0 | Dominio, ERD, decisiones y alcance | Modelado y traducción de negocio a datos |
 | 0.5 | Investigación de mercado con fuentes | Evaluación de fuentes, evidencia y schemas reales |
-| 1 | Primera ingesta real a MinIO + manifest + tests | APIs, raw storage, idempotencia y contratos |
+| 1 | Primera ingesta real a storage S3 (SeaweedFS, D57) + manifest + tests | APIs, raw storage, idempotencia y contratos |
 | 2 | Generador sintético del marketplace | Generación reproducible y modelado de eventos |
 | 3 | Carga a Postgres + dbt staging/intermediate/marts | SQL, dimensional modeling, incrementalidad y tests |
 | 4 | DAGs de Airflow, schedules y backfills | Orquestación, dependencias, retries y recuperación |
