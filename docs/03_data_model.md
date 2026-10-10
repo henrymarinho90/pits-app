@@ -1,7 +1,7 @@
 # 03 — Modelo de datos
 
-Última actualización: 2026-10-03
-Estado: v4 — alineado con `02_domain_taxonomy.md` v11.
+Última actualización: 2026-10-10
+Estado: v5 — alineado con `02_domain_taxonomy.md` v11.
 
 ## 1. Propósito
 
@@ -96,7 +96,7 @@ erDiagram
     account ||--o{ marketplace_review : writes
 ```
 
-`fx_rate` y `vehicle_registration_stat` no necesitan una relación FK directa con todas las entidades; se integran en dbt según fecha, moneda, marca, modelo o geografía.
+`fx_rate` y `vehicle_registration_stat` no necesitan una relación FK directa con todas las entidades; se integran en dbt según fecha, moneda, clase de vehículo o geografía. La marca y el modelo del parque no vienen del RUNT real: salen del desglose sintético (D48, §27).
 
 ---
 
@@ -558,11 +558,18 @@ Campos:
 - `rate`
 - `source_reference`
 
+Nota (D47, D46): la fuente es la TRM de la Superfinanciera, dataset `32sa-8pi3`, que llega por rango (`vigenciadesde`-`vigenciahasta`). El normalizer expande cada rango a una fila por día calendario (fines de semana y festivos heredan la TRM vigente); el grano sigue siendo fecha única. Raw y manifest conservan el rango original.
+
 ## 27. `vehicle_registration_stat`
 
-El esquema queda deliberadamente abierto hasta inspeccionar el dataset real del RUNT/datos.gov.co.
+Entidad de parque (STOCK, no flujo; regla 5). Grano: un corte mensual (`a_o_de_publicacion` + `mes_de_publicacion`) por combinación de las columnas de dimensión del dataset RUNT `u3vn-bdcy` (`08_market_research.md`, Ficha 1); `cantidad` es la medida. La unicidad de esa combinación no está verificada (`08`, No encontrado: `count(*)` 191.293 vs 191.640 filas sin explicar): se valida al implementar la Fase 1b. Columnas inspeccionadas:
 
-No se inventarán columnas antes de revisar la fuente.
+- `nombre_departamento`, `nombre_municipio`, `nombre_servicio`, `estado_del_vehiculo` (`ACTIVO`, `INCONSISTENTE`), `nombre_de_la_clase` (text);
+- `fecha_de_registro` (año; `1900` es valor centinela), `cantidad`, `a_o_de_publicacion` (number) y `mes_de_publicacion` (text, p. ej. `AGOSTO`).
+
+Los nombres de columna son los de origen; el nombre final de las columnas en el modelo (`snake_case` en inglés, §2) y los tipos físicos se deciden al implementar la Fase 1b. `08` declara los tipos de Socrata, pero el JSON los devuelve todos como string (se castean en el parser). `08` no define una llave única de fila ni ofrece historial: la fuente trae un único corte (agosto 2026), por lo que cada snapshot mensual debe guardarse en raw (`08`, Objetivo 4).
+
+El RUNT no trae marca ni modelo (D48). El desglose del parque por marca/modelo se genera sintético (generador, Fase 2), calibrado con investigación pública con fuente verificable, y debe marcarse como sintético en su procedencia (§28). Esta entidad contiene solo el dato real del RUNT. Dónde vive el desglose sintético (entidad aparte o columna de origen, según §28) se decide en Fase 2. El desglose sintético no es dato real ni métrica oficial de demanda.
 
 ---
 
@@ -572,8 +579,9 @@ No se inventarán columnas antes de revisar la fuente.
 |---|---|
 | `part_family`, `part_subfamily`, `part_type`, `symptom` | Seeds CSV versionados |
 | `vehicle` | NHTSA vPIC + datos curados/específicos de Colombia según validación |
-| `fx_rate` | Fuente oficial por validar en Fase 0.5 |
-| `vehicle_registration_stat` | RUNT/datos.gov.co por validar |
+| `fx_rate` | TRM Superfinanciera `32sa-8pi3` (D46, D47) |
+| `vehicle_registration_stat` | RUNT `u3vn-bdcy` (real, por clase/geografía; D48) |
+| Desglose del parque por marca/modelo | Generador sintético calibrado con investigación pública (D48); ubicación (entidad o columna de origen) por definir en Fase 2 |
 | `catalog_source` | Metadatos de fuentes permitidas |
 | `part`, `part_code`, `fitment` | Sintético inicialmente; cualquier fuente real futura debe registrar procedencia |
 | `account`, `account_role`, `business_profile`, `account_vehicle` | Generador sintético |
