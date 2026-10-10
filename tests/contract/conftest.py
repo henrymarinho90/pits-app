@@ -6,6 +6,7 @@ Run with: uv run --env-file .env pytest -m contract -q
 from __future__ import annotations
 
 import os
+import warnings
 from collections.abc import Callable, Iterator
 
 import pytest
@@ -37,9 +38,12 @@ def make_client(s3_settings: S3Settings) -> Callable[[str, str], BaseClient]:
 def s3(s3_settings: S3Settings) -> BaseClient:
     client = build_client(s3_settings, s3_settings.access_key_id, s3_settings.secret_access_key)
     # Best-effort: purge leftovers of previous runs (COMPLIANCE buckets whose retention has
-    # expired). Buckets with active retention fail with AccessDenied; they are only reported.
+    # expired). Buckets with active retention fail with AccessDenied; they only raise a warning.
     for message in purge_contract_buckets(client):
-        print(f"leftover contract bucket not purged (retention still active?): {message[:200]}")
+        warnings.warn(
+            f"leftover contract bucket not purged (retention still active?): {message[:200]}",
+            stacklevel=2,
+        )
     return client
 
 

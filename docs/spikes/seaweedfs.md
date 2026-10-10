@@ -259,12 +259,12 @@ Resultados por caso (`uv run --env-file .env pytest -m contract -q -rA`, 14 pass
 | (b) `delete_object` sin VersionId | pasa | `DeleteMarker: True`; v1 legible por VersionId |
 | (b) desfase de reloj | pasa | cabecera `Date` del servidor frente a reloj del cliente: 0,1 s (el test exige < 30 s) |
 | `test_object_lock_governance_bypass` (c): delete sin bypass | pasa (falla como debe) | `AccessDenied` / 403 |
-| (c) delete con `BypassGovernanceRetention=True` | pasa | éxito (identidad admin); devuelve el `VersionId` borrado. Ojo: esto no prueba que una identidad sin el permiso de bypass (`s3:BypassGovernanceRetention`) sea rechazada; ver la limitación de la identidad única admin (d, abajo) |
+| (c) delete con `BypassGovernanceRetention=True` | pasa | éxito (identidad admin); devuelve el `VersionId` borrado. Ojo: esto no prueba que una identidad sin el permiso de bypass (`s3:BypassGovernanceRetention`) sea rechazada; ver la limitación de identidad única admin bajo la tabla |
 | `test_object_lock_legal_hold` (d) | pasa | hold ON -> `get_object_legal_hold` = `ON`, delete de la versión `AccessDenied` / 403; hold OFF -> delete con éxito |
 
 Sin divergencias respecto a la expectativa de los tests en los casos probados; no se registró ningún `xfail`. No se verificó contra la documentación de AWS ni de SeaweedFS (solo contra la expectativa de los tests), y no se probó el mismo flujo con una identidad no admin (la única identidad es la admin del env), que es donde Object Lock suele aportar valor real.
 
-Limpieza: los buckets con retención activa no se pueden vaciar hasta que expira (COMPLIANCE y, sin bypass, GOVERNANCE). Los tests los marcan con `make_bucket.keep()`. La fixture `s3` (sesión) llama a `purge_contract_buckets` al empezar cada corrida `contract`, como mejor esfuerzo: purga los restos de corridas anteriores cuya retención ya expiró e imprime (sin fallar) los que siguen retenidos, p. ej. `leftover contract bucket not purged (retention still active?): pits-contract-c2117663: RuntimeError("delete_objects failed ... 'Code': 'AccessDenied' ...")`. Es decir, los buckets COMPLIANCE de la corrida actual se purgan en la siguiente corrida o a mano con `purge.py` pasados ~3 min (el test alarga la retención de v1 a +3 min en total). Antes de que expiren, el purgado falla con la causa literal:
+Limpieza: los buckets con retención activa no se pueden vaciar hasta que expira (COMPLIANCE y, sin bypass, GOVERNANCE). Los tests los marcan con `make_bucket.keep()`. La fixture `s3` (sesión) llama a `purge_contract_buckets` al empezar cada corrida `contract`, como mejor esfuerzo: purga los restos de corridas anteriores cuya retención ya expiró e emite un `warnings.warn` (sin fallar; aparece en el resumen de warnings de pytest) para los que siguen retenidos, p. ej. `leftover contract bucket not purged (retention still active?): pits-contract-c2117663: RuntimeError("delete_objects failed ... 'Code': 'AccessDenied' ...")`. Riesgo: dos sesiones `-m contract` simultáneas contra el mismo endpoint pueden purgarse mutuamente los buckets de prueba (el prefijo `pits-contract-` es común); no las lances en paralelo. Es decir, los buckets COMPLIANCE de la corrida actual se purgan en la siguiente corrida o a mano con `purge.py` pasados ~3 min (el test alarga la retención de v1 a +3 min en total). Antes de que expiren, el purgado falla con la causa literal:
 
 ```text
 $ uv run --env-file .env python -I purge.py     # purge_contract_buckets de s3_helpers, a los ~20 s
@@ -307,7 +307,107 @@ after: []
 
 ## Mediciones
 
-Parciales del paso 5 (el paso 7 las consolida). Contenedor `pits-spike-seaweedfs`, `mem_limit=512m`, `GOMEMLIMIT=400MiB`, host Windows/WSL (Docker 29.8.2). Comandos:
+### Medición final consolidada (paso 7)
+
+Contenedor `pits-spike-seaweedfs`, `mem_limit=512m`, `GOMEMLIMIT=400MiB`, Docker 29.8.2 sobre WSL2. Una sola secuencia limpia (script y salida cruda en "Script y salida cruda de la medición final", abajo):
+
+1. `docker restart pits-spike-seaweedfs` -> healthy a las 21:57:57.
+2. Reposo de 2 min (hasta 21:59:57), luego 3 muestras de `docker stats`, `memory.peak`, `memory.current`, `memory.stat` y `du -sh /data`.
+3. Corrida completa `uv run --env-file .env pytest -m contract -q -s` (14 tests, 22:00:06-22:00:21) con un muestreo de `docker stats` en background (~1 muestra cada 3 s: `docker stats` tarda ese tiempo por llamada).
+4. Justo después: `memory.peak`, `memory.current`, `memory.stat`, OOMKilled, `du -sh /data`.
+5. Script de disco (`disk.py`, ya en el doc: sube 128 MiB, mide, borra el bucket, mide inmediato y a los 30 s). Se ejecutó después de leer `memory.peak`, así que no contamina el pico.
+
+| Medición | Valor | Corrida |
+|---|---|---|
+| RAM en reposo (3 muestras de `docker stats`, tras 2 min de reposo) | 130,6 / 130,3 / 130,5 MiB (25,5 %) | restart de la secuencia final |
+| Reposo: `memory.peak` / `memory.current` | 147222528 B (140,4 MiB) / 142741504 B (136,1 MiB) | ídem |
+| Reposo: `memory.stat` anon / file / kernel | 134287360 / 5668864 / 2035712 B | ídem |
+| RAM durante la corrida completa (5 muestras) | 130,4 -> 131,7 -> 236,9 -> 249,9 -> 253,5 MiB | corrida completa `-m contract` |
+| Pico del cgroup (`memory.peak` tras la corrida completa) | 479043584 B = 456,8 MiB (89 % de 512 MiB) | ídem |
+| `memory.current` tras la corrida | 265564160 B (anon 255598592 / file 5873664 / kernel 3117056) | ídem |
+| OOMKilled / reinicios | false / 0 | ídem |
+| Pico en corridas anteriores (solo `-k large`, tras restart) | 420,2 MiB (paso 5, 1.ª) y 440,5 MiB (paso 5, 2.ª) | pasos 5 |
+| Pico del cliente (tracemalloc, test de 128 MiB) | 51,8 MB (presupuesto 64 MiB) | corrida completa |
+| Disco `/data` en reposo (antes de la corrida) | 1.6M | restart de la secuencia final |
+| Disco `/data` tras la corrida completa (con 2 buckets con retención aún vivos) | 1.8M | corrida completa |
+| Disco: antes / tras subir 128 MiB (`disk.py`, antes de borrar) | 1.8M / 129.9M | `disk.py` posterior |
+| Disco: tras borrar el bucket (inmediato / 30 s) | 1.8M / 2.0M | `disk.py` posterior |
+
+Lectura: el pico de memoria del cgroup fue 420,2 / 440,5 / 456,8 MiB: variación 420–457 MiB en 3 corridas no comparables (dos con solo `-k large`, una con la suite completa); no hay datos para afirmar una tendencia. La última incluye todos los tests (multipart de 128 MiB, 5 MiB x 2 del multipart manual, Object Lock, etc.), no solo el test grande, y con 3 muestras no hay un intervalo fiable. Es la principal razón para proponer más margen en D57. El disco crece ~128 MiB al subir el objeto y vuelve al valor base al borrar el bucket (la diferencia de 0,2M a los 30 s no se investigó).
+
+### Script y salida cruda de la medición final
+
+`final.sh` tal cual se ejecutó (no contiene secretos; `uv run --env-file .env` carga las credenciales sin imprimirlas):
+
+```bash
+export MSYS_NO_PATHCONV=1
+cd /c/dev/pits-app-spike
+S='<scratchpad>'
+C=pits-spike-seaweedfs
+st() { docker exec $C sh -c 'grep -E "^(anon|file|kernel) " /sys/fs/cgroup/memory.stat'; }
+echo "## restart"; docker restart $C >/dev/null
+until [ "$(docker inspect -f '{{.State.Health.Status}}' $C)" = healthy ]; do sleep 2; done; echo "healthy at $(date -u +%T)"
+sleep 120
+echo "## idle samples ($(date -u +%T))"; for i in 1 2 3; do docker stats --no-stream --format "{{.Name}} {{.MemUsage}} {{.MemPerc}}" $C; done
+echo "idle memory.peak: $(docker exec $C cat /sys/fs/cgroup/memory.peak)"; echo "idle memory.current: $(docker exec $C cat /sys/fs/cgroup/memory.current)"; st
+echo "du idle: $(docker exec $C du -sh /data)"
+(while true; do echo "$(date -u +%T) $(docker stats --no-stream --format '{{.MemUsage}}' $C)"; sleep 1; done > "$S/mem_final.log") &
+SP=$!
+echo "## full contract run start $(date -u +%T)"
+uv run --env-file .env pytest -m contract -q -s 2>&1 | grep -E "large object|passed|failed|leftover"
+echo "## full contract run end $(date -u +%T)"
+kill $SP; sleep 2
+echo "peak: $(docker exec $C cat /sys/fs/cgroup/memory.peak)"; echo "current: $(docker exec $C cat /sys/fs/cgroup/memory.current)"; st
+docker inspect -f "OOM={{.State.OOMKilled}} restarts={{.RestartCount}}" $C
+echo "du after run: $(docker exec $C du -sh /data)"
+echo "## samples during run"; cat "$S/mem_final.log"
+echo "## disk script"; uv run --env-file .env python -I "$S/disk.py" 2>&1 | tail -5
+echo "## done $(date -u +%T)"
+```
+
+Salida cruda (`final.log`):
+
+```text
+## restart
+healthy at 21:57:57
+## idle samples (21:59:57)
+pits-spike-seaweedfs 130.6MiB / 512MiB 25.51%
+pits-spike-seaweedfs 130.3MiB / 512MiB 25.44%
+pits-spike-seaweedfs 130.5MiB / 512MiB 25.49%
+idle memory.peak: 147222528
+idle memory.current: 142741504
+anon 134287360
+file 5668864
+kernel 2035712
+du idle: 1.6M	/data
+## full contract run start 22:00:06
+.......large object: size=134217728 peak_tracemalloc=51751400 ETag="62ded3c249f6b76906d97f940270577e-16"
+14 passed, 30 deselected in 13.01s
+## full contract run end 22:00:21
+peak: 479043584
+current: 265564160
+anon 255598592
+file 5873664
+kernel 3117056
+OOM=false restarts=0
+du after run: 1.8M	/data
+## samples during run
+22:00:06 130.4MiB / 512MiB
+22:00:09 131.7MiB / 512MiB
+22:00:12 236.9MiB / 512MiB
+22:00:15 249.9MiB / 512MiB
+22:00:17 253.5MiB / 512MiB
+## disk script
+before: 1.8M
+after_upload: 129.9M
+after_delete_immediate: 1.8M
+after_delete_30s: 2.0M
+## done 22:01:07
+```
+
+### Mediciones parciales del paso 5 (histórico)
+
+Contenedor `pits-spike-seaweedfs`, `mem_limit=512m`, `GOMEMLIMIT=400MiB`, host Windows/WSL (Docker 29.8.2). Comandos:
 
 ```text
 docker stats --no-stream --format "{{.Name}} {{.MemUsage}} {{.MemPerc}}" pits-spike-seaweedfs
@@ -408,14 +508,135 @@ after_delete_30s: 1.3M
 - Al borrar el bucket el espacio se liberó de inmediato (129.3M -> 1.3M; 1.ª ejecución 128.7M -> 656.0K). Mi hipótesis previa ("SeaweedFS no libera hasta vacuum") no se cumplió para el borrado del bucket completo; no se probó borrar objetos dentro de un bucket que sigue existiendo (ahí sí podría hacer falta vacuum).
 - Se retiró la fila de `docker system df -v` (376,4 kB frente a 656K de `du`; otra lectura dio 610,6 kB frente a 904K): las cifras no cuadran y no hay evidencia para explicar la diferencia (podría ser cómo cuenta Docker el volumen frente a `du` dentro del contenedor, pero no se verificó).
 
-## Qué funcionó / qué falló
+## Qué funcionó / qué falló / con matices
 
-(pendiente)
+Resumen: no hubo ninguna falla dura. `14 passed` en `-m contract` (contra SeaweedFS 4.48 real) y `30 passed` offline; no se registró ningún `xfail`. Los matices, con su evidencia:
+
+**Resultado de las hipótesis**
+
+- H1 (API S3 compatible con boto3/s3fs/dbt): confirmada solo con boto3 1.43.111 en modo path-style. s3fs y dbt NO se probaron.
+- H2 (identidad S3 solo con variables de entorno): confirmada (paso 1; log `Added admin identity from AWS environment variables` y tests con esas credenciales).
+- H3 (endpoint de salud usable en un healthcheck): confirmada (`/healthz` 200 con `curl -fsS`; el contenedor queda `healthy`).
+
+**Funcionó**
+
+- Compatibilidad S3 con boto3 1.43.111 (path-style, credenciales por entorno): buckets, put/get/list, paginación, objetos vacíos, keys Unicode/espacios/`%`, NFC y NFD como objetos distintos, re-subida idempotente (pasos 3-4).
+- Multipart y streaming de 128 MiB (y 100 MiB) con hash verificado y memoria del cliente acotada (~51 MB); ETag multipart en formato S3 (paso 5).
+- Versioning, delete markers, Object Lock COMPLIANCE/GOVERNANCE y legal hold con los códigos esperados (`AccessDenied` / 403) (paso 6).
+- Hipótesis de checksums de boto3 >=1.36: no se confirmó, ni en `put_object` ni en multipart; no hizo falta configuración especial (pasos 4-5).
+- Persistencia: un objeto testigo sobrevive a `docker compose down` + `up -d` (sección "Persistencia", hash idéntico).
+- Credenciales por variables de entorno (`AWS_ACCESS_KEY_ID`/`AWS_SECRET_ACCESS_KEY`) sin archivo de config (paso 1); healthcheck `/healthz` estable.
+
+**Con matices (a tener en cuenta al decidir)**
+
+1. Memoria (hallazgo principal para dimensionar): con un solo objeto de 128 MiB y concurrencia 2, `memory.peak` del cgroup fue 420,2 / 440,5 / 456,8 MiB en tres corridas (la última, la corrida completa de `-m contract`), es decir 82-89 % del límite de 512 MiB. `GOMEMLIMIT` acota el heap de Go y `memory.peak` mide el cgroup completo: no son comparables. No hubo OOM, pero el margen es corto y no hay datos para afirmar una tendencia (ver "Lectura" de la medición final); con más concurrencia u objetos mayores no está medido.
+2. `put_object` sin versioning no devuelve `VersionId` (`None`) y `list_object_versions` reporta la versión como `"null"` (paso 4).
+3. `get_object_retention` de una versión sin retención devuelve `ObjectLockConfigurationNotFoundError` / 404 con el mensaje "Object Lock configuration does not exist for this bucket", impreciso para ese caso (no contrastado con AWS) (paso 6).
+4. Disco: al borrar un bucket completo el espacio se liberó de inmediato (129,9 MiB -> 1,8 MiB); no se probó borrar objetos dentro de un bucket que sigue vivo (ahí podría hacer falta vacuum) ni el crecimiento a largo plazo.
+5. Identidad única admin: no se probó el comportamiento con identidades sin `s3:BypassGovernanceRetention` ni con permisos acotados; Object Lock solo está probado frente a la identidad que además puede usar el bypass.
+6. Observación sin investigar: un objeto de 20 MiB subido con lecturas cortas (ETag sin `-N`) devolvió `PartsCount=5` en `get_object(PartNumber=1)`.
+7. Entorno: Docker sobre WSL2 en Windows, con el disco C: al 95 % (26 GB libres). Los números de memoria y disco pueden diferir en el VPS (Linux nativo).
+8. Aviso del log: la KEK de SSE-S3 se guarda en texto plano en el filer si no se define `s3.sse.kek.passphrase`; el cifrado en reposo no está habilitado en este spike.
+9. Trampas propias (dejaron lecciones, no son fallas de SeaweedFS): un stream con lecturas cortas cambia silenciosamente PUT simple/multipart; la memoria del cliente la acota `max_in_memory_upload_chunks`, no el tamaño del objeto.
+10. s3fs y dbt no probados: la compatibilidad S3 está verificada solo con boto3 (H1); queda pendiente antes de fijar D57.
+11. Operativo: cada corrida `-m contract` deja 2 buckets con retención (2-3 min) que se purgan en la siguiente corrida o con `purge.py`; no correr dos sesiones a la vez.
+
+## Persistencia y apagado
+
+Script `persist.py` (credenciales del entorno vía `load_settings`/`build_client`; `write` sube un objeto de 5 MiB aleatorio a `pits-contract-persist-<uuid8>` y guarda bucket y sha256 en un archivo temporal; `verify` lo relee; `purge` limpia):
+
+```python
+"""Persistence check: `write` stores a witness object, `verify` reads it back, `purge` cleans up."""
+
+import hashlib
+import os
+import sys
+import uuid
+
+sys.path.insert(0, "tests/contract")
+from s3_helpers import build_client, load_settings, purge_bucket
+
+STATE = os.path.join(os.environ.get("TEMP", "."), "pits_persist_state.txt")
+KEY = "raw/persist/witness.bin"
+s = load_settings(os.environ)
+c = build_client(s, s.access_key_id, s.secret_access_key)
+mode = sys.argv[1]
+if mode == "write":
+    bucket = f"pits-contract-persist-{uuid.uuid4().hex[:8]}"
+    body = os.urandom(5 * 1024 * 1024)
+    c.create_bucket(Bucket=bucket)
+    c.put_object(Bucket=bucket, Key=KEY, Body=body)
+    digest = hashlib.sha256(body).hexdigest()
+    open(STATE, "w").write(f"{bucket} {digest}")
+    print(f"written bucket={bucket} sha256={digest}")
+elif mode == "verify":
+    bucket, digest = open(STATE).read().split()
+    got = hashlib.sha256(c.get_object(Bucket=bucket, Key=KEY)["Body"].read()).hexdigest()
+    print(f"read bucket={bucket} sha256={got} equal={got == digest}")
+elif mode == "purge":
+    bucket, _ = open(STATE).read().split()
+    purge_bucket(c, bucket)
+    print("purged", bucket, "->", [b["Name"] for b in c.list_buckets()["Buckets"]])
+```
+
+Secuencia y salida:
+
+```text
+$ uv run --env-file .env python -I persist.py write
+written bucket=pits-contract-persist-29431c1f sha256=0add5a81785b79fa7646af36dca31547507671b6618bf1aa151a699a4c39d015
+$ docker compose -f docker-compose.spike.yml down          # SIN -v
+ Container pits-spike-seaweedfs Removed
+ Network pits-spike_default Removed
+$ docker ps -a --filter name=pits-spike --format "{{.Names}}"
+(vacío)
+$ docker volume ls --filter name=pits_spike
+DRIVER    VOLUME NAME
+local     pits_spike_seaweedfs_data
+$ docker compose -f docker-compose.spike.yml up -d
+ Container pits-spike-seaweedfs Started          # luego espera healthy
+$ uv run --env-file .env python -I persist.py verify
+read bucket=pits-contract-persist-29431c1f sha256=0add5a81785b79fa7646af36dca31547507671b6618bf1aa151a699a4c39d015 equal=True
+$ uv run --env-file .env python -I persist.py purge
+purged pits-contract-persist-29431c1f -> ['pits-contract-5c28fbaf', 'pits-contract-ba11a24e']
+```
+
+(Los dos buckets restantes son los de la corrida completa, con retención activa en ese momento; se purgaron después con `purge.py`.)
+
+Apagado final del spike (los dos buckets con retención de la corrida completa se purgaron antes; `list_buckets()` -> `[]`):
+
+```text
+$ docker compose -f docker-compose.spike.yml down          # SIN -v
+ Container pits-spike-seaweedfs Removed
+ Network pits-spike_default Removed
+$ docker ps -a --filter name=pits-spike --format "{{.Names}}"
+(vacío)
+$ docker volume ls --filter name=pits_spike
+DRIVER    VOLUME NAME
+local     pits_spike_seaweedfs_data
+```
+
+Para volver a levantarlo: `docker compose -f docker-compose.spike.yml up -d` (usa el `.env` local).
+
+Para borrar el volumen (destructivo; decisión de Henry, no se ejecutó): `docker compose -f docker-compose.spike.yml down -v`, o solo el volumen con `docker volume rm pits_spike_seaweedfs_data`.
 
 ## Borrador D57
 
-(pendiente)
+Estado: Propuesta (pendiente de aprobación de Henry; no está en `docs/05_decisions_log.md`). Formato idéntico a las filas de `05`:
+
+| D57 | Propuesta (2026-10-10) | Storage S3 local y de despliegue: SeaweedFS `chrislusf/seaweedfs:4.48` (digest `sha256:4e61d15fd35994cb1e43e1e553dff106794841fd9a99ade2fc8c8bfce4d7872d`), un contenedor `server -s3` (master + volume + filer + S3), solo `127.0.0.1:8333` publicado, volumen nombrado, credenciales admin desde `.env` (`S3_ACCESS_KEY_ID`/`S3_SECRET_ACCESS_KEY` mapeadas a `AWS_*`). `tests/contract` es el contrato del storage (marker `contract`, ver D58). Límite de memoria: ver opciones M1/M2 abajo (recomendada M1: `mem_limit` 768m + `GOMEMLIMIT` 600MiB; no validada a 768m; validación en VPS pendiente). Pendiente: compatibilidad con s3fs y dbt no probada (solo boto3). Inmutabilidad del raw (D29): opciones A/B abajo, pendiente de Henry (recomendada A). | MinIO comunitario ya no se distribuye (`06_status.md` §5: repo `minio/minio` archivado 2026-04-25, imágenes `minio/minio` y `minio/mc` en 404 en Docker Hub, CVE altos sin parche libre como CVE-2026-41145). Evidencia del spike (`docs/spikes/seaweedfs.md`): 14/14 tests de contrato y 30/30 offline pasan, sin `xfail`; multipart y streaming de 128 MiB con hash verificado; versioning y Object Lock (COMPLIANCE, GOVERNANCE, legal hold) con los códigos esperados; persistencia tras `down`/`up -d` con hash idéntico; reposo ~130 MiB; `memory.peak` 420-457 MiB con un objeto de 128 MiB y concurrencia 2 (82-89 % de 512 MiB); sin OOM; 129,9 MiB en disco para 128 MiB, liberados al borrar el bucket. | MinIO (imágenes sin distribución libre y repo archivado); Garage y otras alternativas S3 no evaluadas en este spike; almacenamiento en filesystem local sin S3 (rompe la ruta `raw/...` de `04_infra.md` §8.1 y el paso a un S3 real) |
+
+**Opciones de memoria (a decidir):**
+
+- M1 (recomendada): `mem_limit` y `memswap_limit` 768m con `GOMEMLIMIT` 600MiB. Con el pico medido de ~457 MiB deja ~310 MiB de margen (~40 %) y 768 MiB ≈ 0,75 GiB, en el límite superior del rango 0,3–0,8 GB de `04_infra.md` §9 (escrito para MinIO). Se justifica por el margen sobre el máximo observado (457 MiB; ver "Lectura" de la medición final). Hay que validarlo con una corrida de `-m contract` a 768m (no se hizo en este spike).
+- M2: mantener 512m y limitar la concurrencia de los clientes (`max_concurrency=1`, objetos <= 128 MiB, partes de 8 MiB). Ahorra RAM, pero el margen actual es de 55 MiB (11 %) con concurrencia 2, el efecto de limitarla no está medido y un cliente mal configurado puede provocar OOM del storage (afecta a todo el stack: D9 protege al resto del VPS, pero no al propio storage).
+
+**Opciones de inmutabilidad del raw (D29), pendiente de Henry:**
+
+- A (recomendada): convención write-once por `batch_id` (la ruta `raw/<source_system>/extraction_date=.../batch_id=<uuid>/payload.*` ya es única por lote, `04_infra.md` §8.1) + versioning activado en el bucket raw para proteger contra sobrescrituras accidentales. Sin dependencia de permisos IAM finos. Diferencia con B: el versioning protege de sobrescrituras accidentales, no de borrados deliberados de versiones por la misma identidad; B sí los impide solo con COMPLIANCE, o con GOVERNANCE si la identidad de ingesta no tiene `s3:BypassGovernanceRetention` (requiere identidades separadas, no probadas).
+- B: Object Lock GOVERNANCE en el bucket raw. Evidencia: funciona (delete sin bypass `AccessDenied`, con bypass éxito para la identidad admin), pero con la identidad única admin el bypass está disponible, así que no protege contra el propio proceso de ingesta; requeriría identidades separadas (no probadas en este spike). COMPLIANCE impide vaciar el bucket hasta que expira la retención (impráctico para raw con reprocesos).
 
 ## Borrador D58
 
-(pendiente)
+Estado: Propuesta (pendiente de aprobación de Henry; no está en `docs/05_decisions_log.md`).
+
+| D58 | Propuesta (2026-10-10) | Los tests de contrato del storage S3 (`tests/contract`, marker `contract`) quedan excluidos por defecto con `-m 'not contract'` en `addopts` (`pyproject.toml`) y se corren a mano con `uv run --env-file .env pytest -m contract` contra un endpoint local (`127.0.0.1`/`localhost`, validado por `load_settings`). El CI (`.github/workflows/ci.yml`) no los corre hasta que exista un job con service container de SeaweedFS (se retomará cuando haya Docker Compose del stack core). Los tests offline de `s3_helpers` sí corren siempre. Los buckets de prueba (`pits-contract-<uuid8>`) se limpian solos; los que tienen retención se purgan en la corrida siguiente o con `purge_contract_buckets`. | Un `pytest` por defecto debe ser determinista y no depender de servicios externos (CI y pre-commit verdes sin Docker); el `-m` de la CLI gana sobre el de `addopts` (verificado en el paso 3). | Marker con `skip` automático si falta el endpoint (oculta fallos de configuración: aquí un endpoint ausente falla con `pytest.fail`); correr los contract tests siempre en CI con service container ahora (aún no hay compose del stack ni job); un directorio fuera de `tests/` con su propio runner (duplica configuración) |
