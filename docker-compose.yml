@@ -1,0 +1,64 @@
+name: pits
+
+# Stack local de Pits. Servicios con profile "core"; se activan con COMPOSE_PROFILES=core (ver .env.example).
+# docker-compose.spike.yml se conserva aparte y comparte el puerto 8333: no levantar ambos a la vez.
+
+services:
+  seaweedfs:
+    image: chrislusf/seaweedfs:4.48@sha256:4e61d15fd35994cb1e43e1e553dff106794841fd9a99ade2fc8c8bfce4d7872d
+    container_name: pits-seaweedfs
+    profiles: ["core"]
+    # El entrypoint antepone -dir=/data -volume.max=0 -master.volumeSizeLimitMB=1024.
+    command: ["server", "-s3"]
+    environment:
+      # weed lee estas dos variables como identidad admin S3 (ver docs/spikes/seaweedfs.md).
+      AWS_ACCESS_KEY_ID: ${S3_ACCESS_KEY_ID:?set S3_ACCESS_KEY_ID in .env}
+      AWS_SECRET_ACCESS_KEY: ${S3_SECRET_ACCESS_KEY:?set S3_SECRET_ACCESS_KEY in .env}
+      GOMEMLIMIT: 600MiB
+    mem_limit: 768m
+    memswap_limit: 768m
+    restart: unless-stopped
+    ports:
+      # Solo S3 y solo loopback: master (9333), filer (8888) y gRPC no salen del contenedor.
+      - "127.0.0.1:8333:8333"
+    volumes:
+      - seaweedfs_data:/data
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8333/healthz"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
+
+  postgres:
+    # postgres 17.11 (PG_VERSION=17.11-1.pgdg12+2) Debian bookworm; digest = índice multi-arch (docker pull + imagetools inspect).
+    image: postgres:17.11-bookworm@sha256:3645570cccdfa447589da9f57dd740faa29b30938e861289a5574b6ca6b03826
+    container_name: pits-postgres
+    profiles: ["core"]
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:?set POSTGRES_USER in .env}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+      POSTGRES_DB: ${POSTGRES_DB:?set POSTGRES_DB in .env}
+      # Solo aplica al primer initdb del volumen: UTF8 + colacion builtin C.UTF-8 (busqueda sin tildes via unaccent en dbt).
+      POSTGRES_INITDB_ARGS: "--encoding=UTF8 --locale-provider=builtin --builtin-locale=C.UTF-8"
+    mem_limit: 1g
+    memswap_limit: 1g
+    shm_size: 256m
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:${POSTGRES_HOST_PORT:-5432}:5432"
+    volumes:
+      # La imagen declara VOLUME /var/lib/postgresql/data (PGDATA identico).
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -p 5432 -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 20s
+
+volumes:
+  seaweedfs_data:
+    name: pits_seaweedfs_data
+  postgres_data:
+    name: pits_postgres_data
