@@ -6,8 +6,9 @@ Imported by tests/pg/conftest.py and by tests/contract/test_fx_rate_load_e2e.py
 Isolation: roles are cluster-global, so every test gets its OWN database
 `pits_test_<uuid8>` and its OWN suffixed roles (`pits_owner_t<uuid8>`, ...). The real
 `pits_warehouse` database and the real `pits_owner/pits_loader/pits_reader` roles are never
-touched. Loader/reader passwords are random per test and only live in memory. Teardown drops
-the database and the roles. Only loopback and a port != 5432 are accepted (settings enforce it).
+touched. Loader/reader/transformer passwords are random per test and only live in memory.
+Teardown drops the database and the roles. Only loopback and a port != 5432 are accepted
+(settings enforce it).
 Run: `uv run --env-file ../pits-app/.env pytest -m pg -q` (admin = POSTGRES_USER/PASSWORD).
 """
 
@@ -29,7 +30,7 @@ from pits.warehouse.settings import Profile, RoleNames, WarehouseSettings, load_
 REAL_DB = "pits_warehouse"
 # Only names that match these EXACTLY (uuid8 suffix) may ever be swept; real names never match.
 _ORPHAN_DB_RE = re.compile(r"pits_test_[0-9a-f]{8}")
-_ORPHAN_ROLE_RE = re.compile(r"pits_(?:owner|loader|reader)_t[0-9a-f]{8}")
+_ORPHAN_ROLE_RE = re.compile(r"pits_(?:owner|loader|reader|transformer)_t[0-9a-f]{8}")
 
 
 def _admin_base() -> WarehouseSettings:
@@ -67,10 +68,12 @@ def pg_settings():
         dbname=f"pits_test_{tag}",
         loader_password=secrets.token_urlsafe(24),
         reader_password=secrets.token_urlsafe(24),
+        transformer_password=secrets.token_urlsafe(24),
         roles=RoleNames(
             owner=f"pits_owner_t{tag}",
             loader=f"pits_loader_t{tag}",
             reader=f"pits_reader_t{tag}",
+            transformer=f"pits_transformer_t{tag}",
         ),
     )
     assert settings.dbname != REAL_DB and settings.port != 5432
@@ -83,7 +86,12 @@ def _cleanup(settings: WarehouseSettings) -> None:
     try:
         db = sql.Identifier(settings.dbname)
         admin.execute(sql.SQL("DROP DATABASE IF EXISTS {} WITH (FORCE)").format(db))
-        for role in (settings.roles.loader, settings.roles.reader, settings.roles.owner):
+        for role in (
+            settings.roles.transformer,
+            settings.roles.loader,
+            settings.roles.reader,
+            settings.roles.owner,
+        ):
             admin.execute(sql.SQL("DROP ROLE IF EXISTS {}").format(sql.Identifier(role)))
     finally:
         admin.close()

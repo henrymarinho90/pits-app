@@ -5,7 +5,8 @@
   advisory lock; the applied file's sha256 is stored in `ops.schema_migration`.
 - A changed sha256 (or name) for an applied version is a permanent error: migrations are
   never edited, only added.
-- Files may use the placeholders `{{owner_role}}`, `{{loader_role}}`, `{{reader_role}}`
+- Files may use the placeholders `{{owner_role}}`, `{{loader_role}}`, `{{reader_role}}`,
+  `{{transformer_role}}`
   (substituted as quoted identifiers) so that grants work with the real roles and with the
   per-session roles used by tests. The recorded sha256 is over the raw file bytes.
 """
@@ -111,6 +112,7 @@ def render(migration: Migration, roles: RoleNames) -> str:
         migration.sql.replace("{{owner_role}}", _quote(roles.owner))
         .replace("{{loader_role}}", _quote(roles.loader))
         .replace("{{reader_role}}", _quote(roles.reader))
+        .replace("{{transformer_role}}", _quote(roles.transformer))
     )
 
 

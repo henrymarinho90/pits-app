@@ -5,11 +5,13 @@ from pits.warehouse.settings import Profile, load_warehouse_settings
 
 SENTINEL_LOADER = "sentinel-loader-pw-0123456789"
 SENTINEL_READER = "sentinel-reader-pw-0123456789"
+SENTINEL_TRANSFORMER = "sentinel-transformer-pw-0123456789"
 SENTINEL_ADMIN = "sentinel-admin-pw-0123456789"
 
 BASE_ENV = {
     "PITS_PG_LOADER_PASSWORD": SENTINEL_LOADER,
     "PITS_PG_READER_PASSWORD": SENTINEL_READER,
+    "PITS_PG_TRANSFORMER_PASSWORD": SENTINEL_TRANSFORMER,
     "POSTGRES_USER": "pits",
     "POSTGRES_PASSWORD": SENTINEL_ADMIN,
 }
@@ -22,6 +24,7 @@ def test_defaults():
     assert s.credentials(Profile.ADMIN) == ("pits", SENTINEL_ADMIN)
     assert s.credentials(Profile.LOADER) == ("pits_loader", SENTINEL_LOADER)
     assert s.credentials(Profile.READER) == ("pits_reader", SENTINEL_READER)
+    assert s.credentials(Profile.TRANSFORMER) == ("pits_transformer", SENTINEL_TRANSFORMER)
 
 
 def test_overrides():
@@ -70,6 +73,7 @@ def test_rejects_bad_db_name(name):
     [
         ("PITS_PG_LOADER_PASSWORD", Profile.LOADER),
         ("PITS_PG_READER_PASSWORD", Profile.READER),
+        ("PITS_PG_TRANSFORMER_PASSWORD", Profile.TRANSFORMER),
     ],
 )
 @pytest.mark.parametrize("value", ["", "   ", "short-pw-15-chr"])
@@ -92,6 +96,7 @@ def test_admin_password_only_needs_to_be_non_empty():
     [
         ("PITS_PG_LOADER_PASSWORD", Profile.LOADER),
         ("PITS_PG_READER_PASSWORD", Profile.READER),
+        ("PITS_PG_TRANSFORMER_PASSWORD", Profile.TRANSFORMER),
         ("POSTGRES_PASSWORD", Profile.ADMIN),
     ],
 )
@@ -123,7 +128,7 @@ def test_requires_a_profile():
 def test_repr_and_str_hide_passwords():
     s = load_warehouse_settings(BASE_ENV, ALL)
     text = repr(s) + str(s)
-    for secret in (SENTINEL_LOADER, SENTINEL_READER, SENTINEL_ADMIN):
+    for secret in (SENTINEL_LOADER, SENTINEL_READER, SENTINEL_TRANSFORMER, SENTINEL_ADMIN):
         assert secret not in text
 
 

@@ -104,23 +104,25 @@ def test_roles_have_least_privilege_attributes(pg_settings):
             for row in conn.execute(
                 "SELECT rolname, rolcanlogin, rolsuper, rolcreatedb, rolcreaterole, rolinherit, "
                 "rolreplication, rolbypassrls, rolconnlimit FROM pg_roles WHERE rolname = ANY(%s)",
-                ([r.owner, r.loader, r.reader],),
+                ([r.owner, r.loader, r.reader, r.transformer],),
             )
         }
         verifiers = dict(
             conn.execute(
                 "SELECT rolname, rolpassword FROM pg_authid WHERE rolname = ANY(%s)",
-                ([r.owner, r.loader, r.reader],),
+                ([r.owner, r.loader, r.reader, r.transformer],),
             ).fetchall()
         )
     # login, super, createdb, createrole, inherit, replication, bypassrls, connlimit
     assert rows[r.owner] == (False, False, False, False, False, False, False, -1)
     assert rows[r.loader] == (True, False, False, False, False, False, False, -1)
     assert rows[r.reader] == (True, False, False, False, False, False, False, -1)
+    assert rows[r.transformer] == (True, False, False, False, False, False, False, -1)
     assert verifiers[r.owner] is None
     for role, password in (
         (r.loader, pg_settings.loader_password),
         (r.reader, pg_settings.reader_password),
+        (r.transformer, pg_settings.transformer_password),
     ):
         assert verifiers[role].startswith("SCRAM-SHA-256$")
         assert password not in verifiers[role]
@@ -141,7 +143,7 @@ def test_bootstrap_is_idempotent_and_baseline_is_correct(pg_settings):
         ).fetchone()
         schemas = conn.execute(
             "SELECT nspname, pg_get_userbyid(nspowner) FROM pg_namespace "
-            "WHERE nspname IN ('ops', 'landing') ORDER BY 1"
+            "WHERE nspname IN ('ops', 'landing', 'staging', 'intermediate', 'marts') ORDER BY 1"
         ).fetchall()
         public_usage = conn.execute(
             "SELECT has_schema_privilege('public', 'public', 'CREATE')"
@@ -151,7 +153,9 @@ def test_bootstrap_is_idempotent_and_baseline_is_correct(pg_settings):
             "AND tablename = 'schema_migration'"
         ).fetchone()
     assert db == (r.owner, True, True, False, False)
-    assert schemas == [("landing", r.owner), ("ops", r.owner)]
+    assert schemas == [
+        (name, r.owner) for name in ("intermediate", "landing", "marts", "ops", "staging")
+    ]
     assert public_usage == (False,)
     assert table_owner == (r.owner,)
 

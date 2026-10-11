@@ -41,7 +41,7 @@ def migrate() -> None:
     """Bootstrap roles/database/schemas and apply pending migrations (idempotent)."""
     try:
         settings = load_warehouse_settings(
-            os.environ, (Profile.ADMIN, Profile.LOADER, Profile.READER)
+            os.environ, (Profile.ADMIN, Profile.LOADER, Profile.READER, Profile.TRANSFORMER)
         )
         result: MigrateResult = run_migrate(settings)
     except WarehouseTransientError as exc:

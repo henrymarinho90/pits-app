@@ -91,11 +91,12 @@ def test_render_substitutes_quoted_roles(tmp_path):
     _write(
         tmp_path,
         "0001_a.sql",
-        "GRANT SELECT ON t TO {{reader_role}}; -- {{owner_role}} {{loader_role}}",
+        "GRANT SELECT ON t TO {{reader_role}}; "
+        "-- {{owner_role}} {{loader_role}} {{transformer_role}}",
     )
     (migration,) = discover_migrations(tmp_path)
-    text = render(migration, RoleNames(owner="o_1", loader="l_1", reader="r_1"))
-    assert text == 'GRANT SELECT ON t TO "r_1"; -- "o_1" "l_1"'
+    text = render(migration, RoleNames(owner="o_1", loader="l_1", reader="r_1", transformer="t_1"))
+    assert text == 'GRANT SELECT ON t TO "r_1"; -- "o_1" "l_1" "t_1"'
     # The recorded hash is over the raw file, not the rendered text.
     assert migration.sha256 == hashlib.sha256(migration.sql.encode()).hexdigest()
 

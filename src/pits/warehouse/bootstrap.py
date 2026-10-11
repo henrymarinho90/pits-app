@@ -1,8 +1,8 @@
 """Layer 1 of D80: idempotent cluster/database bootstrap run as the admin (superuser) profile.
 
-Creates roles, the warehouse database, schemas `ops` and `landing`, the baseline privileges
-and `ops.schema_migration`. Re-running only re-asserts the same state (and rotates the
-password verifiers). Table-level grants belong to the SQL migrations (layer 2).
+Creates roles, the warehouse database, schemas `ops`, `landing` and the dbt schemas (D86),
+the baseline privileges and `ops.schema_migration`. Re-running only re-asserts the same state
+(and rotates the password verifiers). Table-level grants belong to the SQL migrations (layer 2).
 
 Role passwords are sent as SCRAM-SHA-256 verifiers computed in the client
 (`PGconn.encrypt_password`), so the plaintext never appears in SQL text, server logs or
@@ -32,6 +32,8 @@ RUN_LOCK_KEY = 0x5049545301  # run-wide advisory lock key, held in the maintenan
 LOCK_TIMEOUT = "10s"
 STATEMENT_TIMEOUT = "10min"
 SCHEMAS = ("ops", "landing")
+# Created by dbt as pits_transformer; owned by pits_owner so only the owner can drop them (D86).
+DBT_SCHEMAS = ("staging", "intermediate", "marts")
 
 # Least privilege: no superuser/createdb/createrole/replication/bypassrls; NOINHERIT because
 # the roles have no memberships and must never gain privileges implicitly.
@@ -70,9 +72,11 @@ def _bootstrap_roles(conn: psycopg.Connection, settings: WarehouseSettings) -> N
     roles = settings.roles
     _, loader_password = settings.credentials(Profile.LOADER)
     _, reader_password = settings.credentials(Profile.READER)
+    _, transformer_password = settings.credentials(Profile.TRANSFORMER)
     _upsert_role(conn, roles.owner, login=False, password=None)
     _upsert_role(conn, roles.loader, login=True, password=loader_password)
     _upsert_role(conn, roles.reader, login=True, password=reader_password)
+    _upsert_role(conn, roles.transformer, login=True, password=transformer_password)
 
 
 def _bootstrap_database(conn: psycopg.Connection, settings: WarehouseSettings) -> None:
@@ -90,13 +94,15 @@ def _bootstrap_database(conn: psycopg.Connection, settings: WarehouseSettings) -
 def _bootstrap_objects(conn: psycopg.Connection, settings: WarehouseSettings) -> None:
     """Runs in one transaction inside the warehouse database."""
     r = settings.roles
-    owner, loader, reader = (sql.Identifier(n) for n in (r.owner, r.loader, r.reader))
+    owner, loader, reader, transformer = (
+        sql.Identifier(n) for n in (r.owner, r.loader, r.reader, r.transformer)
+    )
     db = sql.Identifier(settings.dbname)
     run = conn.execute
 
     run(sql.SQL("REVOKE ALL ON DATABASE {} FROM PUBLIC").format(db))
     run(sql.SQL("GRANT CONNECT, TEMPORARY ON DATABASE {} TO {}").format(db, loader))
-    run(sql.SQL("GRANT CONNECT ON DATABASE {} TO {}").format(db, reader))
+    run(sql.SQL("GRANT CONNECT ON DATABASE {} TO {}, {}").format(db, reader, transformer))
     run("REVOKE ALL ON SCHEMA public FROM PUBLIC")
 
     for schema in SCHEMAS:
@@ -105,6 +111,27 @@ def _bootstrap_objects(conn: psycopg.Connection, settings: WarehouseSettings) ->
         run(sql.SQL("ALTER SCHEMA {} OWNER TO {}").format(name, owner))
         run(sql.SQL("REVOKE ALL ON SCHEMA {} FROM PUBLIC").format(name))
         run(sql.SQL("GRANT USAGE ON SCHEMA {} TO {}, {}").format(name, loader, reader))
+    # dbt schemas: the transformer builds there (USAGE+CREATE); the reader only sees marts (D86).
+    for schema in DBT_SCHEMAS:
+        name = sql.Identifier(schema)
+        run(sql.SQL("CREATE SCHEMA IF NOT EXISTS {} AUTHORIZATION {}").format(name, owner))
+        run(sql.SQL("ALTER SCHEMA {} OWNER TO {}").format(name, owner))
+        run(sql.SQL("REVOKE ALL ON SCHEMA {} FROM PUBLIC, {}").format(name, reader))
+        run(sql.SQL("GRANT USAGE, CREATE ON SCHEMA {} TO {}").format(name, transformer))
+    run(sql.SQL("GRANT USAGE ON SCHEMA marts TO {}").format(reader))
+    run(sql.SQL("GRANT USAGE ON SCHEMA landing, ops TO {}").format(transformer))
+    # Tables dbt creates in marts become readable by the reader (D86).
+    run(
+        sql.SQL(
+            "ALTER DEFAULT PRIVILEGES FOR ROLE {} IN SCHEMA marts GRANT SELECT ON TABLES TO {}"
+        ).format(transformer, reader)
+    )
+    # Tables the owner creates in landing become readable by the transformer and reader.
+    run(
+        sql.SQL(
+            "ALTER DEFAULT PRIVILEGES FOR ROLE {} IN SCHEMA landing GRANT SELECT ON TABLES TO {}"
+        ).format(owner, transformer)
+    )
     # Tables the owner creates in landing become readable by the reader (D79).
     run(
         sql.SQL(
