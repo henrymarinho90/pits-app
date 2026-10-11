@@ -43,9 +43,9 @@ def _versioning(stubber: Stubber, status: str | None) -> None:
     stubber.add_response("get_bucket_versioning", response, BUCKET_PARAMS)
 
 
-def _create_path(stubber: Stubber) -> None:
-    """head 404 -> create -> versioning off -> enable -> verify."""
-    _head_error(stubber, "404", 404)
+def _create_path(stubber: Stubber, code: str = "404") -> None:
+    """head missing -> create -> versioning off -> enable -> verify."""
+    _head_error(stubber, code, 404)
     stubber.add_response("create_bucket", {}, BUCKET_PARAMS)
     _versioning(stubber, None)
     stubber.add_response("put_bucket_versioning", {}, ENABLE)
@@ -55,11 +55,7 @@ def _create_path(stubber: Stubber) -> None:
 @pytest.mark.parametrize("code", ["404", "NoSuchBucket", "NotFound"])
 def test_creates_bucket_and_enables_versioning(client: BaseClient, code: str) -> None:
     with Stubber(client) as stubber:
-        _head_error(stubber, code, 404)
-        stubber.add_response("create_bucket", {}, BUCKET_PARAMS)
-        _versioning(stubber, None)
-        stubber.add_response("put_bucket_versioning", {}, ENABLE)
-        _versioning(stubber, "Enabled")
+        _create_path(stubber, code)
         result = ensure_raw_bucket(client, BUCKET)
         stubber.assert_no_pending_responses()
     assert result == EnsureResult(BUCKET, created=True, versioning_changed=True)
