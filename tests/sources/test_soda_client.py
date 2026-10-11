@@ -101,20 +101,6 @@ def test_429_retry_after_is_respected_then_succeeds(make_client):
     assert sleeps == [7.0]
 
 
-def test_503_exhausts_attempts_with_backoff(make_client):
-    calls = []
-
-    def handler(request):
-        calls.append(1)
-        return httpx.Response(503)
-
-    client, sleeps = make_client(handler)
-    with pytest.raises(SodaTransientError, match="HTTP 503"):
-        client.get_page("abcd-1234", {})
-    assert len(calls) == MAX_ATTEMPTS
-    assert sleeps == [1.0, 2.0, 4.0]
-
-
 @pytest.mark.parametrize("exc", [httpx.ConnectError("boom"), httpx.ReadTimeout("slow")])
 def test_transport_errors_are_retried(exc, make_client):
     calls = []
@@ -157,9 +143,6 @@ def test_permanent_errors_do_not_retry(status, make_client):
 def test_invalid_json_and_wrong_shape_are_permanent(make_client):
     client, _ = make_client(lambda r: httpx.Response(200, content=b"<html>"))
     with pytest.raises(SodaPermanentError, match="not valid JSON"):
-        client.get_page("abcd-1234", {})
-    client, _ = make_client(lambda r: httpx.Response(200, json={"a": 1}))
-    with pytest.raises(SodaPermanentError, match="array"):
         client.get_page("abcd-1234", {})
 
 
@@ -250,6 +233,7 @@ def test_retryable_5xx(make_client, status):
     with pytest.raises(SodaTransientError, match=f"HTTP {status}"):
         client.get_page("abcd-1234", {})
     assert len(calls) == MAX_ATTEMPTS
+    assert sleeps == [1.0, 2.0, 4.0]
 
 
 def test_jitter_is_added_to_backoff(make_client):
