@@ -31,7 +31,7 @@ jobs:
 
       - name: Sync dependencies
         # Sin instalar el proyecto: la auditoria solo necesita ruff.
-        run: uv sync --locked --no-install-project
+        run: uv sync --locked --no-install-project --only-group dev
 
       - uses: anthropics/claude-code-action@v1
         with:

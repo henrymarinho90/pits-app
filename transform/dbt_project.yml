@@ -1,0 +1,21 @@
+name: pits_transform
+version: "0.1.0"
+config-version: 2
+profile: pits_transform
+
+# Telemetry off (D85). DO_NOT_TRACK=1 is also set by the CLI wrapper (D88).
+flags:
+  send_anonymous_usage_stats: false
+
+model-paths: ["models"]
+test-paths: ["tests"]
+macro-paths: ["macros"]
+
+models:
+  pits_transform:
+    staging:
+      +materialized: view
+      +schema: staging
+    marts:
+      +materialized: table
+      +schema: marts

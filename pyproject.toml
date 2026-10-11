@@ -18,6 +18,14 @@ dev = [
     "pytest>=8",
     "ruff>=0.17",
 ]
+transform = [
+    "dbt-core>=1.12,<1.13",
+    "dbt-postgres>=1.11,<1.12",
+]
+
+[tool.uv]
+default-groups = ["dev", "transform"]
+exclude-dependencies = ["dbt-core-experimental-parser"]
 
 [build-system]
 requires = ["uv_build>=0.8,<0.12"]

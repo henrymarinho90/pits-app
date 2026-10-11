@@ -1,0 +1,22 @@
+version: 2
+
+sources:
+  - name: landing
+    schema: landing
+    tables:
+      - name: fx_rate
+        description: "Daily FX rates as normalized by the loader (D79, D81)."
+        columns:
+          - name: rate_date
+          - name: currency_from
+          - name: currency_to
+          - name: rate
+          - name: source_system
+          - name: source_reference
+          - name: load_id
+
+  - name: ops
+    schema: ops
+    tables:
+      - name: load_run
+        description: "Audit of effective loads into landing (D81)."
