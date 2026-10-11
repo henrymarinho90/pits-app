@@ -1,13 +1,17 @@
 #!/usr/bin/env bash
-# Mide memoria/OOM de pits-seaweedfs durante CMD (por defecto la suite contract), RUNS veces.
-# CMD (opcional) reemplaza la carga medida; por defecto la suite contract.
+# Mide memoria/OOM de un contenedor ($C, por defecto pits-seaweedfs) durante CMD, RUNS veces.
+# CMD (opcional) reemplaza la carga medida; por defecto la suite contract (SeaweedFS, D63).
 # CMD se imprime en el log: no incluir secretos en el.
-# Cada corrida: restart -> healthy -> reposo -> contract -> memory.peak/OOM/restarts.
+# Cada corrida: restart -> healthy -> reposo -> CMD -> memory.peak/OOM/restarts.
 # Criterio: todas las corridas verdes, OOMKilled=false, oom_kill=0, RestartCount=0
-# y max(memory.peak) < PEAK_LIMIT (85 % de 768 MiB). Exit 1 si no se cumple.
-# Valida antes de medir el limite del cgroup (memory/memswap) y GOMEMLIMIT del contenedor.
-# Requiere el stack core arriba (docker compose up -d) y .env con S3_*. No imprime el entorno.
-# Efectos: reinicia $C y deja buckets pits-contract-* (Object Lock) en el volumen.
+# y max(memory.peak) < PEAK_LIMIT (por defecto 85 % de 768 MiB, el limite de SeaweedFS).
+# Valida antes de medir el limite del cgroup (memory/memswap = EXPECTED_LIMIT) y GOMEMLIMIT del
+# contenedor (esta ultima solo si EXPECTED_GOMEMLIMIT no esta vacia).
+# DATA_DIR (por defecto /data) es el directorio cuyo tamano se informa al final de cada corrida;
+# vacio = se omite (p. ej. Postgres: DATA_DIR=/var/lib/postgresql/data).
+# Requiere el stack core arriba (docker compose up -d); la carga por defecto necesita .env con
+# S3_*. No imprime el entorno.
+# Efectos: reinicia $C; la carga por defecto deja buckets pits-contract-* (Object Lock) en el volumen.
 set -euo pipefail
 export MSYS_NO_PATHCONV=1
 
@@ -17,8 +21,11 @@ IDLE_SECONDS="${IDLE_SECONDS:-120}"
 GAP_SECONDS="${GAP_SECONDS:-180}" # buckets Object Lock COMPLIANCE: >= 3 min entre corridas
 PEAK_LIMIT="${PEAK_LIMIT:-684510412}"
 EXPECTED_LIMIT="${EXPECTED_LIMIT:-805306368}" # 768 MiB
-EXPECTED_GOMEMLIMIT="${EXPECTED_GOMEMLIMIT:-500MiB}" # D63
+# Sin ":" a proposito: variable NO definida -> 500MiB (D63); definida pero vacia -> no se valida
+# GOMEMLIMIT (contenedores que no son Go, p. ej. pits-postgres).
+EXPECTED_GOMEMLIMIT="${EXPECTED_GOMEMLIMIT-500MiB}"
 HEALTH_TIMEOUT="${HEALTH_TIMEOUT:-180}"
+DATA_DIR="${DATA_DIR-/data}" # vacio: no informar tamano de datos
 CMD="${CMD:-uv run --env-file .env pytest -m contract -q -s}"
 
 [[ "$RUNS" =~ ^[1-9][0-9]*$ ]] || { echo "FAIL: RUNS debe ser entero >= 1 (RUNS=$RUNS)" >&2; exit 1; }
@@ -40,9 +47,13 @@ echo "## limits"
 limits="$(docker inspect -f '{{.HostConfig.Memory}} {{.HostConfig.MemorySwap}}' "$C")"
 echo "memory/memswap: $limits (esperado: $EXPECTED_LIMIT $EXPECTED_LIMIT)"
 [ "$limits" = "$EXPECTED_LIMIT $EXPECTED_LIMIT" ] || { echo "FAIL: limite de memoria inesperado" >&2; exit 1; }
-gml="$(docker exec "$C" sh -c 'echo $GOMEMLIMIT')"
-echo "GOMEMLIMIT=$gml (esperado: $EXPECTED_GOMEMLIMIT)"
-[ "$gml" = "$EXPECTED_GOMEMLIMIT" ] || { echo "FAIL: GOMEMLIMIT inesperado" >&2; exit 1; }
+if [ -n "$EXPECTED_GOMEMLIMIT" ]; then
+  gml="$(docker exec "$C" sh -c 'echo $GOMEMLIMIT')"
+  echo "GOMEMLIMIT=$gml (esperado: $EXPECTED_GOMEMLIMIT)"
+  [ "$gml" = "$EXPECTED_GOMEMLIMIT" ] || { echo "FAIL: GOMEMLIMIT inesperado" >&2; exit 1; }
+else
+  echo "GOMEMLIMIT: no se valida (EXPECTED_GOMEMLIMIT vacio)"
+fi
 
 fail=0
 max_peak=0
@@ -84,7 +95,7 @@ for run in $(seq 1 "$RUNS"); do
   oomk="$(docker inspect -f '{{.State.OOMKilled}}' "$C")"
   restarts="$(docker inspect -f '{{.RestartCount}}' "$C")"
   echo "OOMKilled=$oomk RestartCount=$restarts"
-  echo "du /data: $(docker exec "$C" du -sh /data)"
+  if [ -n "$DATA_DIR" ]; then echo "du $DATA_DIR: $(docker exec "$C" du -sh "$DATA_DIR")"; fi
 
   rows+=("$run rc=$rc peak=$peak oom_kill=$oom_kill OOMKilled=$oomk restarts=$restarts")
   [ "$peak" -gt "$max_peak" ] && max_peak="$peak"
