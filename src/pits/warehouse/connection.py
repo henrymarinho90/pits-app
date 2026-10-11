@@ -14,6 +14,13 @@ needs_password) the server answered, so the failure is permanent. Transient (ret
 connection refused, timeout, DNS/socket errors and "starting up" (57P03), all of which
 happen before authentication. Rejections that occur before any password is exchanged
 (e.g. 28000 under trust/pg_hba reject) cannot be told apart and are treated as transient.
+Known limitation (opposite direction): a transient server refusal sent AFTER authentication,
+such as 53300 "remaining connection slots are reserved ...", also arrives without sqlstate on
+connect and with the password already used, so it is classified permanent (exit 1) although a
+retry might succeed.
+
+Typed errors are raised outside the `except` blocks (so `__context__` is None): the original
+psycopg error references the pgconn, which holds the password. The CLIs print only str(exc).
 """
 
 from __future__ import annotations
@@ -135,17 +142,25 @@ def connect(
     conninfo = build_conninfo(
         settings, profile, dbname=target_db, application_name=application_name
     )
+    # The typed error is raised OUTSIDE the except blocks so that its __context__ is None:
+    # the original psycopg error references the pgconn, which holds the password.
+    failure: WarehouseError | None = None
+    conn: psycopg.Connection | None = None
     try:
         conn = psycopg.connect(conninfo, autocommit=True)
     except psycopg.Error as exc:
-        raise classify_connect_error(exc, f"connect as {profile.value}") from None
+        failure = classify_connect_error(exc, f"connect as {profile.value}")
+    if failure is not None or conn is None:
+        raise failure or WarehousePermanentError("connect failed")
     try:
         verify_server(conn, target_db)
         conn.autocommit = autocommit
     except psycopg.Error as exc:
-        conn.close()
-        raise to_warehouse_error(exc, "server identity check") from None
+        failure = to_warehouse_error(exc, "server identity check")
     except Exception:
         conn.close()
         raise
+    if failure is not None:
+        conn.close()
+        raise failure
     return conn

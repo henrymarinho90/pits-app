@@ -122,3 +122,19 @@ def test_connect_error_with_sqlstate_uses_sqlstate_rules():
 
 
 # TODO(S5): tests/pg must cover "wrong password -> exit 1" against a real server.
+
+
+def test_connect_failure_does_not_keep_the_pgconn_as_context(monkeypatch):
+    """The driver error references the pgconn (password); the typed error must not chain it."""
+    import pits.warehouse.connection as connection
+
+    pgconn = _PgConn(used_password=True, password=PASSWORD)
+
+    def refuse(*args, **kwargs):
+        raise psycopg.OperationalError("password authentication failed", pgconn=pgconn)
+
+    monkeypatch.setattr(connection.psycopg, "connect", refuse)
+    with pytest.raises(WarehousePermanentError) as info:
+        connection.connect(_settings(), Profile.LOADER, env={})
+    assert info.value.__context__ is None and info.value.__cause__ is None
+    assert PASSWORD not in str(info.value) and PASSWORD not in repr(info.value)

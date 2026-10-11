@@ -7,6 +7,7 @@ from pits.normalized.cli import normalize_app
 from pits.sources.cli import extract_app
 from pits.storage.cli import storage_app
 from pits.warehouse.cli import db_app
+from pits.warehouse.load_cli import load_app
 
 app = typer.Typer(
     help="Pits App data platform CLI.",
@@ -18,6 +19,7 @@ app.add_typer(storage_app, name="storage")
 app.add_typer(extract_app, name="extract")
 app.add_typer(normalize_app, name="normalize")
 app.add_typer(db_app, name="db")
+app.add_typer(load_app, name="load")
 
 
 # Root callback keeps `version` as a subcommand (Typer collapses single-command apps).

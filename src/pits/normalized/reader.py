@@ -17,7 +17,7 @@ from __future__ import annotations
 
 import hashlib
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import date, datetime
 
 from pits.ingestion.manifest import sha256_hex
@@ -65,6 +65,7 @@ class SelectedArtifact:
     manifest_key: str
     manifest_sha256: str
     csv_key: str
+    manifest_bytes: bytes = field(repr=False)  # verbatim, stored as jsonb in ops.load_run
 
     @property
     def last_input(self) -> InputRef:
@@ -202,7 +203,8 @@ def _load_manifest(store: RawStore, directory: str) -> SelectedArtifact | None:
 
     until = _UNTIL_RE.search(directory)
     fingerprint = _FINGERPRINT_RE.search(directory)
-    assert until is not None and fingerprint is not None  # guaranteed by _candidate_dirs
+    if until is None or fingerprint is None:  # unreachable: _candidate_dirs filters these
+        raise _permanent(f"{key}: not under an inputs_until/fingerprint directory")
     if manifest.input_fingerprint != fingerprint.group(1):
         raise _permanent(f"{key}: input_fingerprint does not match its key")
     if last_input(manifest).extraction_date.isoformat() != until.group(1):
@@ -210,7 +212,7 @@ def _load_manifest(store: RawStore, directory: str) -> SelectedArtifact | None:
     csv_key = directory + CSV_NAME
     if manifest.output.key != csv_key:
         raise _permanent(f"{key}: output.key does not match its key")
-    return SelectedArtifact(manifest, key, sha256_hex(data), csv_key)
+    return SelectedArtifact(manifest, key, sha256_hex(data), csv_key, data)
 
 
 def _check_expected(selected: SelectedArtifact, raw_bucket: str) -> str | None:
