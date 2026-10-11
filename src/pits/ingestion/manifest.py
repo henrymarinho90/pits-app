@@ -397,15 +397,16 @@ def _from_dict(raw: Any) -> Manifest:
     )
 
 
-def find_latest_committed(store: RawStore, source_system: str, dataset_id: str) -> Manifest | None:
-    """Return the most recent committed manifest of (source_system, dataset_id), or None.
+def commit_order_key(m: Manifest) -> tuple[date, datetime, str]:
+    """Total commit order of batches: (extraction_date, finished_at, batch_id).
 
-    Partitions are scanned newest first; the first partition holding at least one committed
-    batch wins, and inside it the batch with the greatest finished_at is returned. Batches
-    without manifest.json are orphans (crashed runs) and are skipped. Unexpected prefixes,
-    corrupt manifests, or manifests of another source/dataset/batch fail loudly: silently
-    skipping them could make the next incremental run reload or skip data.
+    Independent of LIST order; batch_id is only a deterministic tie-break (never read as a date).
     """
+    return (m.extraction_date, m.finished_at, m.batch_id)
+
+
+def _partitions(store: RawStore, source_system: str) -> list[tuple[date, str]]:
+    """Partition prefixes of a source system, sorted ascending by date (strict on odd prefixes)."""
     root = f"{source_system}/"
     partitions: list[tuple[date, str]] = []
     for prefix in store.list_prefixes(root):
@@ -413,41 +414,71 @@ def find_latest_committed(store: RawStore, source_system: str, dataset_id: str) 
         if match is None:
             raise ManifestError(f"Unexpected prefix under '{root}': {prefix!r}")
         partitions.append((_date(match.group(1), f"partition {prefix!r}"), prefix))
+    return sorted(partitions)
 
-    for partition_date, partition in sorted(partitions, reverse=True):
-        committed: list[Manifest] = []
-        for batch in store.list_prefixes(partition):
-            match = (
-                _BATCH_RE.fullmatch(batch[len(partition) :])
-                if batch.startswith(partition)
-                else None
+
+def _read_partition(
+    store: RawStore, source_system: str, dataset_id: str, partition_date: date, partition: str
+) -> list[Manifest]:
+    """Strictly read the committed manifests of one partition (orphans are skipped)."""
+    committed: list[Manifest] = []
+    for batch in store.list_prefixes(partition):
+        match = (
+            _BATCH_RE.fullmatch(batch[len(partition) :]) if batch.startswith(partition) else None
+        )
+        if match is None:
+            raise ManifestError(f"Unexpected prefix under '{partition}': {batch!r}")
+        batch_id = match.group(1)
+        try:
+            valid = str(uuid.UUID(batch_id)) == batch_id
+        except ValueError:
+            valid = False
+        if not valid:
+            raise ManifestError(f"Invalid batch_id in prefix {batch!r}")
+        key = manifest_key(batch)
+        try:
+            data = store.get(key)
+        except RawObjectNotFoundError:
+            continue  # orphan batch: no manifest, never committed
+        try:
+            manifest = Manifest.from_json(data)
+        except ManifestError as exc:
+            raise ManifestError(f"{key}: {exc}") from exc
+        if (manifest.source_system, manifest.dataset_id) != (source_system, dataset_id):
+            raise ManifestError(
+                f"{key}: belongs to {manifest.source_system}/{manifest.dataset_id}, "
+                f"expected {source_system}/{dataset_id}"
             )
-            if match is None:
-                raise ManifestError(f"Unexpected prefix under '{partition}': {batch!r}")
-            batch_id = match.group(1)
-            try:
-                valid = str(uuid.UUID(batch_id)) == batch_id
-            except ValueError:
-                valid = False
-            if not valid:
-                raise ManifestError(f"Invalid batch_id in prefix {batch!r}")
-            key = manifest_key(batch)
-            try:
-                data = store.get(key)
-            except RawObjectNotFoundError:
-                continue  # orphan batch: no manifest, never committed
-            try:
-                manifest = Manifest.from_json(data)
-            except ManifestError as exc:
-                raise ManifestError(f"{key}: {exc}") from exc
-            if (manifest.source_system, manifest.dataset_id) != (source_system, dataset_id):
-                raise ManifestError(
-                    f"{key}: belongs to {manifest.source_system}/{manifest.dataset_id}, "
-                    f"expected {source_system}/{dataset_id}"
-                )
-            if manifest.batch_id != batch_id or manifest.extraction_date != partition_date:
-                raise ManifestError(f"{key}: batch_id/extraction_date do not match its location")
-            committed.append(manifest)
+        if manifest.batch_id != batch_id or manifest.extraction_date != partition_date:
+            raise ManifestError(f"{key}: batch_id/extraction_date do not match its location")
+        committed.append(manifest)
+    return committed
+
+
+def list_committed(store: RawStore, source_system: str, dataset_id: str) -> tuple[Manifest, ...]:
+    """Return every committed manifest of (source_system, dataset_id) in commit order.
+
+    Reads all partitions with the same strict validation as find_latest_committed: a corrupt
+    manifest in any partition, an unexpected prefix, or a manifest of another source/dataset or
+    in the wrong location raises ManifestError. Orphan batches (no manifest) are ignored.
+    """
+    result: list[Manifest] = []
+    for partition_date, partition in _partitions(store, source_system):
+        result.extend(_read_partition(store, source_system, dataset_id, partition_date, partition))
+    return tuple(sorted(result, key=commit_order_key))
+
+
+def find_latest_committed(store: RawStore, source_system: str, dataset_id: str) -> Manifest | None:
+    """Return the most recent committed manifest of (source_system, dataset_id), or None.
+
+    Partitions are scanned newest first and only until one holds a committed batch; inside it
+    the greatest commit_order_key wins (equals list_committed(...)[-1]). Batches without
+    manifest.json are orphans (crashed runs) and are skipped. Unexpected prefixes, corrupt
+    manifests, or manifests of another source/dataset/batch fail loudly: silently skipping
+    them could make the next incremental run reload or skip data.
+    """
+    for partition_date, partition in reversed(_partitions(store, source_system)):
+        committed = _read_partition(store, source_system, dataset_id, partition_date, partition)
         if committed:
-            return max(committed, key=lambda m: (m.finished_at, m.batch_id))
+            return max(committed, key=commit_order_key)
     return None
