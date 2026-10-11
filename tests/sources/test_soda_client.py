@@ -279,3 +279,11 @@ def test_non_transport_request_error_is_permanent(make_client):
     with pytest.raises(SodaPermanentError, match="DecodingError"):
         client.get_page("abcd-1234", {})
     assert sleeps == []
+
+
+def test_uses_app_token_flag_without_exposing_token(make_client):
+    with_token, _ = make_client(lambda r: httpx.Response(200, json=[]))
+    without_token, _ = make_client(lambda r: httpx.Response(200, json=[]), token=None)
+    assert with_token.uses_app_token is True
+    assert without_token.uses_app_token is False
+    assert TOKEN not in repr(with_token)

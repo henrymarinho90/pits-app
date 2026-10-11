@@ -127,7 +127,11 @@ class Manifest:
             raise ManifestError("incremental mode requires watermark.to_observed")
         if self.row_count > 0 and wm.to_observed is None:
             raise ManifestError("a batch with rows requires watermark.to_observed")
-        if wm.from_exclusive and wm.to_observed and wm.to_observed < wm.from_exclusive:
+        if (
+            wm.from_exclusive is not None
+            and wm.to_observed is not None
+            and wm.to_observed < wm.from_exclusive
+        ):
             raise ManifestError("watermark.to_observed must not be before from_exclusive")
         if wm.mode == "incremental" and self.row_count == 0 and wm.to_observed != wm.from_exclusive:
             raise ManifestError("an empty incremental batch must carry the watermark forward")

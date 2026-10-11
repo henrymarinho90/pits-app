@@ -80,6 +80,12 @@ class SodaClient:
         )
         self._sleep = sleep
         self._jitter = jitter
+        self._uses_token = bool(settings.app_token)
+
+    @property
+    def uses_app_token(self) -> bool:
+        """Whether requests carry X-App-Token (the token itself is never exposed)."""
+        return self._uses_token
 
     def __repr__(self) -> str:
         return f"SodaClient(base_url={str(self._http.base_url)!r})"
