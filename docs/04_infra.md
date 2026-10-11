@@ -1,7 +1,7 @@
 # 04 — Infraestructura y operación
 
 Última actualización: 2026-10-11
-Estado: v7 — zona normalized `pits-normalized` en §8.2 (D74, D75, D76); sin cambios en `docker-compose.yml`. Antes: v6 — nota de separación OLTP/warehouse en §7 y §8.3 (D70); sin cambios en `docker-compose.yml`. Antes: v5 — perfil `core` implementado en `docker-compose.yml` (D60–D63); §8.1 con el contrato del batch raw de la ingesta (D65, paso 3 de Fase 1).
+Estado: v8 — PostgreSQL del warehouse implementado en §8.3 (base `pits_warehouse`, schemas `landing` y `ops`, roles de mínimo privilegio, conexión solo loopback; D79–D82); medición de memoria de Postgres y cambios de `scripts/measure_storage_memory.sh` en §9; notas de roles, `sslmode` y log en §11 y §13 (2026-10-11). Antes: v7 — zona normalized `pits-normalized` en §8.2 (D74, D75, D76); sin cambios en `docker-compose.yml`. Antes: v6 — nota de separación OLTP/warehouse en §7 y §8.3 (D70); sin cambios en `docker-compose.yml`. Antes: v5 — perfil `core` implementado en `docker-compose.yml` (D60–D63); §8.1 con el contrato del batch raw de la ingesta (D65, paso 3 de Fase 1).
 
 ## 1. Objetivo
 
@@ -208,14 +208,14 @@ Zona normalized de la TRM (D74, D75, D76; hito TRM normalize, 2026-10-11):
 
 ### 8.3 PostgreSQL
 
-Separación lógica sugerida:
+Implementado en el hito loader fx_rate (D79–D82, 2026-10-11), en el perfil `core` local (volumen `pits_postgres_data`, D60):
 
-- `source` o schemas equivalentes para datos cargados;
-- `staging` administrado por dbt;
-- `intermediate`;
-- `analytics` / marts.
-
-La nomenclatura definitiva se decidirá al crear el proyecto dbt.
+- Base `pits_warehouse` (`PITS_WAREHOUSE_DB`). Schemas `landing` (carga; contiene `landing.fx_rate`) y `ops` (`schema_migration` y `load_run`), creados por `pits db migrate`.
+- Schemas `staging`, `intermediate` y `marts`: los crea dbt en el hito siguiente. Su nomenclatura definitiva se confirma al crear el proyecto dbt.
+- Roles de mínimo privilegio (D79): `pits_owner` NOLOGIN, dueño de la base y de los schemas; `pits_loader` (inserta y actualiza `landing.fx_rate`; inserta en `ops.load_run` y actualiza solo sus tres contadores; sin DDL ni TRUNCATE); `pits_reader` (solo SELECT en `landing` y `ops.load_run`). Ningún rol es superusuario. El superusuario de la imagen (`POSTGRES_USER`) se usa solo en `pits db migrate`.
+- Contraseñas de loader y reader desde `.env` (`PITS_PG_LOADER_PASSWORD` y `PITS_PG_READER_PASSWORD`, 16 caracteres o más). Se envían como verificador SCRAM-SHA-256 calculado en el cliente, y cada `pits db migrate` las vuelve a fijar desde `.env`.
+- Conexión: solo loopback (`127.0.0.1`, `localhost`, `::1`) y puerto distinto de 5432 (default 5433). `sslmode=disable` se acepta solo en loopback. En el VPS requiere una decisión nueva (D nueva) antes de usarse, con cifrado de tránsito.
+- Riesgo de logs: con `log_statement` = `ddl` o `all`, los `ALTER ROLE ... PASSWORD` del bootstrap quedan en el log del servidor con el verificador SCRAM (no con la contraseña en claro). La imagen usa el valor por defecto (`none`). No activar `ddl` o `all` sin revisar esto. Inferencia: un verificador filtrado permite probar contraseñas fuera de línea; la mitigación es la longitud mínima de 16 caracteres y no registrar DDL.
 
 Separación OLTP/warehouse (D70): las apps no usan estos schemas para operar. Su persistencia transaccional es una base OLTP propia (`01_project_brief.md` §8.2), separada del warehouse por base y rol; en local puede compartir la instancia, pero no el aislamiento de recursos. El warehouse recibe los hechos por outbox y export al raw con manifest, nunca por escritura directa de las apps. Los usuarios de mínimo privilegio se definen en Fase 3 (D60, §11).
 
@@ -231,6 +231,14 @@ Los rangos siguientes son **presupuesto de planificación**, no garantías de co
 | PostgreSQL local perfil `core` (D60) | 1 GiB (`mem_limit` = `memswap_limit` 1g; lectura puntual de `memory.current` = 130818048 B (~125 MiB) tras el primer up, 2026-10-10; sin log guardado) | Locale `C.UTF-8` builtin; puerto host 5433 por defecto |
 | dbt runner | Burst; no siempre residente | Ejecutar como job cuando sea posible |
 | Redpanda | ~1 GB o más | Solo fase opcional y después de nueva medición |
+
+Medición del pico de memoria de Postgres (hito loader fx_rate, 2026-10-11; `scripts/measure_storage_memory.sh` con `C=pits-postgres`, `EXPECTED_LIMIT=1073741824`, `PEAK_LIMIT=912680550`, `EXPECTED_GOMEMLIMIT` vacío y carga `pytest -m pg -q`; fuente: log de la sesión, no versionado, citado en `06_status.md` §3):
+
+- 3/3 corridas con rc=0, `memory.events` con `oom=0` y `oom_kill=0`, `OOMKilled=false`. El script reinicia el contenedor antes de cada corrida; `RestartCount=0` tras cada una.
+- `memory.peak`: 120229888, 120696832 y 70983680 B (114,66, 115,11 y 67,70 MiB). Máximo 115,11 MiB = 11,2 % de 1 GiB, por debajo del 85 % (912680550 B).
+- GOMEMLIMIT no aplica a Postgres (no es Go): `EXPECTED_GOMEMLIMIT` vacío omite esa validación.
+- Tamaño de datos no medido en esta corrida: se ejecutó sin `DATA_DIR` y el default `/data` no existe en Postgres (el log muestra `du: cannot access '/data'`). Para medirlo, `DATA_DIR=/var/lib/postgresql/data`; el script ya lo soporta (commit 9f523f8, según el coordinador).
+- Script `scripts/measure_storage_memory.sh` (código actual): `EXPECTED_GOMEMLIMIT` usa `${EXPECTED_GOMEMLIMIT-500MiB}`, así que vacío omite la validación de GOMEMLIMIT; `DATA_DIR` usa `${DATA_DIR-/data}`, así que vacío omite el tamaño de datos. Los defaults no cambian para SeaweedFS.
 
 No desplegar Redpanda mientras el stack base no tenga margen medido suficiente.
 
@@ -270,6 +278,8 @@ Mínimos:
 - principle of least privilege cuando se creen usuarios DB;
 - evitar usar el usuario administrador para pipelines rutinarios.
 
+Implementado en Fase 3 (D79): el loader usa `pits_loader` y las consultas usan `pits_reader`; el administrador solo se usa en `pits db migrate`. Ambos roles se crean sin superusuario, sin CREATEDB, sin CREATEROLE, sin herencia y sin BYPASSRLS. Postgres sigue publicado solo en `127.0.0.1` (D60). Las credenciales de ingesta del raw siguen con permisos admin hasta aplicar D67.
+
 ## 12. Persistencia y backups
 
 Datos que requieren volumen persistente:
@@ -289,6 +299,8 @@ Plan mínimo antes de considerar producción “cerrada”:
 Un backup que nunca se ha restaurado no se considera validado.
 
 ## 13. Logs y observabilidad mínima
+
+Notas del loader fx_rate (D82, 2026-10-11): `pits load fx-rate` y `pits db migrate` imprimen una línea de resultado (`outcome=…` o `database=… applied=… skipped=…`) y los errores con `str(exc)`; nunca imprimen conninfo ni contraseñas. Las excepciones no tipadas salen con traceback y exit 1. El traceback no muestra variables locales, pero no se verificó que el encadenamiento de excepciones (`__context__`) de una excepción no tipada nunca contenga el pgconn con la contraseña. Revisar antes de compartir un log de esas corridas. El riesgo del verificador SCRAM en el log del servidor está en §8.3.
 
 Cada pipeline debe registrar al menos:
 
