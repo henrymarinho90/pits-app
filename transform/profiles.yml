@@ -4,7 +4,7 @@ pits_transform:
   outputs:
     dev:
       type: postgres
-      host: 127.0.0.1
+      host: "{{ env_var('PITS_PG_HOST', '127.0.0.1') }}"
       port: "{{ env_var('POSTGRES_HOST_PORT', '5433') | as_number }}"
       dbname: "{{ env_var('PITS_WAREHOUSE_DB', 'pits_warehouse') }}"
       user: "{{ env_var('PITS_PG_TRANSFORMER_USER', 'pits_transformer') }}"

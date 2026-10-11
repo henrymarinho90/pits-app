@@ -32,7 +32,8 @@ RUN_LOCK_KEY = 0x5049545301  # run-wide advisory lock key, held in the maintenan
 LOCK_TIMEOUT = "10s"
 STATEMENT_TIMEOUT = "10min"
 SCHEMAS = ("ops", "landing")
-# Created by dbt as pits_transformer; owned by pits_owner so only the owner can drop them (D86).
+# The bootstrap creates these schemas (owner pits_owner, so only the owner can drop or rename
+# them); dbt, as pits_transformer, only builds objects inside them (D86).
 DBT_SCHEMAS = ("staging", "intermediate", "marts")
 
 # Least privilege: no superuser/createdb/createrole/replication/bypassrls; NOINHERIT because

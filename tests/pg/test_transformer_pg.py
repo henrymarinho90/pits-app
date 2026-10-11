@@ -43,11 +43,31 @@ def test_transformer_can_create_table_and_view_in_dbt_schemas(warehouse, schema)
     "INSERT INTO ops.load_run (dataset) VALUES ('x')",
     "DELETE FROM ops.load_run",
     "SELECT * FROM ops.schema_migration",
+    "CREATE TABLE staging.r (d date, f text, t text, FOREIGN KEY (d, f, t) "
+    "REFERENCES landing.fx_rate (rate_date, currency_from, currency_to))",
+    "ALTER TABLE landing.fx_rate OWNER TO CURRENT_USER",
+    "DROP SCHEMA marts",
+    "DROP SCHEMA staging",
+    "DROP SCHEMA marts CASCADE",
+    "ALTER SCHEMA marts RENAME TO marts_old",
+    "ALTER SCHEMA staging RENAME TO staging_old",
 ])  # fmt: skip
 def test_transformer_is_denied(warehouse, statement):
     _, conns = warehouse
     with pytest.raises(pgerr.InsufficientPrivilege):
         conns[Profile.TRANSFORMER].execute(statement)
+
+
+def test_transformer_cannot_create_trigger_on_landing(warehouse):
+    _, conns = warehouse
+    t = conns[Profile.TRANSFORMER]
+    t.execute("CREATE FUNCTION staging.noop() RETURNS trigger LANGUAGE plpgsql AS $$ "
+              "BEGIN RETURN NEW; END $$")  # fmt: skip
+    with pytest.raises(pgerr.InsufficientPrivilege):
+        t.execute(
+            "CREATE TRIGGER trg BEFORE INSERT ON landing.fx_rate "
+            "FOR EACH ROW EXECUTE FUNCTION staging.noop()"
+        )
 
 
 def test_transformer_can_select_sources_and_has_no_database_create(warehouse):
@@ -128,15 +148,29 @@ def test_database_already_at_0002_receives_only_0003(pg_settings, tmp_path):
     assert run_migrate(pg_settings).skipped == 3
 
 
-def test_bootstrap_is_idempotent_with_five_schemas(pg_settings):
+def test_bootstrap_is_idempotent_and_keeps_dbt_privileges(pg_settings):
+    run_migrate(pg_settings)
+    t = connect(pg_settings, Profile.TRANSFORMER, autocommit=True)
+    t.execute("CREATE TABLE marts.existing AS SELECT 1 AS id")
     bootstrap(pg_settings)
     bootstrap(pg_settings)
     admin = connect(pg_settings, Profile.ADMIN, autocommit=True)
+    reader = connect(pg_settings, Profile.READER, autocommit=True)
     try:
         count = admin.execute(
             "SELECT count(*) FROM pg_namespace "
             "WHERE nspname IN ('ops', 'landing', 'staging', 'intermediate', 'marts')"
         ).fetchone()
+        assert count == (5,)
+        assert reader.execute(
+            "SELECT has_schema_privilege('marts', 'USAGE'), "
+            "has_schema_privilege('staging', 'USAGE'), "
+            "has_schema_privilege('intermediate', 'USAGE')"
+        ).fetchone() == (True, False, False)
+        assert t.execute("SELECT has_schema_privilege('marts', 'CREATE')").fetchone() == (True,)
+        t.execute("CREATE TABLE marts.after_rerun AS SELECT 1 AS id")  # CREATE still works
+        assert reader.execute("SELECT count(*) FROM marts.existing").fetchone() == (1,)
+        assert reader.execute("SELECT count(*) FROM marts.after_rerun").fetchone() == (1,)
     finally:
-        admin.close()
-    assert count == (5,)
+        for conn in (t, admin, reader):
+            conn.close()
