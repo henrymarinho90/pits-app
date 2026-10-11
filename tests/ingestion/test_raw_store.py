@@ -292,3 +292,37 @@ def test_s3_body_read_failure_becomes_transient():
     with pytest.raises(RawStoreTransientError, match="ReadTimeoutError") as err:
         s3_store.get("k")
     assert "secret-host" not in str(err.value)
+
+
+@pytest.mark.parametrize(
+    ("code", "status"),
+    [
+        ("InternalError", 500),
+        ("ServiceUnavailable", 503),
+        ("SlowDown", 503),
+        ("RequestTimeout", 400),
+    ],
+)
+@pytest.mark.parametrize("operation", ["put_once", "list_prefixes", "get"])
+def test_s3_server_side_errors_are_transient(s3, operation, code, status):
+    client, stubber = s3
+    method = {"put_once": "put_object", "list_prefixes": "list_objects_v2", "get": "get_object"}
+    _client_error(stubber, method[operation], code, status)
+    args = {"put_once": ("k", b"x", "t/p"), "list_prefixes": ("ss/",), "get": ("k",)}[operation]
+    with pytest.raises(RawStoreTransientError, match=code):
+        getattr(S3RawStore(client, BUCKET), operation)(*args)
+
+
+def test_s3_bare_5xx_status_without_known_code_is_transient(s3):
+    client, stubber = s3
+    _client_error(stubber, "get_object", "Weird", 502)
+    with pytest.raises(RawStoreTransientError):
+        S3RawStore(client, BUCKET).get("k")
+
+
+def test_s3_4xx_stays_permanent_not_transient(s3):
+    client, stubber = s3
+    _client_error(stubber, "get_object", "AccessDenied", 403)
+    with pytest.raises(RawStoreError) as err:
+        S3RawStore(client, BUCKET).get("k")
+    assert not isinstance(err.value, RawStoreTransientError)

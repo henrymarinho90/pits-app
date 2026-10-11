@@ -14,6 +14,7 @@ MAX_OBJECT_BYTES = 8 * 1024 * 1024  # single put_object, no multipart (D65)
 
 _PRECONDITION_CODES = {"412", "PreconditionFailed"}
 _NOT_FOUND_CODES = {"404", "NoSuchKey", "NotFound"}
+_TRANSIENT_CODES = {"SlowDown", "RequestTimeout", "InternalError", "ServiceUnavailable"}
 _SOURCE_SYSTEM_RE = re.compile(r"[a-z][a-z0-9_]*")
 
 
@@ -79,6 +80,16 @@ def _code(exc: ClientError) -> str:
     return str(exc.response.get("Error", {}).get("Code", ""))
 
 
+def _service_error(operation: str, target: str, exc: ClientError) -> RawStoreError:
+    """Map a ClientError: 5xx and throttling/timeout codes are transient, the rest is not."""
+    code = _code(exc)
+    status = exc.response.get("ResponseMetadata", {}).get("HTTPStatusCode", 0)
+    message = f"{operation} failed for '{target}': {code or status or 'unknown'}"
+    if code in _TRANSIENT_CODES or (isinstance(status, int) and status >= 500):
+        return RawStoreTransientError(message)
+    return RawStoreError(message)
+
+
 class S3RawStore:
     """RawStore backed by an S3-compatible bucket; writes use If-None-Match: *."""
 
@@ -101,7 +112,7 @@ class S3RawStore:
             code = _code(exc)
             if code in _PRECONDITION_CODES:
                 raise RawObjectExistsError(f"Object '{key}' already exists") from exc
-            raise RawStoreError(f"put_object failed for '{key}': {code or 'unknown'}") from exc
+            raise _service_error("put_object", key, exc) from exc
         except BotoCoreError as exc:
             raise _transient("put_object", key, exc) from None
 
@@ -112,9 +123,7 @@ class S3RawStore:
             try:
                 resp = self._client.list_objects_v2(**kwargs)
             except ClientError as exc:
-                raise RawStoreError(
-                    f"list_objects_v2 failed for prefix '{prefix}': {_code(exc) or 'unknown'}"
-                ) from exc
+                raise _service_error("list_objects_v2", prefix, exc) from exc
             except BotoCoreError as exc:
                 raise _transient("list_objects_v2", prefix, exc) from None
             prefixes.extend(p["Prefix"] for p in resp.get("CommonPrefixes", []))
@@ -131,7 +140,7 @@ class S3RawStore:
             code = _code(exc)
             if code in _NOT_FOUND_CODES:
                 raise RawObjectNotFoundError(f"Object '{key}' not found") from exc
-            raise RawStoreError(f"get_object failed for '{key}': {code or 'unknown'}") from exc
+            raise _service_error("get_object", key, exc) from exc
         except BotoCoreError as exc:
             raise _transient("get_object", key, exc) from None
 
