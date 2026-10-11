@@ -89,3 +89,63 @@ class Reader:
 
     def __call__(self, manifest: Manifest) -> list[TrmRecord]:
         return self.data[manifest.batch_id]
+
+
+def raw_row(frm: date, to: date, valor: str = "3000.5", unidad: str = "COP") -> dict[str, str]:
+    return {
+        "valor": valor,
+        "unidad": unidad,
+        "vigenciadesde": f"{frm.isoformat()}T00:00:00.000",
+        "vigenciahasta": f"{to.isoformat()}T00:00:00.000",
+    }
+
+
+def put_raw_batch(
+    store,
+    batch_id: str,
+    day: date,
+    mode: str,
+    rows: list[dict[str, str]],
+    *,
+    from_exclusive: date | None = None,
+    finished_at: datetime | None = None,
+    page_size: int = 2,
+) -> Manifest:
+    """Write real payload pages and a committed manifest into a (memory) raw store."""
+    import json
+
+    from pits.ingestion.manifest import manifest_key
+
+    prefix = batch_prefix(SOURCE_SYSTEM, day, batch_id)
+    files = []
+    for n, offset in enumerate(range(0, len(rows), page_size)):
+        page = rows[offset : offset + page_size]
+        body = json.dumps(page).encode()
+        key = f"{prefix}payload-{n:05d}.json"
+        store.put_once(key, body, "application/json")
+        files.append(
+            FileEntry(key, offset, len(page), len(body), sha256_hex(body), "application/json")
+        )
+    started = datetime(day.year, day.month, day.day, 12, tzinfo=UTC)
+    last = date.fromisoformat(rows[-1]["vigenciadesde"][:10]) if rows else from_exclusive
+    manifest = Manifest(
+        source_system=SOURCE_SYSTEM,
+        dataset_id=DATASET_ID,
+        source_url="https://example.test/resource/32sa-8pi3.json",
+        license="CC_40_BY_SA",
+        attribution="test",
+        batch_id=batch_id,
+        extraction_date=day,
+        started_at=started,
+        finished_at=finished_at or started + timedelta(seconds=30),
+        extractor=Extractor("pits.sources.trm", "test"),
+        source_rows_updated_at=None,
+        app_token_used=False,
+        query=Query(order="vigenciadesde ASC, :id ASC", page_size=page_size, where=None),
+        watermark=Watermark("vigenciadesde", mode, from_exclusive, last),
+        schema=(SchemaColumn("valor", "number"),),
+        row_count=len(rows),
+        files=tuple(files),
+    )
+    store.put_once(manifest_key(prefix), manifest.to_json(), "application/json")
+    return manifest

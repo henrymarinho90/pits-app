@@ -16,7 +16,7 @@ from pits.sources.trm.contract import DATE_RE, EXPECTED_COLUMNS
 
 # Real SODA format of `valor`: plain digits with an optional fraction (no sign, exponent,
 # spaces or underscores). NaN/Infinity/"4E+3"/"1_000" would otherwise be accepted by Decimal().
-_VALOR_RE = re.compile(r"\d+(\.\d+)?")
+_VALOR_RE = re.compile(r"[0-9]+(\.[0-9]+)?")  # ASCII digits only (\d would accept Arabic-Indic)
 EXPECTED_UNIT = "COP"  # D77: valor is COP per 1 USD
 
 
@@ -62,6 +62,7 @@ def parse_page(rows: Sequence[Mapping[str, Any]], *, page_key: str) -> list[TrmR
             raise TrmDataError(f"{ref}.unidad must be {EXPECTED_UNIT!r} (D77)")
         if not _VALOR_RE.fullmatch(row["valor"]):
             raise TrmDataError(f"{ref}.valor is not a plain non-negative decimal number")
+        # The regex already guarantees a finite decimal; the next two checks are defense in depth.
         try:
             rate = Decimal(row["valor"])
         except InvalidOperation:

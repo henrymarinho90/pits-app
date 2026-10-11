@@ -45,6 +45,7 @@ def test_empty_page_is_empty_list():
         (row(valor="4E+3"), "plain"),
         (row(valor="+4000.50"), "plain"),
         (row(valor="4000."), "plain"),
+        (row(valor="٣३٠٠"), "plain"),  # Arabic-Indic / Devanagari digits
         (row(valor=""), "plain"),
         (row(valor="0"), "greater than zero"),
         (row(valor="-1.5"), "plain"),
