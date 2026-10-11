@@ -121,7 +121,8 @@ def test_connect_error_with_sqlstate_uses_sqlstate_rules():
     assert isinstance(err, WarehousePermanentError)
 
 
-# TODO(S5): tests/pg must cover "wrong password -> exit 1" against a real server.
+# Real-server coverage of "wrong password -> exit 1": tests/pg/test_fx_rate_load_pg.py
+# (test_wrong_password_is_exit_1_and_never_printed).
 
 
 def test_connect_failure_does_not_keep_the_pgconn_as_context(monkeypatch):
