@@ -18,6 +18,7 @@ storage_app = typer.Typer(
     help="Object storage commands.",
     no_args_is_help=True,
     add_completion=False,
+    pretty_exceptions_show_locals=False,
 )
 
 # Replaceable in tests so no real S3 endpoint is needed.

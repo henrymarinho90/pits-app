@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
-# Mide memoria/OOM de pits-seaweedfs durante la suite contract (-m contract), RUNS veces.
+# Mide memoria/OOM de pits-seaweedfs durante CMD (por defecto la suite contract), RUNS veces.
+# CMD (opcional) reemplaza la carga medida; por defecto la suite contract.
+# CMD se imprime en el log: no incluir secretos en el.
 # Cada corrida: restart -> healthy -> reposo -> contract -> memory.peak/OOM/restarts.
 # Criterio: todas las corridas verdes, OOMKilled=false, oom_kill=0, RestartCount=0
 # y max(memory.peak) < PEAK_LIMIT (85 % de 768 MiB). Exit 1 si no se cumple.
@@ -17,6 +19,7 @@ PEAK_LIMIT="${PEAK_LIMIT:-684510412}"
 EXPECTED_LIMIT="${EXPECTED_LIMIT:-805306368}" # 768 MiB
 EXPECTED_GOMEMLIMIT="${EXPECTED_GOMEMLIMIT:-500MiB}" # D63
 HEALTH_TIMEOUT="${HEALTH_TIMEOUT:-180}"
+CMD="${CMD:-uv run --env-file .env pytest -m contract -q -s}"
 
 [[ "$RUNS" =~ ^[1-9][0-9]*$ ]] || { echo "FAIL: RUNS debe ser entero >= 1 (RUNS=$RUNS)" >&2; exit 1; }
 for v in IDLE_SECONDS GAP_SECONDS PEAK_LIMIT HEALTH_TIMEOUT; do
@@ -32,6 +35,7 @@ cg() { docker exec "$C" cat "/sys/fs/cgroup/$1"; }
 stat_lines() { docker exec "$C" sh -c 'grep -E "^(anon|file|kernel) " /sys/fs/cgroup/memory.stat'; }
 event() { cg memory.events | awk -v k="$1" '$1 == k {print $2}'; }
 
+echo "## cmd: $CMD"
 echo "## limits"
 limits="$(docker inspect -f '{{.HostConfig.Memory}} {{.HostConfig.MemorySwap}}' "$C")"
 echo "memory/memswap: $limits (esperado: $EXPECTED_LIMIT $EXPECTED_LIMIT)"
@@ -64,7 +68,7 @@ for run in $(seq 1 "$RUNS"); do
   echo "## run $run contract start $(date -u +%T)"
   rc=0
   out="$(mktemp)"
-  uv run --env-file .env pytest -m contract -q -s >"$out" 2>&1 || rc=$?
+  bash -c "$CMD" >"$out" 2>&1 || rc=$?
   grep -E "large object|passed|failed|error" "$out" | tail -5 || true
   if [ "$rc" -ne 0 ]; then tail -40 "$out" >&2; fi
   rm -f "$out"; out=""

@@ -1,7 +1,7 @@
 # 04 — Infraestructura y operación
 
 Última actualización: 2026-10-10
-Estado: v4 — perfil `core` implementado en `docker-compose.yml` (D60–D63); arquitectura operativa revisada.
+Estado: v5 — perfil `core` implementado en `docker-compose.yml` (D60–D63); arquitectura operativa revisada; §8.1 con el contrato del batch raw de la ingesta (D65, paso 3 de Fase 1).
 
 ## 1. Objetivo
 
@@ -156,20 +156,27 @@ Según D61, el bucket se llama `pits-raw` (se crea y verifica con `pits storage 
 
 Objetivo: preservar la fuente original para replay y auditoría.
 
-Estructura sugerida:
+Estructura (D65, implementada en el paso 3 de Fase 1 para la TRM):
 
 ```text
-raw/
-  <source_system>/
-    extraction_date=YYYY-MM-DD/
-      batch_id=<uuid>/
-        payload.*
-        manifest.json
+<source_system>/
+  extraction_date=YYYY-MM-DD/
+    batch_id=<uuid>/
+      payload-00000.json
+      payload-00001.json
+      ...
+      payload-NNNNN.json
+      manifest.json
 ```
+
+- Cada página de la API es un objeto `payload-NNNNN.json` (NNNNN desde 00000), con los bytes de la respuesta tal cual. Una página por objeto; objetos ≤ 8 MiB con `put_object` secuencial, sin multipart.
+- `manifest.json` se escribe al final, con `IfNoneMatch="*"`, y es el commit marker del batch: un batch sin manifest es huérfano y no es válido para los lectores.
+- `extraction_date`, `started_at` y `finished_at` van en UTC; `batch_id` es un uuid4 por corrida.
+- Para la TRM (`superfinanciera_trm`) cada payload tiene hasta 1000 filas (`PAGE_SIZE`), en el orden `vigenciadesde ASC, :id ASC`.
 
 El formato del payload depende de la fuente:
 
-- JSON;
+- JSON (TRM: array de objetos, una página por objeto);
 - NDJSON;
 - CSV;
 - archivo original descargado.

@@ -9,7 +9,7 @@
 Marketplace de repuestos de autos y motos (Colombia/LATAM). Henry domina el negocio: consúltalo en toda decisión de dominio (tipos de comprador/vendedor, familias de partes, disponibilidad).
 
 ## Stack
-Python (Typer, pytest, ruff), Docker Compose, MinIO, PostgreSQL, dbt, Airflow (LocalExecutor), Metabase (ya desplegado), GitHub Actions. Redpanda solo en fase avanzada. Desarrollo local en Windows (C:\dev). Despliegue: VPS OVH con Coolify.
+Python (Typer, pytest, ruff), Docker Compose, SeaweedFS (S3, D57), PostgreSQL, dbt, Airflow (LocalExecutor), Metabase (ya desplegado), GitHub Actions. Redpanda solo en fase avanzada. Desarrollo local en Windows (C:\dev). Despliegue: VPS OVH con Coolify.
 
 ## Reglas
 1. Sin notebooks: Python modular, CLI y tests.
