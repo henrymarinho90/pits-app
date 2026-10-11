@@ -144,8 +144,13 @@ def run_lock(settings: WarehouseSettings) -> Iterator[psycopg.Connection]:
     """
     maintenance = connect(settings, Profile.ADMIN, dbname=MAINTENANCE_DB, autocommit=True)
     try:
-        _set_timeouts(maintenance)
-        locked = maintenance.execute("SELECT pg_try_advisory_lock(%s)", (RUN_LOCK_KEY,)).fetchone()
+        try:
+            _set_timeouts(maintenance)
+            locked = maintenance.execute(
+                "SELECT pg_try_advisory_lock(%s)", (RUN_LOCK_KEY,)
+            ).fetchone()
+        except psycopg.Error as exc:
+            raise to_warehouse_error(exc, "run lock") from None
         if not locked or not locked[0]:
             raise WarehouseTransientError("Another pits db run holds the advisory lock")
         try:
