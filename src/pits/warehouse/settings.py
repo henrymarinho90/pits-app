@@ -25,6 +25,20 @@ _LOOPBACK_HOSTS = frozenset({"127.0.0.1", "localhost", "::1"})
 _IDENT_RE = re.compile(r"^[a-z][a-z0-9_]{0,62}$")
 
 
+@dataclass(frozen=True)
+class RoleNames:
+    """Cluster-level role names. Defaults are the real ones; tests inject suffixed names."""
+
+    owner: str = OWNER_ROLE
+    loader: str = LOADER_ROLE
+    reader: str = READER_ROLE
+
+    def __post_init__(self) -> None:
+        for name in (self.owner, self.loader, self.reader):
+            if not _IDENT_RE.match(name):
+                raise WarehouseConfigError("Role names must match ^[a-z][a-z0-9_]{0,62}$")
+
+
 class Profile(StrEnum):
     ADMIN = "admin"
     LOADER = "loader"
@@ -42,15 +56,16 @@ class WarehouseSettings:
     admin_password: str | None = field(default=None, repr=False)
     loader_password: str | None = field(default=None, repr=False)
     reader_password: str | None = field(default=None, repr=False)
+    roles: RoleNames = field(default_factory=RoleNames)
 
     def credentials(self, profile: Profile) -> tuple[str, str]:
         """Return (user, password) for `profile`; raises if it was not loaded."""
         if profile is Profile.ADMIN:
             user, password = self.admin_user, self.admin_password
         elif profile is Profile.LOADER:
-            user, password = LOADER_ROLE, self.loader_password
+            user, password = self.roles.loader, self.loader_password
         else:
-            user, password = READER_ROLE, self.reader_password
+            user, password = self.roles.reader, self.reader_password
         if not user or not password:
             raise WarehouseConfigError(f"Credentials for profile '{profile.value}' not loaded")
         return user, password
