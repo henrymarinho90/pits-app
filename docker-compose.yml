@@ -14,7 +14,7 @@ services:
       # weed lee estas dos variables como identidad admin S3 (ver docs/spikes/seaweedfs.md).
       AWS_ACCESS_KEY_ID: ${S3_ACCESS_KEY_ID:?set S3_ACCESS_KEY_ID in .env}
       AWS_SECRET_ACCESS_KEY: ${S3_SECRET_ACCESS_KEY:?set S3_SECRET_ACCESS_KEY in .env}
-      GOMEMLIMIT: 600MiB
+      GOMEMLIMIT: 500MiB # (D63)
     mem_limit: 768m
     memswap_limit: 768m
     restart: unless-stopped
@@ -46,7 +46,7 @@ services:
     shm_size: 256m
     restart: unless-stopped
     ports:
-      - "127.0.0.1:${POSTGRES_HOST_PORT:-5432}:5432"
+      - "127.0.0.1:${POSTGRES_HOST_PORT:-5433}:5432"
     volumes:
       # La imagen declara VOLUME /var/lib/postgresql/data (PGDATA identico).
       - postgres_data:/var/lib/postgresql/data
