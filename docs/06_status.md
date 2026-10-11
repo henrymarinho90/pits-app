@@ -1,7 +1,7 @@
 # 06 — Estado del proyecto
 
 Última actualización: 2026-10-11
-Estado: hito TRM normalize EN CURSO en `feat/trm-normalize` (worktree `C:\dev\pits-app-trm`), apilado sobre `chore/agents-preflight` (PR #14); plan aprobado por Henry el 2026-10-11 (D74–D77). PR #12 (extractor TRM) y PR #13 (alineación de alcance D68–D73) mergeados en `main`, verificados con `gh pr view` en esta sesión. Ajustes de agentes y `/orquestar` de D73 con plan específico aprobado; entregados en PR desde `chore/agents-preflight` (base `origin/main` `d1d867f`), pendiente de merge (§1-ter). Siguiente hito técnico: normalización TRM (D47) y replay desde raw (§5), EN CURSO (plan aprobado 2026-10-11; pasos S1–S7, §5).
+Estado: hito TRM normalize IMPLEMENTADO en `feat/trm-normalize` (worktree `C:\dev\pits-app-trm`), apilado sobre `chore/agents-preflight` (PR #14); pendiente de PR, revisión independiente del diff y commit final; plan aprobado por Henry el 2026-10-11 (D74–D77). Sin merge ni CI verificados. PR #12 (extractor TRM) y PR #13 (alineación de alcance D68–D73) mergeados en `main`, verificados con `gh pr view` en esta sesión. Ajustes de agentes y `/orquestar` de D73 con plan específico aprobado; entregados en PR desde `chore/agents-preflight` (base `origin/main` `d1d867f`), pendiente de merge (§1-ter). Siguiente paso: decisión de Henry entre Fase 1b (RUNT `u3vn-bdcy`) y loader Fase 3 (§5); no iniciado.
 
 Histórico de hitos anteriores (evidencia conservada, no reejecutada aquí): D68–D73 aprobadas por Henry el 2026-10-10 y registradas en `05` (v12); `01` v4, `03` v10, `04` v6 alineados; alcance vigente en §1-bis. Antes: paso 3 de Fase 1 (extractor TRM) implementado en PR, con evidencia de corrida real; D64–D67 aprobadas por Henry el 2026-10-10 y registradas en `05` (v11). Antes: paso 2 de Fase 1 (storage y Postgres locales, perfil `core`) CERRADO en PR; D60–D63 aprobadas por Henry el 2026-10-10 y registradas en `05` (v10). Antes: D57 (storage SeaweedFS, memoria M1 768m, inmutabilidad opción A), D58 (marker `contract`) y D59 (demanda solo `ACTIVO`) aprobadas por Henry el 2026-10-10 y registradas en `05` (v9). Antes: spike de storage SeaweedFS 4.48 completado en la rama `spike/seaweedfs` (`docs/spikes/seaweedfs.md`; 14/14 tests de contrato y 30 offline); Fase 1 paso 1 cerrado (D49). Antes: spike planeado y bloqueo de storage (sin evidencia); segunda ronda regional y D52–D56 (calibración del parque con Boyacá y Risaralda, marca primero, servicio público aparte, alcance de la demanda). Antes: D50 y D51; Fase 0.5 y D43–D48 (D47 grano de `fx_rate`; D48 demanda con parque RUNT, marca/modelo sintético).
 
@@ -9,7 +9,7 @@ Este archivo se actualiza al final de cada sesión y funciona como punto de part
 
 ## 1. Fase actual
 
-**Fase actual: Fase 1 — primera ingesta real: EN CURSO (pasos 1, 2 y 3 implementados: D49, D60–D63 y D64–D67; paso 3 mergeado en PR #12; siguiente: normalización TRM).**
+**Fase actual: Fase 1 — primera ingesta real: EN CURSO (pasos 1, 2 y 3 implementados: D49, D60–D63 y D64–D67; paso 3 mergeado en PR #12; hito TRM normalize implementado en PR, D74–D77, §3 y §5; siguiente: decisión de Henry).**
 
 Fase 0.5 — investigación de mercado y validación de fuentes: CERRADA, con brechas documentadas.
 
@@ -71,11 +71,11 @@ Plan específico aprobado por Henry en esta sesión (literal: "Aprobado: aplicar
 | `00_review_findings.md` | "Auditoría de consistencia" v1.3 (2026-10-10; R1–R3 resueltos por D47 y D48, R6 por D49, R2 renombrada por D51; la original nunca se versionó) |
 | `01_project_brief.md` | v4 (2026-10-10); tres productos, mercados por país, fuera de alcance reformulado, diagrama OLTP/outbox/raw (D68–D71); SeaweedFS (D57) |
 | `02_domain_taxonomy.md` | v13 (2026-10-10); nota en §17 sobre frontend (D68); `fleet_operator` (D54) |
-| `03_data_model.md` | v10 (2026-10-10); §1 aclara modelo fuente/analítico frente a OLTP (D70, D72); mapeo del manifest en §3 (D65, D66); `vehicle_registration_stat` renombrada a `vehicle_fleet_snapshot` (D51); desglose por servicio y marca primero (D52–D56); filtro `ACTIVO` (D59) |
-| `04_infra.md` | v6 (2026-10-10); nota OLTP/warehouse en §7 y §8.3 (D70), sin cambios de compose; §8.1 con el contrato del batch raw (D65); perfil `core` (D60–D63); GOMEMLIMIT SeaweedFS 500MiB (D63); bucket `pits-raw` (D61) |
+| `03_data_model.md` | v11 (2026-10-11); nota de implementación de `fx_rate` para la TRM en §26 (D77, D76); v10 (2026-10-10); §1 aclara modelo fuente/analítico frente a OLTP (D70, D72); mapeo del manifest en §3 (D65, D66); `vehicle_registration_stat` renombrada a `vehicle_fleet_snapshot` (D51); desglose por servicio y marca primero (D52–D56); filtro `ACTIVO` (D59) |
+| `04_infra.md` | v7 (2026-10-11); zona `pits-normalized` en §8.2 (D74, D75, D76); v6 (2026-10-10); nota OLTP/warehouse en §7 y §8.3 (D70), sin cambios de compose; §8.1 con el contrato del batch raw (D65); perfil `core` (D60–D63); GOMEMLIMIT SeaweedFS 500MiB (D63); bucket `pits-raw` (D61) |
 | `05_decisions_log.md` | v13 (2026-10-11); D1–D77 (D74–D77 hito TRM normalize, aprobadas 2026-10-11; Estado de D62 y D65 ajustado por D75); v12 (2026-10-10); D1–D73 (D68–D73 alineación de alcance, aprobadas 2026-10-10); celdas Estado de D2, D22, D30, D34, D46 y D60 actualizadas (D73(b)); D60–D63 y D64–D67 aprobadas 2026-10-10 |
 | `spikes/seaweedfs.md` | spike SeaweedFS 4.48 (2026-10-10), mergeado en `main` (PR #9); incluye los borradores D57 y D58 (aprobados; ver `05`) |
-| `06_status.md` | vigente (2026-10-10) |
+| `06_status.md` | vigente (2026-10-11) |
 | `07_lessons_learned.md` | vigente, sin versión (2026-10-10) |
 | `08_market_research.md` | fechas de consulta 2026-10-03 (antes `claude_08_market_research.md`) |
 | `09_us_market_research.md` | tercera ronda, 2026-10-09 (antes `claude_09_us_market_research.md`) |
@@ -142,6 +142,33 @@ La TRM tiene relevancia de dominio secundaria: los precios del marketplace se fi
 - Exit codes: 0 committed; 1 error permanente o de configuración (esquema cambiado, manifest corrupto, 412 de escritura); 2 uso (`--full` con `--since`, fecha inválida, `--since` con hueco); 3 transitorio, seguro reintentar (red, 429/5xx tras 4 intentos, dataset reemplazado durante la corrida, dataset vacío en `--full`).
 - Salida: `batch_id=… mode=… rows=… files=… watermark_from=… watermark_to=… manifest=s3://pits-raw/…/manifest.json`. Errores en stderr como `error: …`; el token nunca se imprime.
 - Limitaciones aceptadas (detalle en `05`): 412 ambiguo tras un reintento (D65); correcciones a TRMs ya cargadas no se capturan sin `--full` o `--since` (D66).
+
+### Fase 1, hito TRM normalize (D74–D77; implementado en PR, pendiente de merge)
+
+Procedencia: la evidencia de esta sección la reportó el orquestador en la sesión del 2026-10-11 (commits, tests y corridas). El documentador no reejecutó tests, Docker ni la CLI. La comparación independiente contra `base_commit` la hace el revisor-senior, no este documento.
+
+- Alcance (plan aprobado 2026-10-11, literal: "Aprobado todo, continua e implementa"): normalizer TRM a `fx_rate` (D47) con replay desde raw (D76), verificación de bytes ante 412 (D75) y zona `pits-normalized` (D74). Sin loader a Postgres, dbt, Airflow, parquet ni apps.
+- Commits de implementación: S1 `d9021e1`, S2 `36c0d4e`, S3 `2d80eea`, S4 `3c4310e`, S5 `0f52904` y S6 `66a1ae6`. S7 es el commit de documentación de este paso.
+- Tests (reportados, 2026-10-11): offline `uv run pytest -q` 503 passed. Contrato `uv run --env-file .env pytest -m contract`: suite completa 36 passed, repetida tras la vuelta 2 de S6 y verificada por el revisor (2026-10-11).
+- Memoria (criterio D63, 3/3 corridas con la suite contract): picos `memory.peak` 554,5 / 505,0 / 503,9 MiB (581464064 / 529494016 / 528343040 B), frente a 652,8 MiB (684510412 B = 85 % de 768 MiB). Máximo 554,5 MiB, sin OOM. Medición hecha antes de la vuelta 2 de S6 (533 tests; ahora 539); la vuelta 2 no tocó la ruta de datos.
+- Corrida real (2026-10-11, SeaweedFS local, datos de datos.gov.co):
+  - `pits storage init` creó `pits-normalized`.
+  - `pits normalize trm`: `outcome=created`, `rows=12735`, `coverage=1991-12-02..2026-10-13`, `inputs=2`, `fingerprint=caa8bc5c31305114109a5a793ad3ec833d1285e8684897260047306c92d6c268`.
+  - 2.ª corrida: `already_present`, con el mismo fingerprint y sin escrituras nuevas.
+  - Aviso D76(f): el rango de vigencia de 6 días superó el umbral de 5 días. Es aviso en stderr, no error. El diseño se basó en un rango de 4 días (2026-10-10 a 2026-10-13, API consultada el 2026-10-11). Pendiente de decisión de Henry (§7).
+- Decisiones de implementación: documentadas en `03` §26 (`row_count` del manifest raw del batch = registros leídos de sus páginas; orden estricto entre páginas; fila fuera del watermark = error; formato de valor ASCII `[0-9]+(\.[0-9]+)?`; `since` vacío que borra la cola = `CoverageError`) y en `04` §8.2 (zona normalized; BotoCoreError o 5xx al verificar el bucket = exit 3; `S3_NORMALIZED_BUCKET` validado también por `pits extract`).
+- Riesgo D65 (412 ambiguo): cerrado por D75. Ante 412, `put_once` compara sha256 y longitud; con bytes idénticos el resultado es `already_identical` (éxito sin escritura); con bytes distintos es conflicto permanente (exit 1). Un GET transitorio sale con exit 3.
+
+**Runbook**
+
+- Normalizar: `uv run --env-file .env pits normalize trm [--warn-range-days N]` (default 5). Lee solo manifests committed de `pits-raw`; nunca llama a SODA. Salida: `outcome=… fingerprint=… inputs=N baseline=<batch_id> rows=… coverage=A..B csv=s3://… manifest=s3://…`.
+- Prerrequisito: el bucket `pits-normalized` lo crea `pits storage init`. `pits normalize trm` solo verifica que exista y tenga versioning Enabled; si falta, falla y no lo crea.
+- Reintentar: es seguro. Si el objeto ya existe con el mismo contenido, la salida es `already_present` (exit 0). Si el CSV quedó sin manifest (caída entre CSV y manifest), la corrida lo completa.
+- Códigos de salida: 0 `created` o `already_present`; 1 error permanente; 2 uso (Typer); 3 transitorio, seguro reintentar. `CoverageError` y demás errores de datos (`TrmDataError`) se envuelven en `NormalizePermanentError` → exit 1 (`src/pits/sources/trm/normalize.py`); `RawStoreTransientError` y `RawBucketTransientError` → exit 3.
+- Conflicto (412 con bytes distintos bajo la misma key): si cambió la lógica de transformación sin subir `rules_version`, el mismo fingerprint produce bytes distintos. Subir `rules_version` (cambia el fingerprint): es un cambio de código en la constante `DEFAULT_RULES_VERSION` de `src/pits/sources/trm/normalize.py`; no hay opción de CLI. Luego volver a normalizar. No sobrescribir objetos existentes.
+- Hueco o solape de cobertura: revisar la fuente (fecha y `source_reference` del error) antes de tocar la salida. No rellenar con la tasa anterior. Un `since` vacío que borra la cola falla a propósito (D76(c)); reextraer la cola con `pits extract trm --since YYYY-MM-DD` y volver a normalizar.
+- Manifest corrupto en raw: exit 1 (D65). Con D67, solo un administrador lo corrige; el normalizer no lo repara.
+- Rango largo (más de `--warn-range-days`): aviso en stderr; no bloquea. Ver §7 para la decisión pendiente sobre el umbral.
 
 ### Resueltos por D47 y D48 (2026-10-10)
 
@@ -230,9 +257,9 @@ Evidencia y cómo reejecutar en §3. Se escribe cada página como `payload-NNNNN
 
 ### Próximo paso — hito técnico TRM: normalización (D47), replay desde raw, reconciliación 412 y loader
 
-**Estado: EN CURSO** en `feat/trm-normalize` (worktree `C:\dev\pits-app-trm`), apilado sobre `chore/agents-preflight` (PR #14). Plan aprobado por Henry el 2026-10-11 (literal: "Aprobado todo, continua e implementa"): pasos S1–S7 y D74–D77. Paso S1 (decisiones y docs) entregado en esta sesión, pendiente de revisión independiente y commit; S2–S7 pendientes, sin evidencia de ejecución. Loader a Postgres, dbt, Airflow, parquet y apps quedan fuera de este hito.
+**Estado: IMPLEMENTADO en PR** (rama `feat/trm-normalize`, worktree `C:\dev\pits-app-trm`, apilada sobre `chore/agents-preflight`, PR #14). Plan aprobado por Henry el 2026-10-11 (literal: "Aprobado todo, continua e implementa"): pasos S1–S7 y D74–D77. Pasos S1–S6 implementados y S7 documentado; evidencia en §3 "Fase 1, hito TRM normalize" (reportada por el orquestador, 2026-10-11). Pendiente: revisión independiente del diff completo, commit final, apertura de PR y CI; ninguno verificado aquí. Loader a Postgres, dbt, Airflow, parquet y apps quedan fuera de este hito.
 
-**Siguiente paso:** S2 (manifest y lector verificado), tras cerrar S1. Descripción previa del hito (2026-10-10), conservada; los puntos actualizados por D74–D77 se marcan en línea. **Prerrequisito cumplido: PR #12 (paso 3) mergeado en `main`, verificado con `gh pr view`.** Rama apilada: `feat/trm-normalize` sale de `chore/agents-preflight` (no de `main`), por instrucción de Henry (2026-10-11). Este hito es técnico de Fase 1 y va separado del alcance de producto (§1-bis): no implica apps, OLTP, outbox ni orden comercial.
+**Siguiente paso:** decisión de Henry entre Fase 1b (RUNT `u3vn-bdcy`, snapshot mensual) y loader Fase 3 (`01` §10, D40). No iniciado. Descripción previa del hito (2026-10-10), conservada; los puntos actualizados por D74–D77 se marcan en línea. **Prerrequisito cumplido: PR #12 (paso 3) mergeado en `main`, verificado con `gh pr view`.** Rama apilada: `feat/trm-normalize` sale de `chore/agents-preflight` (no de `main`), por instrucción de Henry (2026-10-11). Este hito es técnico de Fase 1 y va separado del alcance de producto (§1-bis): no implica apps, OLTP, outbox ni orden comercial.
 
 - Entrada (D76(a)-(b), reemplaza "el último batch committed"): todos los manifests committed de `superfinanciera_trm`/`32sa-8pi3`, validados estrictamente y ordenados por `commit_order = (extraction_date, finished_at, batch_id)`. Baseline = último `full` más los batches posteriores en orden ascendente; sin `full` committed, la corrida falla. Se leen desde `pits-raw` sin volver a llamar a la API. El loader no entra en este hito (Fase 3, `01` §10, D40).
 - Salida: `fx_rate` (`03_data_model.md` §26) con una fila por día calendario del rango `vigenciadesde`–`vigenciahasta` (D47). Fines de semana y festivos heredan la TRM vigente. Grano: `rate_date` + `currency_from` + `currency_to`. Artefacto: `fx_rate.csv` + `manifest.json` en `pits-normalized` (D74, D76(e)).
@@ -240,7 +267,7 @@ Evidencia y cómo reejecutar en §3. Se escribe cada página como `payload-NNNNN
 - Dedupe: sustituido por la política de D76(b)-(c). `full` reemplaza el estado; `since` borra la cola `vigenciadesde ≥ S` e inserta; `incremental` hace upsert `> from_exclusive`; gana el último aplicado. Ya no se usa "el batch committed más reciente" como fuente de la fila por fecha. Mismos inputs producen el mismo CSV y fingerprint (D76(e)).
 - Replay: reconstruir la salida completa desde el raw, sin tocar la fuente. El raw conserva el rango original (D47).
 - Tests: unitarios de la expansión y del dedupe; replay sobre `MemoryRawStore`; validaciones de dominio (§7).
-- Reconciliación de 412 por hash (D65, lección 83): ante un 412 se compararía el hash del objeto existente con el del payload propio antes de fallar. Cambia la limitación aceptada de D65, así que requiere una D nueva aprobada antes de implementar (regla 4). Resuelto por D75 (aprobada 2026-10-11): verificación de bytes por sha256 y longitud ante 412; implementación pendiente en S3.
+- Reconciliación de 412 por hash (D65, lección 83): ante un 412 se compararía el hash del objeto existente con el del payload propio antes de fallar. Cambia la limitación aceptada de D65, así que requiere una D nueva aprobada antes de implementar (regla 4). Resuelto por D75 (aprobada 2026-10-11): verificación de bytes por sha256 y longitud ante 412; implementada en S3 (§3).
 - Loader a Postgres: su diseño (schema, tablas, carga) no está decidido. Requiere decisión propia antes de implementar; ver `04_infra.md` §8.3 y D70 (el warehouse no recibe escrituras de las apps). Fuera de este hito (D74): queda en Fase 3 (`01` §10, D40).
 
 Contexto del storage (paso 2): MinIO comunitario ya no se distribuye (repo `minio/minio` archivado 2026-04-25, imágenes `minio/minio` y `minio/mc` en 404 en Docker Hub, CVE altos sin parche libre, p. ej. CVE-2026-41145, GHSA-hv4r-mvr4-25vw); se usa SeaweedFS. `04_infra.md` §8.1 guarda `manifest.json` junto al payload en el storage, así que Postgres no es requisito del manifest.
@@ -249,7 +276,7 @@ Contexto del storage (paso 2): MinIO comunitario ya no se distribuye (repo `mini
 
 3. (Hecho en el paso 3, D64 y D65.) Extractor SODA de TRM: paginación con `$order`, reintentos, token opcional (`X-App-Token`, desde variable de entorno). Escribe cada página en `pits-raw` (SeaweedFS, D57) con la key de D61: `superfinanciera_trm/extraction_date=YYYY-MM-DD/batch_id=<uuid>/payload-NNNNN.json`, con escritura condicional `IfNoneMatch="*"` (D62).
 4. (Hecho en el paso 3, D65.) Manifest v1 (`manifest.json`, escrito al final como commit marker) con ID del dataset, atribución y licencia. Mapeo a `03_data_model.md` §3: `ingestion_batch_id` = `batch_id`; `ingested_at` = `finished_at`; `raw_object_path` = `s3://pits-raw/<files[].key>`; `record_hash` = `files[].sha256` (por archivo). `source_record_id` no aplica: la TRM no trae ID de registro; la llave natural es `vigenciadesde`.
-5. Parser/normalizer: casteo de strings, validación de schema y salida normalizada que expande cada rango (`vigenciadesde`-`vigenciahasta`) a una fila por día calendario (D47, grano `rate_date` de `03_data_model.md` §26), deduplicada por fecha para que reejecutar un batch no cree duplicados lógicos; tests unitarios. Documentar cómo reejecutar un batch. Nota (2026-10-11): la política de inputs es D76 (baseline + posteriores), no dedupe por batch más reciente.
+5. Parser/normalizer: casteo de strings, validación de schema y salida normalizada que expande cada rango (`vigenciadesde`-`vigenciahasta`) a una fila por día calendario (D47, grano `rate_date` de `03_data_model.md` §26), deduplicada por fecha para que reejecutar un batch no cree duplicados lógicos; tests unitarios. Documentar cómo reejecutar un batch. Nota (2026-10-11): la política de inputs es D76 (baseline + posteriores), no dedupe por batch más reciente. Hecho en el hito TRM normalize (S1–S6, en PR; §3).
 
 Después: Fase 1b con RUNT `u3vn-bdcy` (snapshot mensual). El DAG de Airflow (D5, D44) corresponde a Fase 4 (`01_project_brief.md` §10), con perfil `orchestration` (`04_infra.md` §10.1).
 
@@ -290,14 +317,14 @@ Condición de entrada cumplida (D46, `08_market_research.md` Ficha 2). Entregabl
 - Pendiente (Henry): borrar o conservar el volumen `pits_spike_seaweedfs_data` (con datos de prueba). Borrarlo es destructivo: no se ejecutó.
 - Pendiente técnico: s3fs y dbt no probados contra SeaweedFS (entran con el primer consumidor). La validación de memoria se hizo con GOMEMLIMIT 500MiB (D63).
 - Aprobado como D67 (2026-10-10): en Fase 3, las credenciales de ingesta del raw no tendrán `s3:DeleteObject`. Pendiente técnico de Fase 3: aplicarlo y probarlo.
-- Riesgo abierto (D65): 412 ambiguo. Si un `put_object` se guarda pero se pierde la respuesta, el reintento recibe 412 y la corrida sale con exit 1 aunque el objeto sea propio. Limitación aceptada; caso en `07` (lección 83). Tratado por D75 (aprobada 2026-10-11): verificación de bytes ante 412; pendiente de implementar (S3).
+- Cerrado por D75 (aprobada 2026-10-11; implementado en S3, §3 del hito TRM normalize): riesgo D65 de 412 ambiguo. Antes, si un `put_object` se guardaba pero se perdía la respuesta, el reintento recibía 412 y la corrida salía con exit 1 aunque el objeto fuera propio (lección 83). Ahora, ante 412 se comparan sha256 y longitud: bytes idénticos = `already_identical`; bytes distintos = conflicto permanente (exit 1), sin sobrescribir.
 - Riesgo abierto: corridas concurrentes sin lock. Dos corridas a la vez crean dos batches; ambos pueden quedar committed. El watermark sale del batch con `finished_at` más reciente dentro de la partición `extraction_date` más nueva.
 - Riesgo abierto: posible truncamiento. La paginación termina cuando `len(rows) < $limit`; si el servidor limita `$limit` por debajo de 1000, un batch incompleto podría quedar committed como válido. Falta una guarda contra el total de la API.
 - Riesgo abierto: huérfanos sin inventario. Los batches sin `manifest.json` (corridas abortadas) se acumulan en `pits-raw`; los lectores los ignoran, pero no hay listado ni limpieza.
 - Riesgo abierto: credenciales admin de SeaweedFS en la ingesta hasta Fase 3 (D67).
 - Riesgo abierto: token sobre http. El default de `SODA_BASE_URL` es https; si se configura http, `X-App-Token` viaja sin cifrar.
 - Riesgo abierto (D65): un manifest corrupto bloquea las corridas incremental y `--since` (exit 1); `--full` no lee manifests previos. Runbook: con D67 solo un administrador puede corregirlo.
-- Pendiente de dominio, normalizer (paso 5 siguiente): validaciones de dominio no definidas, por ejemplo rangos con `vigenciahasta` anterior a `vigenciadesde` o rangos solapados. Definir con Henry antes de implementar. Resuelto por D76(d) (aprobado 2026-10-11).
+- Pendiente de dominio, normalizer (paso 5, hecho en el hito TRM normalize): validaciones de dominio no definidas, por ejemplo rangos con `vigenciahasta` anterior a `vigenciadesde` o rangos solapados. Definir con Henry antes de implementar. Resuelto por D76(d) (aprobado 2026-10-11).
 - Pendiente de dominio: "Solo COP y USD" (Henry, 2026-10-10) aplica al normalizer. No está escrito en `03_data_model.md` §26; si es una regla del modelo, requiere una D nueva aprobada antes de implementar (regla 4). Resuelto por D77 (aprobada 2026-10-11), solo para la TRM.
 - Pendiente de Fase 4 (DAG): Henry pidió la "Tasa promedio a las 10:00 AM CST". Aclarar antes de fijar el horario: CST es UTC-6 en sentido literal, y la hora de Colombia es UTC-5 todo el año. Además, EE. UU. central usa CDT (UTC-5) hasta el 1 de noviembre de 2026, así que "10:00 CST" puede significar 15:00 UTC (CDT) o 16:00 UTC (CST literal). El dataset se reemplaza a ~23:05 UTC (D66).
 - Pendiente técnico: el spike corrió sobre Docker/WSL2 con C: al 95 % (26 GB libres en el spike; 29 GB tras el paso 2); validar en VPS requiere confirmación explícita de Henry (regla 10).
@@ -311,6 +338,12 @@ Condición de entrada cumplida (D46, `08_market_research.md` Ficha 2). Entregabl
 - Pendiente de dominio: pregunta abierta 2 (DANE), antes de Fase 1b.
 - Hallazgos de severidad alta de `00_review_findings.md` (R1–R3): ninguno vigente; resueltos por D47 y D48 (ver §3).
 - Configuración D73(c) aplicada localmente con plan específico aprobado: arquitecto alineado con los tres productos; `/orquestar` ya exige preflight y checkout/worktree seguro (§1-ter). Entregado en PR desde `chore/agents-preflight`, pendiente de merge; sin prueba end-to-end del ciclo completo.
+- Pendiente (Henry), aviso de rango largo (D76(f)): la corrida real del 2026-10-11 tuvo un rango de vigencia de 6 días y superó el umbral de aviso de 5 días (aviso, no error). El diseño se basó en 4 días. Decidir si se sube el umbral con una D nueva (regla 4); no se cambió en silencio.
+- Suite `-m contract` completa repetida tras la vuelta 2 de S6 (2026-10-11): 36 passed; ver §3 "Fase 1, hito TRM normalize". Cerrado.
+- Pendientes bajos de S3 aplicados en S4 (`3c4310e`): `raw_store.py:181` usa if/raise en vez de assert y `:194` cierra `resp['Body']` antes de devolver None.
+- Deuda técnica: `pits.normalized` depende de `pits.sources.trm` (contract, `FxDay`) y fija la fuente TRM. Parametrizar al llegar una segunda fuente de tasas (D77 no restringe `fx_rate` genérica).
+- Riesgos que siguen abiertos tras el hito: corridas concurrentes del extractor sin lock; truncamiento si el servidor limita `$limit`; huérfanos sin inventario; credenciales admin hasta Fase 3 (D67); disco C: al 97 % (19 GB libres) en la sesión del hito. `pits-normalized` no tiene lifecycle (D74).
+- Pendiente de Fase 3: loader a Postgres y schemas con dbt (`04` §8.3). El loader no está decidido.
 
 ## 8. Regla para la siguiente conversación
 

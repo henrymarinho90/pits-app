@@ -1,7 +1,7 @@
 # 03 — Modelo de datos
 
-Última actualización: 2026-10-10
-Estado: v10 — aclaración de §1 sobre modelo fuente/analítico frente a OLTP (D70, D72). Sin cambios de entidades. Antes: v9 — alineado con `02_domain_taxonomy.md` v12; nota de mapeo del manifest en §3 (paso 3 de Fase 1, D65 y D66).
+Última actualización: 2026-10-11
+Estado: v11 — nota de implementación de `fx_rate` para la TRM (D77, D76): par USD→COP, `rate` = COP por 1 USD, `source_reference`, columnas del CSV normalizado; sin cambio de grano (D47). Antes: v10 — aclaración de §1 sobre modelo fuente/analítico frente a OLTP (D70, D72). Sin cambios de entidades. Antes: v9 — alineado con `02_domain_taxonomy.md` v12; nota de mapeo del manifest en §3 (paso 3 de Fase 1, D65 y D66).
 
 ## 1. Propósito
 
@@ -576,6 +576,14 @@ Campos:
 - `source_reference`
 
 Nota (D47, D46): la fuente es la TRM de la Superfinanciera, dataset `32sa-8pi3`, que llega por rango (`vigenciadesde`-`vigenciahasta`). El normalizer expande cada rango a una fila por día calendario (fines de semana y festivos heredan la TRM vigente); el grano sigue siendo fecha única. Raw y manifest conservan el rango original.
+
+Implementación del normalizer TRM (D77, D76, hito TRM normalize, 2026-10-11):
+
+- Par: `currency_from = USD`, `currency_to = COP`. `rate` = COP por 1 USD (`valor` sin transformar). Exige `unidad == "COP"`; si no, error permanente. No se guarda la inversa. La regla aplica solo al normalizer de la TRM `32sa-8pi3`; no restringe la entidad genérica `fx_rate` para otras fuentes, que definen su par y orientación con su propia D.
+- Grano sin cambios (D47): `rate_date + currency_from + currency_to`.
+- Columnas del CSV normalizado (`fx_rate.csv`): `rate_date,currency_from,currency_to,rate,source_reference`. `rate_date` ISO; `rate` Decimal de punto fijo, sin exponente ni ceros finales y sin redondeo; una fila por `rate_date` ascendente.
+- `source_reference` = `<key del payload raw>#row=<i>`, con `i` desde 0 dentro de la página del payload. Permite rastrear cada tasa hasta su fila de origen en raw.
+- Decisiones de implementación (paso S4, documentadas aquí según el plan aprobado): `row_count` del manifest raw del batch = registros leídos de sus páginas; orden estricto entre páginas; una fila fuera del watermark del batch es error; el valor debe cumplir el formato ASCII `[0-9]+(\.[0-9]+)?`; un `since` vacío que borra la cola sin reponerla falla con `CoverageError` (D76(c)).
 
 ## 27. `vehicle_fleet_snapshot`
 
