@@ -1,6 +1,6 @@
 # Pits App — Plataforma de datos
 
-Portafolio de Data Engineering para un marketplace de repuestos de autos y motos (Colombia/LATAM).
+Portafolio de Data Engineering para un marketplace de repuestos de autos y motos. Alcance (D68–D73): plataforma de datos (lo implementado hoy), marketplace web de autopartes Colombia + EE. UU. y app de gestión de talleres pequeños en Colombia con facturación electrónica; los productos avanzan por hitos aprobados y aún no tienen código. Ver `docs/01_project_brief.md`.
 
 ## Requisitos
 
