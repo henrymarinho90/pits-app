@@ -101,22 +101,24 @@ name = "pits-app"
 version = "0.1.0"
 source = { editable = "." }
 dependencies = [
+    { name = "boto3" },
     { name = "typer" },
 ]
 
 [package.dev-dependencies]
 dev = [
-    { name = "boto3" },
     { name = "pytest" },
     { name = "ruff" },
 ]
 
 [package.metadata]
-requires-dist = [{ name = "typer", specifier = ">=0.27" }]
+requires-dist = [
+    { name = "boto3", specifier = ">=1.43.111" },
+    { name = "typer", specifier = ">=0.27" },
+]
 
 [package.metadata.requires-dev]
 dev = [
-    { name = "boto3", specifier = ">=1.43.111" },
     { name = "pytest", specifier = ">=8" },
     { name = "ruff", specifier = ">=0.17" },
 ]

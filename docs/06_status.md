@@ -1,13 +1,13 @@
 # 06 — Estado del proyecto
 
 Última actualización: 2026-10-10
-Estado: D57 (storage SeaweedFS, memoria M1 768m, inmutabilidad opción A), D58 (marker `contract`) y D59 (demanda solo `ACTIVO`) aprobadas por Henry el 2026-10-10 y registradas en `05` (v9). Storage desbloqueado: siguiente paso es Fase 1 paso 2. Antes: spike de storage SeaweedFS 4.48 completado en la rama `spike/seaweedfs` (`docs/spikes/seaweedfs.md`; 14/14 tests de contrato y 30 offline); Fase 1 paso 1 cerrado (D49). Antes: spike planeado y bloqueo de storage (sin evidencia); segunda ronda regional y D52–D56 (calibración del parque con Boyacá y Risaralda, marca primero, servicio público aparte, alcance de la demanda). Antes: D50 y D51; Fase 0.5 y D43–D48 (D47 grano de `fx_rate`; D48 demanda con parque RUNT, marca/modelo sintético).
+Estado: paso 2 de Fase 1 (storage y Postgres locales, perfil `core`) CERRADO en PR; D60–D63 aprobadas por Henry el 2026-10-10 y registradas en `05` (v10). Siguiente paso: paso 3 (extractor TRM). Antes: D57 (storage SeaweedFS, memoria M1 768m, inmutabilidad opción A), D58 (marker `contract`) y D59 (demanda solo `ACTIVO`) aprobadas por Henry el 2026-10-10 y registradas en `05` (v9). Antes: spike de storage SeaweedFS 4.48 completado en la rama `spike/seaweedfs` (`docs/spikes/seaweedfs.md`; 14/14 tests de contrato y 30 offline); Fase 1 paso 1 cerrado (D49). Antes: spike planeado y bloqueo de storage (sin evidencia); segunda ronda regional y D52–D56 (calibración del parque con Boyacá y Risaralda, marca primero, servicio público aparte, alcance de la demanda). Antes: D50 y D51; Fase 0.5 y D43–D48 (D47 grano de `fx_rate`; D48 demanda con parque RUNT, marca/modelo sintético).
 
 Este archivo se actualiza al final de cada sesión y funciona como punto de partida para una conversación nueva.
 
 ## 1. Fase actual
 
-**Fase actual: Fase 1 — primera ingesta real: EN CURSO (paso 1 cerrado, D49; paso 2 desbloqueado: D57 y D58 aprobadas; spike de storage completado).**
+**Fase actual: Fase 1 — primera ingesta real: EN CURSO (pasos 1 y 2 cerrados, D49 y D60–D63; paso 3 siguiente).**
 
 Fase 0.5 — investigación de mercado y validación de fuentes: CERRADA, con brechas documentadas.
 
@@ -20,7 +20,7 @@ Brechas (ver `08_market_research.md`, "No encontrado"):
 
 Objetivo de la Fase 1: primera ingesta real (`source -> raw SeaweedFS (D57) -> manifest -> parser/normalizer -> tests`).
 
-Paso 1 (esqueleto Python) cerrado (D49): hay `pyproject.toml`, `uv.lock`, paquete `pits` (src layout), CLI `pits` (`--help`, `version`), 7 tests y CI mínimo en `.github/workflows/ci.yml`. Sigue sin haber `docker-compose.yml` (paso 2, desbloqueado: ver §5).
+Paso 1 (esqueleto Python) cerrado (D49): hay `pyproject.toml`, `uv.lock`, paquete `pits` (src layout), CLI `pits` (`--help`, `version`), 7 tests y CI mínimo en `.github/workflows/ci.yml`. Paso 2 cerrado (en PR): `docker-compose.yml` (perfil `core`), `pits storage init` y bucket `pits-raw` (ver §3).
 
 ## 2. Documentación vigente
 
@@ -30,8 +30,8 @@ Paso 1 (esqueleto Python) cerrado (D49): hay `pyproject.toml`, `uv.lock`, paquet
 | `01_project_brief.md` | v3 (2026-10-10); MinIO reemplazado por SeaweedFS (D57) |
 | `02_domain_taxonomy.md` | v12 (2026-10-10); `fleet_operator` (D54) |
 | `03_data_model.md` | v8 (2026-10-10); `vehicle_registration_stat` renombrada a `vehicle_fleet_snapshot` (D51); desglose por servicio y marca primero (D52–D56); filtro `ACTIVO` (D59) |
-| `04_infra.md` | v3 (2026-10-10); SeaweedFS reemplaza a MinIO (D57) |
-| `05_decisions_log.md` | v9 (2026-10-10); D1–D59 (D57–D59 aprobadas 2026-10-10) |
+| `04_infra.md` | v4 (2026-10-10); perfil `core` (D60–D63); GOMEMLIMIT SeaweedFS 500MiB (D63); bucket `pits-raw` (D61) |
+| `05_decisions_log.md` | v10 (2026-10-10); D1–D63 (D60–D63 aprobadas 2026-10-10) |
 | `spikes/seaweedfs.md` | spike SeaweedFS 4.48 (2026-10-10), mergeado en `main` (PR #9); incluye los borradores D57 y D58 (aprobados; ver `05`) |
 | `06_status.md` | vigente (2026-10-10) |
 | `07_lessons_learned.md` | vigente, sin versión (2026-10-10) |
@@ -73,6 +73,15 @@ La TRM tiene relevancia de dominio secundaria: los precios del marketplace se fi
 - Demostrado: `uv sync --locked`; `uv run pits version` → 0.1.0 (Windows); CI verde en GitHub Actions (`.github/workflows/ci.yml`, `setup-uv` fijado a `@v10.3.0`; PR #5).
 - Atiende R6 de `00_review_findings.md`: CI mínimo en Fase 1. El CI completo (`dbt build`) sigue en Fase 5 (D40).
 
+### Fase 1, paso 2: storage y Postgres locales (D57, D60–D63; en PR)
+
+- `docker-compose.yml` (`name: pits`, perfil `core`): SeaweedFS 4.48 (`server -s3`, `127.0.0.1:8333`, `GOMEMLIMIT` 500MiB, `mem_limit` = `memswap_limit` 768m) y Postgres 17.11 Debian con digest fijo (`127.0.0.1:${POSTGRES_HOST_PORT:-5433}`, `mem_limit` = `memswap_limit` 1g, `shm_size` 256m, initdb con `C.UTF-8` builtin). `docker-compose.spike.yml` sin cambios.
+- Memoria (D63): 3/3 corridas `-m contract` verdes, sin OOM. Picos `memory.peak` 526,1 / 513,4 / 538,0 MiB frente a un límite de 684510412 B (85 % de 768 MiB). Con GOMEMLIMIT 600MiB la corrida 2 dio 86 % (criterio no cumplido). Postgres: lectura puntual de `memory.current` = 130818048 B (~125 MiB) tras el primer up, 2026-10-10; sin log guardado.
+- Bucket `pits-raw` con versioning y sin Object Lock (D61): `pits storage init` dos veces, primero created=true/changed=true y después created=false/changed=false.
+- Write-once (D62): `tests/contract/test_conditional_put_contract.py` con `IfNoneMatch="*"`: 2.º put → 412, contenido intacto, 1 versión.
+- Tests: offline (`uv run pytest -q`) con `botocore.stub.Stubber` para `load_storage_settings` y `ensure_raw_bucket`, y CLI `pits storage init` con `CliRunner`. Contrato: `uv run --env-file .env pytest -m contract -q`.
+- Cierre del plan (paso 7, 2026-10-10): `ruff check` y `ruff format --check` OK, `pytest -q` 90 passed (22 contract deselected); `docker compose down` sin `-v` (volúmenes `pits_postgres_data`, `pits_seaweedfs_data` y `pits_spike_seaweedfs_data` conservados).
+
 ### Resueltos por D47 y D48 (2026-10-10)
 
 - R1 (grano de `fx_rate`): D47, fecha única; el normalizer expande el rango de la TRM a una fila por día.
@@ -113,12 +122,12 @@ Detalle completo en `docs/spikes/seaweedfs.md`. Resultados:
 - Persistencia: objeto testigo legible tras `docker compose down` (sin `-v`) y `up -d`, con hash idéntico.
 - Memoria del cgroup (`memory.peak`): 420,2 / 440,5 / 456,8 MiB en tres corridas no comparables (82–89 % de 512 MiB); sin OOM. Reposo ~130 MiB. Cliente con tracemalloc ~51,8 MB.
 - Disco: +128 MiB con un objeto de 128 MiB; liberado al borrar el bucket.
-- No probado: s3fs y dbt (solo boto3); identidades distintas de la admin (no se probó Object Lock con identidad sin bypass); validación a 768m; VPS (Linux nativo).
+- No probado: s3fs y dbt (solo boto3); identidades distintas de la admin (no se probó Object Lock con identidad sin bypass); validación a 768m (hecha en el paso 2, D63); VPS (Linux nativo).
 - Limpieza pendiente: el volumen `pits_spike_seaweedfs_data` se conserva (borrarlo es decisión de Henry). El contenedor está apagado.
 
 ### Decisiones D57–D59 (2026-10-10, cuestionario)
 
-- D57: storage SeaweedFS 4.48 (`server -s3`) reemplaza a MinIO; memoria M1 (`mem_limit` = `memswap_limit` 768m, `GOMEMLIMIT` 600MiB, no validado aún); raw inmutable opción A (write-once por `batch_id` + versioning en el bucket raw).
+- D57: storage SeaweedFS 4.48 (`server -s3`) reemplaza a MinIO; memoria M1 (`mem_limit` = `memswap_limit` 768m, `GOMEMLIMIT` 600MiB, no validado aún; validado y ajustado a 500MiB por D63, ver §3 "Fase 1, paso 2"); raw inmutable opción A (write-once por `batch_id` + versioning en el bucket raw).
 - D58: marker `contract` excluido por defecto (`addopts`); CI sin tests de contrato hasta tener job con SeaweedFS.
 - D59: la demanda y el desglose sintético usan solo `ACTIVO`; `INCONSISTENTE` (41.349) se conserva en `vehicle_fleet_snapshot` pero no entra en la demanda.
 
@@ -146,30 +155,22 @@ Ordenado por ruta crítica: cada paso depende del anterior. Consistente con D40 
 
 **Paso 1: esqueleto del proyecto Python.** Cerrado; ver §3. `pyproject.toml` con `uv`, paquete, CLI Typer, pytest y ruff. Incluye un workflow mínimo de GitHub Actions que solo corre `ruff check`, `ruff format --check` y `pytest -q`, como habilitador. Esto difiere de `01_project_brief.md` §10, que ubica GitHub Actions en Fase 5: allí la capacidad demostrada es el CI completo (lint, unit tests y `dbt build`), que sigue en Fase 5 (D40). Mover CI mínimo a Fase 1 se formalizó en D49 (atiende R6 de `00_review_findings.md`); el CI completo sigue en Fase 5. Va primero porque sin poder testear y correr código ningún otro paso es verificable. Flujo: `/orquestar`, plan aprobado por Henry, rama propia, PR.
 
-### Primer paso para la próxima sesión
+### Paso 2 — hecho (D60–D63, en PR)
 
-**Fase 1 paso 2 (storage): desbloqueado.** D57 y D58 aprobadas (2026-10-10). Llevar `docker-compose.spike.yml` al stack local (perfil `core`, `04_infra.md` §10.1), sin copiar tal cual la configuración de prueba:
+Evidencia en §3. Pendientes técnicos heredados de D57 (no bloquean el paso 3):
 
-Tareas del paso 2:
-
-- Validar 768m con `uv run --env-file .env pytest -m contract` (`mem_limit` = `memswap_limit` 768m, `GOMEMLIMIT` 600MiB). Es la primera tarea.
-- Crear el bucket raw con versioning activado (D57, opción A: write-once por `batch_id` + versioning).
-- Postgres en el mismo perfil `core` (D9, límites de memoria).
-
-Pendientes técnicos (D57):
-
-- s3fs y dbt no probados contra SeaweedFS (solo boto3).
 - Validación en VPS OVH: requiere confirmación explícita de Henry (regla 10).
 - Volumen `pits_spike_seaweedfs_data` conservado con datos de prueba: borrarlo (`docker volume rm`) es decisión de Henry.
-- Disco C: al 95 % (26 GB libres). Las mediciones son de Docker sobre WSL2; el VPS es Linux nativo.
+- Disco C: 29 GB libres (`df -h /c` tras la medición del paso 2, 2026-10-10). Las mediciones son de Docker sobre WSL2; el VPS es Linux nativo.
 
-**Siguiente paso sugerido:** abrir rama propia desde `main` después del merge del PR de `docs/d57-d59-storage-demand`, con `/orquestar` e implementar el paso 2 a partir de `docker-compose.spike.yml` y `tests/contract`. Antes del merge, correr s3fs y dbt contra el stack local.
+### Próximo paso — paso 3 (extractor TRM)
 
-**Paso 2 (Docker Compose local, perfil `core`: storage S3 + Postgres, `04_infra.md` §10.1, límites de memoria D9): DESBLOQUEADO (D57).** MinIO comunitario ya no se distribuye (repo `minio/minio` archivado 2026-04-25, imágenes `minio/minio` y `minio/mc` en 404 en Docker Hub, CVE altos sin parche libre, p. ej. CVE-2026-41145, GHSA-hv4r-mvr4-25vw); se usa SeaweedFS. `04_infra.md` §8.1 guarda `manifest.json` junto al payload en el storage, así que Postgres no es requisito del manifest.
+**Siguiente paso sugerido:** rama propia desde `main` tras el merge del PR de este paso, con `/orquestar`. Paso 3: extractor SODA de `superfinanciera_trm` que escribe el payload en `pits-raw` con `IfNoneMatch="*"` (D62), `TransferConfig` con concurrencia ≤ 2 y partes de 8 MiB (carga medida en el paso 2, D63), y medir la carga del paso 3.
+Contexto del storage (paso 2): MinIO comunitario ya no se distribuye (repo `minio/minio` archivado 2026-04-25, imágenes `minio/minio` y `minio/mc` en 404 en Docker Hub, CVE altos sin parche libre, p. ej. CVE-2026-41145, GHSA-hv4r-mvr4-25vw); se usa SeaweedFS. `04_infra.md` §8.1 guarda `manifest.json` junto al payload en el storage, así que Postgres no es requisito del manifest.
 
 ### Pasos siguientes
 
-3. Extractor SODA de TRM: paginación con `$order`, backoff, token opcional (`X-App-Token`, desde variable de entorno). Escribe el payload original en SeaweedFS (D57) con la ruta de `04_infra.md` §8.1: `raw/<source_system>/extraction_date=YYYY-MM-DD/batch_id=<uuid>/payload.*`.
+3. Extractor SODA de TRM: paginación con `$order`, backoff, token opcional (`X-App-Token`, desde variable de entorno). Escribe el payload original en `pits-raw` (SeaweedFS, D57) con la key de D61: `superfinanciera_trm/extraction_date=YYYY-MM-DD/batch_id=<uuid>/payload.*`, con escritura condicional `IfNoneMatch="*"` (D62).
 4. Manifest de ingesta (`manifest.json`) con los campos de `03_data_model.md` §3 (`source_system`, `ingestion_batch_id`, `ingested_at`, `raw_object_path`, `record_hash` opcional), ID del dataset fijado y atribución. `source_record_id` no aplica: la TRM no trae ID de registro; la llave natural es `vigenciadesde`.
 5. Parser/normalizer: casteo de strings, validación de schema y salida normalizada que expande cada rango (`vigenciadesde`-`vigenciahasta`) a una fila por día calendario (D47, grano `rate_date` de `03_data_model.md` §26), deduplicada por fecha para que reejecutar un batch no cree duplicados lógicos; tests unitarios. Documentar cómo reejecutar un batch.
 
@@ -207,14 +208,14 @@ Condición de entrada cumplida (D46, `08_market_research.md` Ficha 2). Entregabl
 
 ## 7. Bloqueos y pendientes
 
-- Paso 2 (Docker Compose local) desbloqueado: D57 y D58 aprobadas (2026-10-10); MinIO comunitario ya no se distribuye (ver §5).
+- Pendiente (Henry): en su `.env` local, `POSTGRES_HOST_PORT=5433` si no lo puso (D60; 5432 suele estar ocupado por Postgres nativo de Windows).
 - Pendiente (Henry): la auditoría semanal (`.github/workflows/claude-recurrente.yml`, D44) no funciona. El `workflow_dispatch` del PR #6 (run 38072914197, 2026-10-10) pasó checkout, setup-uv y `uv sync --locked --no-install-project`, pero falló en `anthropics/claude-code-action@v1`: "Claude Code is not installed on this repository". Acción (Henry): instalar la GitHub App https://github.com/apps/claude en el repo, confirmar el secret `CLAUDE_CODE_OAUTH_TOKEN` y relanzar con `gh workflow run claude-recurrente.yml`.
-- Pendiente (Henry): Docker Desktop instalado (cliente 29.8.2); falta arrancar el motor y verificar `docker version` en una sesión nueva.
 - Pendiente (Henry): `CLAUDE.md` (sección Stack) dice MinIO; actualizar a SeaweedFS (D57).
 - Pendiente (Henry): borrar o conservar el volumen `pits_spike_seaweedfs_data` (con datos de prueba). Borrarlo es destructivo: no se ejecutó.
-- Pendiente técnico: s3fs y dbt no probados contra SeaweedFS; validar 768m (D57) con `-m contract` (primera tarea del paso 2).
-- Pendiente técnico: el spike corrió sobre Docker/WSL2 con C: al 95 % (26 GB libres); validar en VPS requiere confirmación explícita de Henry (regla 10).
-- Observación del spike: el log avisa que la KEK de SSE-S3 queda en texto plano en el filer si falta `s3.sse.kek.passphrase`. El cifrado en reposo no está habilitado; decidir antes del VPS.
+- Pendiente técnico: s3fs y dbt no probados contra SeaweedFS (entran con el primer consumidor). La validación de memoria se hizo con GOMEMLIMIT 500MiB (D63).
+- Pendiente (Henry): propuesta de D62 para Fase 3: quitar `s3:DeleteObject` a las credenciales de ingesta del raw.
+- Pendiente técnico: el spike corrió sobre Docker/WSL2 con C: al 95 % (26 GB libres en el spike; 29 GB tras el paso 2); validar en VPS requiere confirmación explícita de Henry (regla 10).
+- Pendiente (Henry): KEK de SSE-S3 en texto plano en el filer (el log avisa si falta `s3.sse.kek.passphrase`; cifrado en reposo no habilitado): decidir antes del VPS.
 - Pendiente (Henry), método de pooling de D55: suma de conteos u otra ponderación (`05` §F, punto 5). La interpretación aplicada está sujeta al PR.
 - Pendiente (Henry), líneas sin asignar: en Boyacá, AUTECO deja 8,6 % sin marca real (503 de 5.862 filas, incluye PLUS con 75). PLATINO (Risaralda) no está verificado; ACTIVE 110 y LEGEND quedarían sin asignar.
 - Pendiente (Henry), desglose por marca del segmento público: sin calibración aprobada (D54). Floridablanca (2023) y AMCO (2020) son muestras viejas o de un solo tipo de servicio.
