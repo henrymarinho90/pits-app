@@ -1,13 +1,15 @@
 # 06 — Estado del proyecto
 
 Última actualización: 2026-10-10
-Estado: alineación de alcance (rama `docs/scope-alignment`, apilada sobre `feat/phase1-step3-trm-extractor`, PR #12): D68–D73 aprobadas por Henry el 2026-10-10 y registradas en `05` (v12); `01` v4, `03` v10, `04` v6 alineados; alcance vigente en §1-bis. Siguiente hito técnico: TRM (§5), que requiere PR #12 mergeado antes. Antes: paso 3 de Fase 1 (extractor TRM) implementado en PR, con evidencia de corrida real; D64–D67 aprobadas por Henry el 2026-10-10 y registradas en `05` (v11). Siguiente paso: normalización TRM (D47) y replay desde raw (sin implementar). Antes: paso 2 de Fase 1 (storage y Postgres locales, perfil `core`) CERRADO en PR; D60–D63 aprobadas por Henry el 2026-10-10 y registradas en `05` (v10). Antes: D57 (storage SeaweedFS, memoria M1 768m, inmutabilidad opción A), D58 (marker `contract`) y D59 (demanda solo `ACTIVO`) aprobadas por Henry el 2026-10-10 y registradas en `05` (v9). Antes: spike de storage SeaweedFS 4.48 completado en la rama `spike/seaweedfs` (`docs/spikes/seaweedfs.md`; 14/14 tests de contrato y 30 offline); Fase 1 paso 1 cerrado (D49). Antes: spike planeado y bloqueo de storage (sin evidencia); segunda ronda regional y D52–D56 (calibración del parque con Boyacá y Risaralda, marca primero, servicio público aparte, alcance de la demanda). Antes: D50 y D51; Fase 0.5 y D43–D48 (D47 grano de `fx_rate`; D48 demanda con parque RUNT, marca/modelo sintético).
+Estado: PR #12 (extractor TRM) y PR #13 (alineación de alcance D68–D73) mergeados en `main`, verificados con `gh pr view` en esta sesión. Ajustes de agentes y `/orquestar` de D73 con plan específico aprobado; entregados en PR desde `chore/agents-preflight` (base `origin/main` `d1d867f`), pendiente de merge (§1-ter). Siguiente hito técnico: normalización TRM (D47) y replay desde raw (§5), sin iniciar; requiere plan propio aprobado.
+
+Histórico de hitos anteriores (evidencia conservada, no reejecutada aquí): D68–D73 aprobadas por Henry el 2026-10-10 y registradas en `05` (v12); `01` v4, `03` v10, `04` v6 alineados; alcance vigente en §1-bis. Antes: paso 3 de Fase 1 (extractor TRM) implementado en PR, con evidencia de corrida real; D64–D67 aprobadas por Henry el 2026-10-10 y registradas en `05` (v11). Antes: paso 2 de Fase 1 (storage y Postgres locales, perfil `core`) CERRADO en PR; D60–D63 aprobadas por Henry el 2026-10-10 y registradas en `05` (v10). Antes: D57 (storage SeaweedFS, memoria M1 768m, inmutabilidad opción A), D58 (marker `contract`) y D59 (demanda solo `ACTIVO`) aprobadas por Henry el 2026-10-10 y registradas en `05` (v9). Antes: spike de storage SeaweedFS 4.48 completado en la rama `spike/seaweedfs` (`docs/spikes/seaweedfs.md`; 14/14 tests de contrato y 30 offline); Fase 1 paso 1 cerrado (D49). Antes: spike planeado y bloqueo de storage (sin evidencia); segunda ronda regional y D52–D56 (calibración del parque con Boyacá y Risaralda, marca primero, servicio público aparte, alcance de la demanda). Antes: D50 y D51; Fase 0.5 y D43–D48 (D47 grano de `fx_rate`; D48 demanda con parque RUNT, marca/modelo sintético).
 
 Este archivo se actualiza al final de cada sesión y funciona como punto de partida para una conversación nueva.
 
 ## 1. Fase actual
 
-**Fase actual: Fase 1 — primera ingesta real: EN CURSO (pasos 1, 2 y 3 implementados: D49, D60–D63 y D64–D67; paso 3 en PR; siguiente: normalización TRM).**
+**Fase actual: Fase 1 — primera ingesta real: EN CURSO (pasos 1, 2 y 3 implementados: D49, D60–D63 y D64–D67; paso 3 mergeado en PR #12; siguiente: normalización TRM).**
 
 Fase 0.5 — investigación de mercado y validación de fuentes: CERRADA, con brechas documentadas.
 
@@ -33,7 +35,7 @@ Aprobado por Henry el 2026-10-10 (literal: "Aprobado, implementa cambios del pro
 - **Mercados domésticos separados** (D71): Colombia y EE. UU. con moneda, impuestos, políticas y vendedores propios por mercado; catálogo compartible; sin cross-border en el MVP.
 - **Taller** (D69): mano de obra y servicios entran como entidades operativas nuevas (orden de servicio y sus líneas), con diseño en hito propio. Marketplace sin servicios. `repair_job`/`repair_job_part` siguen siendo conocimiento técnico (`03` §15-16).
 - **Identidad de apps** (D72): `user` (autenticación) y tenant con `membership`; `account` sigue siendo la identidad comercial del marketplace; toda fila privada del taller lleva `tenant_id` y se autoriza en el servidor.
-- **Proceso** (D73): D45 confirmado (dentro de un plan aprobado, los agentes hacen commits, push y PR sin pedir permiso; Henry aprueba plan y PR; `CLAUDE.md` línea 38 alineado en este hito por instrucción de Henry). Al reemplazar o ajustar una decisión, en la fila vieja solo se edita Estado. `/orquestar` con worktree queda pendiente de un plan propio.
+- **Proceso** (D73): D45 confirmado (dentro de un plan aprobado, los agentes hacen commits, push y PR sin pedir permiso; Henry aprueba plan y PR; `CLAUDE.md` alineado en este hito por instrucción de Henry). Al reemplazar o ajustar una decisión, en la fila vieja solo se edita Estado. El ajuste de `/orquestar` con preflight/worktree se aplicó localmente con plan específico aprobado; ver §1-ter.
 - **Reemplazos**: D22 → "Reemplazada por D69 para el producto taller"; D34 → "Reemplazada parcialmente por D68 (frontend)". Ajustes de Estado: D2 y D60 (D70), D30 (D72), D46 (D71). Pagos y logística reales siguen fuera hasta decisión propia.
 
 **Qué NO está aprobado** (no se implementa sin decisión propia):
@@ -47,6 +49,20 @@ Aprobado por Henry el 2026-10-10 (literal: "Aprobado, implementa cambios del pro
 **Preguntas abiertas** (`05` §F, puntos 6 a 15, sin ID hasta resolver): stack de apps; proveedor fiscal y de pagos; retención de datos personales y fiscales frente a D61; política de compatibilidad visible frente a D21; prioridad comercial del MVP; marketplace lead frente a checkout; autos y motos por país; definición de tenant (D72); "Solo COP y USD" en `fx_rate`; clientes oficiales en el taller frente a D56.
 
 **Aplicado por instrucción de Henry ("aplica todos los cambios y sigue", 2026-10-10):** Estado de D2 y D60 → ajustada por D70; D30 → ajustada por D72; D46 → ajustada por D71 (D73(b)). `CLAUDE.md` alineado: título, Proyecto, regla 4 (D73(b)), línea de 01, línea de 09 (tracks) y línea de Agentes (D45, D73(a)).
+
+## 1-ter. Agentes y orquestación — ajuste local (D45, D73)
+
+Plan específico aprobado por Henry en esta sesión (literal: "Aprobado: aplicar y verificar los ajustes"). El arquitecto de Claude propuso el plan y el documentador propuso el cierre en invocaciones separadas de solo lectura; Hermes aplicó los patches. No se atribuye esta implementación al subagente implementador.
+
+- Aplicado en los cuatro agentes y `/orquestar`: alcance de tres productos; preflight de Git/concurrencia; checkout/worktree acordado antes de cambiar rama; contratos de entrada/handoff por paso; auto-fix limitado a archivos propios; críticas/altas bloqueantes; revisión independiente del diff completo después de documentar; preservación del contenido anterior, no solo conteos.
+- Se conservaron `name`, `tools` y `model`: arquitecto/revisor `inherit`, implementador `sonnet`, documentador `haiku`. No hay quinto agente, permisos nuevos, stack nuevo ni D74. `05` permanece íntegro con 73 IDs únicos; las 88 lecciones previas se conservan y se añade la 89.
+- Los límites de solo lectura del revisor son instrucciones, no un sandbox: conserva Bash. El documentador no tiene Write; creación de archivos o cambios fuera de docs/ vuelven al orquestador/implementador. Este hito no amplía herramientas para resolverlo.
+- Evidencia ejecutada por Hermes en esta sesión: `uv sync --locked`, `uv run ruff check .`, `uv run ruff format .`, `uv run ruff format --check .`, `uv run pytest -q` y `git diff --check`, todos exit 0. Ruff informó `55 files left unchanged`; no son todos Python: `format --check --verbose .` confirmó que también recorre Markdown, incluidos los archivos de `.hermes/` presentes en esa corrida (dos entonces; hoy hay tres). No hubo snapshot previo de esos untracked para una comparación independiente; no se afirma preservación byte a byte de ellos, aunque Ruff reportó cero cambios. Pytest: 296 passed, 28 deselected (contrato S3 excluido). Comprobación programática: frontmatter y modelos/tools conservados; 73 decisiones y las 88 lecciones previas sin cambios.
+- Consulta de GitHub ejecutada en esta sesión: [PR #12](https://github.com/henrymarinho90/pits-app/pull/12) MERGED (`mergedAt` 2026-10-11T03:07:34Z); [PR #13](https://github.com/henrymarinho90/pits-app/pull/13) MERGED (`mergedAt` 2026-10-11T03:16:04Z), check `ci` SUCCESS. Ese CI es del PR #13, no de este diff local.
+- Revisión independiente de Claude, vuelta 1: CAMBIOS (89/100); detectó la atribución incorrecta de los 55 archivos a Python y la comparación contra Git exigida al documentador sin Bash. Hermes corrigió ambos puntos. El revisor ejecutó `uv sync --locked`, Ruff check/format --check y pytest (296 passed, 28 deselected), todos exit 0. Las correcciones requieren una nueva revisión del diff completo; su veredicto se adjunta a la entrega, no se autoasigna aquí. Vuelta 2: APROBADO 92/100 con 3 hallazgos bajos, corregidos; el diff final se revisa de nuevo antes del commit.
+- Preflight ejercitado con `/orquestar` en una invocación nueva: primer intento con reglas Bash acotadas denegado (no cuenta como validación); segundo intento con Bash habilitado solo para esa invocación ejecutó `git status --porcelain`, `git branch --show-current`, `git log -1 --oneline` y `git worktree list`, todos exit 0. Confirmó los siete archivos modificados y `.hermes/` untracked, bloqueó cambio de rama y pidió acuerdo de checkout/concurrencia. No se cambió configuración de permisos del proyecto.
+- No se ejecutó un ciclo `/orquestar` completo de implementación/commits/PR, ni tests S3, Docker, VPS o despliegue. Las corridas de infraestructura de §3 son históricas, no evidencia de este ajuste.
+- Entrega: Henry aprobó entregarlo por PR separado (2026-10-11, "Aprobado todo, continua e implementa"); el checkout pasó a la rama `chore/agents-preflight` (base `origin/main` `d1d867f`) con `git switch -c`, sin stash/reset; número de PR y estado de CI se citan en la entrega; `.hermes/` queda fuera de alcance, sin edición deliberada (con la salvedad de Ruff anterior). Los cambios requieren una invocación nueva de Claude; no se presume recarga en sesiones abiertas.
 
 ## 2. Documentación vigente
 
@@ -108,7 +124,7 @@ La TRM tiene relevancia de dominio secundaria: los precios del marketplace se fi
 - Tests: offline (`uv run pytest -q`) con `botocore.stub.Stubber` para `load_storage_settings` y `ensure_raw_bucket`, y CLI `pits storage init` con `CliRunner`. Contrato: `uv run --env-file .env pytest -m contract -q`.
 - Cierre del plan (paso 7, 2026-10-10): `ruff check` y `ruff format --check` OK, `pytest -q` 90 passed (22 contract deselected); `docker compose down` sin `-v` (volúmenes `pits_postgres_data`, `pits_seaweedfs_data` y `pits_spike_seaweedfs_data` conservados).
 
-### Fase 1, paso 3: extractor TRM (D64–D67; en PR)
+### Fase 1, paso 3: extractor TRM (D64–D67; mergeado en PR #12)
 
 - Código: cliente SODA con reintentos y timeouts (`src/pits/sources/soda/`, D64); raw store write-once y manifest v1 (`src/pits/ingestion/`, D65); extractor de la TRM (`src/pits/sources/trm/`, D66); CLI `pits extract trm`. Tests offline con `httpx.MockTransport` y `MemoryRawStore`; contrato contra SeaweedFS (`tests/contract`).
 - `CLAUDE.md` (Stack) ya dice SeaweedFS; lo editó Henry y se comitea en este PR.
@@ -208,13 +224,13 @@ Evidencia en §3. Pendientes técnicos heredados de D57 (no bloquean el paso 3):
 - Volumen `pits_spike_seaweedfs_data` conservado con datos de prueba: borrarlo (`docker volume rm`) es decisión de Henry.
 - Disco C: 29 GB libres (`df -h /c` tras la medición del paso 2, 2026-10-10). Las mediciones son de Docker sobre WSL2; el VPS es Linux nativo.
 
-### Paso 3 — hecho (D64–D67, en PR)
+### Paso 3 — hecho (D64–D67, mergeado en PR #12)
 
 Evidencia y cómo reejecutar en §3. Se escribe cada página como `payload-NNNNN.json` con `IfNoneMatch="*"` (D62) y objetos ≤ 8 MiB con `put_object` secuencial (D65); no hay multipart ni `TransferConfig`. Medición de memoria con el criterio de D63: 3/3 corridas `-m contract` (26 tests; medidas antes de añadir los 2 últimos tests de contrato de TRM).
 
 ### Próximo paso — hito técnico TRM: normalización (D47), replay desde raw, reconciliación 412 y loader
 
-**Siguiente paso:** hito técnico TRM, sin implementar. **Prerrequisito: PR #12 (paso 3) mergeado en `main`.** La rama nueva sale de `main` después del merge, con `/orquestar`. Este hito es técnico de Fase 1 y va separado del alcance de producto (§1-bis): no implica apps, OLTP, outbox ni orden comercial.
+**Siguiente paso:** hito técnico TRM, sin implementar. **Prerrequisito cumplido: PR #12 (paso 3) mergeado en `main`, verificado con `gh pr view`.** La rama nueva sale de `main` con `/orquestar`, tras acordar checkout seguro y aprobar su plan propio. Este hito es técnico de Fase 1 y va separado del alcance de producto (§1-bis): no implica apps, OLTP, outbox ni orden comercial.
 
 - Entrada: el último batch committed de `superfinanciera_trm` (su `manifest.json` y sus `payload-NNNNN.json`), leído desde `pits-raw` sin volver a llamar a la API.
 - Salida: `fx_rate` (`03_data_model.md` §26) con una fila por día calendario del rango `vigenciadesde`–`vigenciahasta` (D47). Fines de semana y festivos heredan la TRM vigente. Grano: `rate_date` + `currency_from` + `currency_to`.
@@ -292,7 +308,7 @@ Condición de entrada cumplida (D46, `08_market_research.md` Ficha 2). Entregabl
 - Pendiente: auditar el VPS (re-medir lo registrado en `04_infra.md` §4–§6, medición del 2026-10-03 no re-verificada, ver R9, y cumplir el checklist de §15). Requiere confirmación explícita de Henry antes de ejecutar cualquier comando contra el VPS. No bloquea el desarrollo local de Fase 1; bloquea cualquier despliegue.
 - Pendiente de dominio: pregunta abierta 2 (DANE), antes de Fase 1b.
 - Hallazgos de severidad alta de `00_review_findings.md` (R1–R3): ninguno vigente; resueltos por D47 y D48 (ver §3).
-- Pendiente de configuración (D73(c)): `.claude/agents/arquitecto.md:7` dice "marketplace de repuestos auto/moto, Colombia/LATAM"; no se corrige en docs/. Se corrige con el plan específico de D73(c), que cubre los cambios en `.claude/`.
+- Configuración D73(c) aplicada localmente con plan específico aprobado: arquitecto alineado con los tres productos; `/orquestar` ya exige preflight y checkout/worktree seguro (§1-ter). Entregado en PR desde `chore/agents-preflight`, pendiente de merge; sin prueba end-to-end del ciclo completo.
 
 ## 8. Regla para la siguiente conversación
 
