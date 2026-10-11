@@ -1,7 +1,7 @@
 # 03 — Modelo de datos
 
 Última actualización: 2026-10-10
-Estado: v9 — alineado con `02_domain_taxonomy.md` v12; nota de mapeo del manifest en §3 (paso 3 de Fase 1, D65 y D66). Sin cambios de modelo.
+Estado: v10 — aclaración de §1 sobre modelo fuente/analítico frente a OLTP (D70, D72). Sin cambios de entidades. Antes: v9 — alineado con `02_domain_taxonomy.md` v12; nota de mapeo del manifest en §3 (paso 3 de Fase 1, D65 y D66).
 
 ## 1. Propósito
 
@@ -16,6 +16,8 @@ Objetivos del modelo:
 - permitir ingestas idempotentes;
 - facilitar lineage y replay;
 - generar hechos suficientes para analítica de demanda, oferta, negociación, transacciones y reputación.
+
+Alcance de este documento (D70, D72): describe el **modelo fuente y analítico** del dominio (entidades de marketplace, taller y fuentes externas) que alimenta el warehouse. **No es el schema OLTP de las apps.** Cada app tendrá su propio modelo transaccional, con persistencia y autorización propias, separado del warehouse por base y rol; el de este documento es el contrato de referencia de dominio y de los eventos que esas apps publican por outbox. Por eso el `tenant_id` del taller (D72) y las entidades de servicio de D69 se diseñarán en su hito, no aquí. Las columnas de metadata de ingesta de la §3 y las entidades de este documento no implican que las apps las usen en su modelo transaccional.
 
 ## 2. Convenciones
 

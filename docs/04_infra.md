@@ -1,7 +1,7 @@
 # 04 — Infraestructura y operación
 
 Última actualización: 2026-10-10
-Estado: v5 — perfil `core` implementado en `docker-compose.yml` (D60–D63); arquitectura operativa revisada; §8.1 con el contrato del batch raw de la ingesta (D65, paso 3 de Fase 1).
+Estado: v6 — nota de separación OLTP/warehouse en §7 y §8.3 (D70); sin cambios en `docker-compose.yml`. Antes: v5 — perfil `core` implementado en `docker-compose.yml` (D60–D63); §8.1 con el contrato del batch raw de la ingesta (D65, paso 3 de Fase 1).
 
 ## 1. Objetivo
 
@@ -146,6 +146,8 @@ Internet / sources
 Airflow orchestrates ingestion -> load -> dbt -> quality checks.
 ```
 
+Nota de separación OLTP/warehouse (D70). El diagrama anterior describe el warehouse y el pipeline; no incluye las apps. Las apps (marketplace y taller, `01_project_brief.md` §8.2) usan una base OLTP propia, separada del warehouse por base y rol. En local puede ser la misma instancia Postgres del perfil `core`, sabiendo que no aísla CPU ni I/O. Ninguna app escribe en el warehouse ni lo lee para operar. Los hechos operativos llegan al warehouse por una tabla outbox transaccional y su export al raw con manifest (entrega al menos una vez; dedupe por `event_id`). Un worker operacional maneja facturas electrónicas y webhooks; no es Airflow. Esta nota no cambia `docker-compose.yml`; el despliegue de las apps se decide en su hito.
+
 ## 8. Zonas de almacenamiento
 
 ### 8.1 SeaweedFS raw (D57)
@@ -204,6 +206,8 @@ Separación lógica sugerida:
 - `analytics` / marts.
 
 La nomenclatura definitiva se decidirá al crear el proyecto dbt.
+
+Separación OLTP/warehouse (D70): las apps no usan estos schemas para operar. Su persistencia transaccional es una base OLTP propia (`01_project_brief.md` §8.2), separada del warehouse por base y rol; en local puede compartir la instancia, pero no el aislamiento de recursos. El warehouse recibe los hechos por outbox y export al raw con manifest, nunca por escritura directa de las apps. Los usuarios de mínimo privilegio se definen en Fase 3 (D60, §11).
 
 ## 9. Componentes nuevos y presupuesto de capacidad
 
