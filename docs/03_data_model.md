@@ -1,7 +1,7 @@
 # 03 — Modelo de datos
 
 Última actualización: 2026-10-11
-Estado: v11 — nota de implementación de `fx_rate` para la TRM (D77, D76): par USD→COP, `rate` = COP por 1 USD, `source_reference`, columnas del CSV normalizado; sin cambio de grano (D47). Antes: v10 — aclaración de §1 sobre modelo fuente/analítico frente a OLTP (D70, D72). Sin cambios de entidades. Antes: v9 — alineado con `02_domain_taxonomy.md` v12; nota de mapeo del manifest en §3 (paso 3 de Fase 1, D65 y D66).
+Estado: v12 — notas de linaje de `landing.fx_rate` en §3 y de la tabla en §26 (D79–D82, hito loader fx_rate, 2026-10-11); sin cambio de entidades ni de grano. Antes: v11 — nota de implementación de `fx_rate` para la TRM (D77, D76): par USD→COP, `rate` = COP por 1 USD, `source_reference`, columnas del CSV normalizado; sin cambio de grano (D47). Antes: v10 — aclaración de §1 sobre modelo fuente/analítico frente a OLTP (D70, D72). Sin cambios de entidades. Antes: v9 — alineado con `02_domain_taxonomy.md` v12; nota de mapeo del manifest en §3 (paso 3 de Fase 1, D65 y D66).
 
 ## 1. Propósito
 
@@ -62,6 +62,22 @@ Nota de implementación; el modelo no cambia. El manifest (`manifest.json`, `04_
 | `record_hash` | `files[].sha256` | Hash por archivo (payload completo), no por fila. El hash por fila, si se necesita, lo calcula el parser. |
 
 Los campos `watermark` (`mode`, `from_exclusive`, `to_observed`) y `source_rows_updated_at` del manifest no son columnas de negocio: sirven a la ingesta incremental (D66).
+
+### Linaje de `landing.fx_rate` (D81, hito loader fx_rate, 2026-10-11)
+
+Nota de implementación; el modelo no cambia y no hay columnas derivadas. `landing.fx_rate` guarda `source_reference` y `load_id`; el resto de la metadata se obtiene por unión, sin columnas nuevas:
+
+| Campo de esta sección | Origen en la carga | Nota |
+|---|---|---|
+| `source_system` | `landing.fx_rate.source_system` | Constante del loader para la TRM: `superfinanciera_trm`. |
+| `source_record_id` | no aplica | La TRM no trae ID de registro; la llave natural es fecha + par. |
+| `ingestion_batch_id` | `source_reference`: uuid de `batch_id=` dentro de la key raw | No es columna. |
+| `raw_object_path` | `source_reference`: parte antes de `#row=` | Key del payload raw; la ruta completa es `s3://pits-raw/<key>`. No es columna. |
+| `ingested_at` | `load_id` → `ops.load_run.normalized_manifest` → `inputs[]`: `finished_at` del input con el mismo `batch_id` | No es columna. |
+| `fingerprint` | `load_id` → `ops.load_run.input_fingerprint` | No es columna. |
+| `loaded_at` | `load_id` → `ops.load_run.loaded_at` | No es columna. |
+
+`ops.load_run.normalized_manifest` guarda el contenido parseado del manifest normalizado, no sus bytes; los bytes exactos los acredita `manifest_sha256` junto con `manifest_key`.
 
 ## 4. Diagrama entidad-relación conceptual
 
@@ -584,6 +600,14 @@ Implementación del normalizer TRM (D77, D76, hito TRM normalize, 2026-10-11):
 - Columnas del CSV normalizado (`fx_rate.csv`): `rate_date,currency_from,currency_to,rate,source_reference`. `rate_date` ISO; `rate` Decimal de punto fijo, sin exponente ni ceros finales y sin redondeo; una fila por `rate_date` ascendente.
 - `source_reference` = `<key del payload raw>#row=<i>`, con `i` desde 0 dentro de la página del payload. Permite rastrear cada tasa hasta su fila de origen en raw.
 - Decisiones de implementación (paso S4, documentadas aquí según el plan aprobado): `row_count` del manifest raw del batch = registros leídos de sus páginas; orden estricto entre páginas; una fila fuera del watermark del batch es error; el valor debe cumplir el formato ASCII `[0-9]+(\.[0-9]+)?`; un `since` vacío que borra la cola sin reponerla falla con `CoverageError` (D76(c)).
+
+Implementación en Postgres (`landing.fx_rate`, D79–D82; hito loader fx_rate, 2026-10-11):
+
+- Tabla `landing.fx_rate` en la base `pits_warehouse`, con el grano de esta sección como PK (`fx_rate_pk`). Columnas: `rate_date`, `currency_from`, `currency_to`, `rate` (numeric sin precisión fija), `source_system`, `source_reference`, `load_id` (FK a `ops.load_run`).
+- CHECK: moneda en `^[A-Z]{3}$`, par con monedas distintas, `rate > 0` sin NaN ni Infinity, y `source_system` y `source_reference` no vacíos. Detalle en `05` D81.
+- Carga desde `fx_rate.csv` con `pits load fx-rate` (D82): la tabla queda igual al artefacto mediante `MERGE`; las filas de la TRM que ya no están en el artefacto se borran.
+- Linaje: ver §3 (sin columnas derivadas).
+- Las capas `staging`, `intermediate` y `marts` las crea dbt en el hito siguiente.
 
 ## 27. `vehicle_fleet_snapshot`
 

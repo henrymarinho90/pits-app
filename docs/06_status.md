@@ -1,7 +1,7 @@
 # 06 — Estado del proyecto
 
 Última actualización: 2026-10-11
-Estado: hito TRM normalize IMPLEMENTADO en `feat/trm-normalize` (worktree `C:\dev\pits-app-trm`), apilado sobre `chore/agents-preflight` (PR #14); pendiente de PR, revisión independiente del diff y commit final; plan aprobado por Henry el 2026-10-11 (D74–D77). Sin merge ni CI verificados. PR #12 (extractor TRM) y PR #13 (alineación de alcance D68–D73) mergeados en `main`, verificados con `gh pr view` en esta sesión. Ajustes de agentes y `/orquestar` de D73 con plan específico aprobado; entregados en PR desde `chore/agents-preflight` (base `origin/main` `d1d867f`), pendiente de merge (§1-ter). Siguiente paso: decisión de Henry entre Fase 1b (RUNT `u3vn-bdcy`) y loader Fase 3 (§5); no iniciado.
+Estado: hito loader fx_rate a Postgres (Fase 3, D78–D84) IMPLEMENTADO en `feat/fx-rate-loader` (worktree `C:\dev\pits-app-load`), apilado sobre `feat/trm-normalize` (base `d89d997`, según el plan); pasos S1–S7 implementados, revisados y commiteados; corrida real contra `pits_warehouse` OK el 2026-10-11 (§3). Pendiente: PR, CI y merge. Antes: hito TRM normalize IMPLEMENTADO en `feat/trm-normalize` (worktree `C:\dev\pits-app-trm`), apilado sobre `chore/agents-preflight` (PR #14); pendiente de PR, revisión independiente del diff y commit final; plan aprobado por Henry el 2026-10-11 (D74–D77). Sin merge ni CI verificados. PR #12 (extractor TRM) y PR #13 (alineación de alcance D68–D73) mergeados en `main`, verificados con `gh pr view` en esta sesión. Ajustes de agentes y `/orquestar` de D73 con plan específico aprobado; entregados en PR desde `chore/agents-preflight` (base `origin/main` `d1d867f`), pendiente de merge (§1-ter). Siguiente paso sugerido: dbt sobre `landing.fx_rate` (hito siguiente según D78), sin fecha; no iniciado (§5).
 
 Histórico de hitos anteriores (evidencia conservada, no reejecutada aquí): D68–D73 aprobadas por Henry el 2026-10-10 y registradas en `05` (v12); `01` v4, `03` v10, `04` v6 alineados; alcance vigente en §1-bis. Antes: paso 3 de Fase 1 (extractor TRM) implementado en PR, con evidencia de corrida real; D64–D67 aprobadas por Henry el 2026-10-10 y registradas en `05` (v11). Antes: paso 2 de Fase 1 (storage y Postgres locales, perfil `core`) CERRADO en PR; D60–D63 aprobadas por Henry el 2026-10-10 y registradas en `05` (v10). Antes: D57 (storage SeaweedFS, memoria M1 768m, inmutabilidad opción A), D58 (marker `contract`) y D59 (demanda solo `ACTIVO`) aprobadas por Henry el 2026-10-10 y registradas en `05` (v9). Antes: spike de storage SeaweedFS 4.48 completado en la rama `spike/seaweedfs` (`docs/spikes/seaweedfs.md`; 14/14 tests de contrato y 30 offline); Fase 1 paso 1 cerrado (D49). Antes: spike planeado y bloqueo de storage (sin evidencia); segunda ronda regional y D52–D56 (calibración del parque con Boyacá y Risaralda, marca primero, servicio público aparte, alcance de la demanda). Antes: D50 y D51; Fase 0.5 y D43–D48 (D47 grano de `fx_rate`; D48 demanda con parque RUNT, marca/modelo sintético).
 
@@ -9,7 +9,7 @@ Este archivo se actualiza al final de cada sesión y funciona como punto de part
 
 ## 1. Fase actual
 
-**Fase actual: Fase 1 — primera ingesta real: EN CURSO (pasos 1, 2 y 3 implementados: D49, D60–D63 y D64–D67; paso 3 mergeado en PR #12; hito TRM normalize implementado en PR, D74–D77, §3 y §5; siguiente: decisión de Henry).**
+**Fase actual: Fase 1 — primera ingesta real: EN CURSO (pasos 1, 2 y 3 implementados: D49, D60–D63 y D64–D67; paso 3 mergeado en PR #12; hito TRM normalize implementado en PR, D74–D77, §3 y §5; hito loader fx_rate (Fase 3, D78–D84) implementado en la rama, §3 y §5; siguiente sugerido: dbt sobre `landing.fx_rate`, sin fecha).**
 
 Fase 0.5 — investigación de mercado y validación de fuentes: CERRADA, con brechas documentadas.
 
@@ -71,12 +71,12 @@ Plan específico aprobado por Henry en esta sesión (literal: "Aprobado: aplicar
 | `00_review_findings.md` | "Auditoría de consistencia" v1.3 (2026-10-10; R1–R3 resueltos por D47 y D48, R6 por D49, R2 renombrada por D51; la original nunca se versionó) |
 | `01_project_brief.md` | v4 (2026-10-10); tres productos, mercados por país, fuera de alcance reformulado, diagrama OLTP/outbox/raw (D68–D71); SeaweedFS (D57) |
 | `02_domain_taxonomy.md` | v13 (2026-10-10); nota en §17 sobre frontend (D68); `fleet_operator` (D54) |
-| `03_data_model.md` | v11 (2026-10-11); nota de implementación de `fx_rate` para la TRM en §26 (D77, D76); v10 (2026-10-10); §1 aclara modelo fuente/analítico frente a OLTP (D70, D72); mapeo del manifest en §3 (D65, D66); `vehicle_registration_stat` renombrada a `vehicle_fleet_snapshot` (D51); desglose por servicio y marca primero (D52–D56); filtro `ACTIVO` (D59) |
-| `04_infra.md` | v7 (2026-10-11); zona `pits-normalized` en §8.2 (D74, D75, D76); v6 (2026-10-10); nota OLTP/warehouse en §7 y §8.3 (D70), sin cambios de compose; §8.1 con el contrato del batch raw (D65); perfil `core` (D60–D63); GOMEMLIMIT SeaweedFS 500MiB (D63); bucket `pits-raw` (D61) |
-| `05_decisions_log.md` | v13 (2026-10-11); D1–D77 (D74–D77 hito TRM normalize, aprobadas 2026-10-11; Estado de D62 y D65 ajustado por D75); v12 (2026-10-10); D1–D73 (D68–D73 alineación de alcance, aprobadas 2026-10-10); celdas Estado de D2, D22, D30, D34, D46 y D60 actualizadas (D73(b)); D60–D63 y D64–D67 aprobadas 2026-10-10 |
+| `03_data_model.md` | v12 (2026-10-11); linaje de `landing.fx_rate` en §3 y tabla en §26 (D79–D82); v11 (2026-10-11); nota de implementación de `fx_rate` para la TRM en §26 (D77, D76); v10 (2026-10-10); §1 aclara modelo fuente/analítico frente a OLTP (D70, D72); mapeo del manifest en §3 (D65, D66); `vehicle_registration_stat` renombrada a `vehicle_fleet_snapshot` (D51); desglose por servicio y marca primero (D52–D56); filtro `ACTIVO` (D59) |
+| `04_infra.md` | v8 (2026-10-11); PostgreSQL del warehouse en §8.3, medición de memoria de Postgres en §9, notas de roles y log en §11 y §13 (D79–D82); v7 (2026-10-11); zona `pits-normalized` en §8.2 (D74, D75, D76); v6 (2026-10-10); nota OLTP/warehouse en §7 y §8.3 (D70), sin cambios de compose; §8.1 con el contrato del batch raw (D65); perfil `core` (D60–D63); GOMEMLIMIT SeaweedFS 500MiB (D63); bucket `pits-raw` (D61) |
+| `05_decisions_log.md` | v14 (2026-10-11); D1–D84 (D78–D84 hito loader fx_rate, aprobadas 2026-10-11; Estado de D74 ajustado por D79); v13 (2026-10-11); D1–D77 (D74–D77 hito TRM normalize, aprobadas 2026-10-11; Estado de D62 y D65 ajustado por D75); v12 (2026-10-10); D1–D73 (D68–D73 alineación de alcance, aprobadas 2026-10-10); celdas Estado de D2, D22, D30, D34, D46 y D60 actualizadas (D73(b)); D60–D63 y D64–D67 aprobadas 2026-10-10 |
 | `spikes/seaweedfs.md` | spike SeaweedFS 4.48 (2026-10-10), mergeado en `main` (PR #9); incluye los borradores D57 y D58 (aprobados; ver `05`) |
 | `06_status.md` | vigente (2026-10-11) |
-| `07_lessons_learned.md` | vigente, sin versión (2026-10-10) |
+| `07_lessons_learned.md` | vigente, sin versión; lecciones 1–101 (96–101 del hito loader fx_rate, 2026-10-11) |
 | `08_market_research.md` | fechas de consulta 2026-10-03 (antes `claude_08_market_research.md`) |
 | `09_us_market_research.md` | tercera ronda, 2026-10-09 (antes `claude_09_us_market_research.md`) |
 | `research/parque_por_marca.md` | investigación 2026-10-10 (D50); segunda ronda 2026-10-10, sección "Segunda ronda" (base de D52 y D55) |
@@ -170,6 +170,51 @@ Procedencia: la evidencia de esta sección la reportó el orquestador en la sesi
 - Manifest corrupto en raw: exit 1 (D65). Con D67, solo un administrador lo corrige; el normalizer no lo repara.
 - Rango largo (más de `--warn-range-days`): aviso en stderr; no bloquea. Ver §7 para la decisión pendiente sobre el umbral.
 
+### Fase 3, loader fx_rate a Postgres (D78–D84; implementado en la rama, corrida real pendiente)
+
+Procedencia: plan aprobado por Henry el 2026-10-11 (literal: "aprobado", sobre el plan con D78–D84 y los nombres `pits_warehouse`, `landing` y `ops`). Pasos S1–S6 implementados según el orquestador; S7 es este documento. Base `d89d997`; rama `feat/fx-rate-loader`, worktree `C:\dev\pits-app-load`. El documentador no tiene Bash: no ejecutó `git`, tests, Docker ni la CLI. Los nombres de código de esta sección se verificaron contra `src/pits/warehouse/`, `src/pits/normalized/reader.py`, `tests/pg/`, `tests/contract/test_fx_rate_load_e2e.py` y `scripts/measure_storage_memory.sh`. La comparación contra la base la hace el revisor-senior.
+
+**Demostrado (evidencia de la sesión del 2026-10-11, hora local según el log):**
+
+- Memoria de Postgres (`scripts/measure_storage_memory.sh`, `C=pits-postgres`, `EXPECTED_LIMIT=1073741824`, `PEAK_LIMIT=912680550`, `EXPECTED_GOMEMLIMIT` vacío; carga `pytest -m pg -q`). Log de la sesión, no versionado. 3/3 corridas con rc=0 y `81 passed, 726 deselected` cada una. `memory.peak` 120229888, 120696832 y 70983680 B (114,66, 115,11 y 67,70 MiB). Máximo 115,11 MiB = 11,2 % de 1 GiB, por debajo del 85 %. Sin OOM (`oom=0`, `OOMKilled=false`, `RestartCount=0`). Criterio cumplido. Detalle en `04` §9.
+- Pico del loader con tracemalloc (log `trace_loader.log` de la sesión, no versionado; medición del cliente, no del servidor): `rows=12735 csv_bytes=1833902`; primera carga `outcome=loaded inserted=12735`, pico `4838302 bytes (4.61 MiB)`, current `289713`; segunda carga `outcome=already_loaded`, pico `4839008 bytes (4.61 MiB)`, current `290517`.
+- Gates del revisor en S6 (reportados por el coordinador, no reejecutados aquí): `ruff check` OK; `ruff format` 99 archivos OK; `pytest -q` 690 passed; `pytest -m pg` 81 passed; contract+pg 1 passed. Disco C: 45 GB libres antes y después de la medición.
+
+**Aprobado (2026-10-11):**
+
+- D78–D84 ("aprobado"). D74: Estado → "Ajustada por D79" (D73(b)).
+- Umbral de rango largo D76(f): "Deja así" (5 días), sin D nueva (cierra el pendiente de §7).
+- D60 no se ajusta: D79 implementa los usuarios de mínimo privilegio que D60 dejaba para Fase 3, pero no cambia ninguna de sus decisiones (imagen, memoria, puerto, volumen, healthcheck, locale, credenciales desde `.env`).
+
+**Corrida real y pendientes:**
+
+- Corrida real (2026-10-11, Docker local, `uv run --env-file .env`; no VPS):
+  - `pits db migrate` → `database=pits_warehouse applied=2 skipped=0` (exit 0, ~1 s); repetido → `applied=0 skipped=2` (exit 0).
+  - `pits load fx-rate` (1.ª) → `outcome=loaded load_id=1 rows=12735 inserted=12735 updated=0 deleted=0 coverage=1991-12-02..2026-10-13` (exit 0, ~1,6 s); fingerprint `caa8bc5c31305114109a5a793ad3ec833d1285e8684897260047306c92d6c268`, el mismo del artefacto normalizado de D76.
+  - `pits load fx-rate` (2.ª) → `outcome=already_loaded load_id=1 inserted=0 updated=0 deleted=0` (exit 0, ~1,2 s).
+  - Consulta como `pits_reader`: 12.735 filas, 1991-12-02..2026-10-13, un solo `load_id`; `ops.load_run` con 1 fila; `DELETE` del reader → `InsufficientPrivilege`.
+  - Disco C: 45 GB libres antes y después; volúmenes Docker 74,58 MB → 85,57 MB (`docker system df`).
+- Revisión final del hito (`revisor-senior`, diff completo contra `d89d997` + corrida real re-verificada en solo lectura): APROBADA 9,4/10 (2026-10-11). Pendiente: PR y CI.
+- Commits del hito: 36598b7 (S1), 050c96f (S2), b7fe95b (S3), cf26d00 (S4), 188c26b (S5), 64e24ce (S6 e2e y medición), 9f523f8 (script, DATA_DIR), 725fe02 (S7 docs) y el commit de la evidencia de la corrida real.
+- Disco C: el plan fijó 10 GB libres como umbral para abortar S6 (41 GB al planear). El coordinador reporta 45 GB antes y después de la medición (§3).
+- `sslmode=disable` solo en loopback. En el VPS requiere una D nueva (`04` §8.3).
+
+**Runbook del loader**
+
+- Requisitos: perfil `core` arriba (`docker compose up -d`; Postgres en `127.0.0.1:5433` por defecto). `.env` con `POSTGRES_USER`/`POSTGRES_PASSWORD` (admin, solo para migrar), `PITS_PG_LOADER_PASSWORD` y `PITS_PG_READER_PASSWORD`. `pits load fx-rate` además lee el bucket normalized con las credenciales de storage de `.env`.
+- Migrar: `uv run --env-file .env pits db migrate`. Salida: `database=pits_warehouse applied=N skipped=M`. Es idempotente y vuelve a fijar las contraseñas de loader y reader desde `.env`. Una migración nueva es un archivo `NNNN_<name>.sql` nuevo; nunca se edita uno aplicado (sha256 distinto = exit 1).
+- Cargar: `uv run --env-file .env pits load fx-rate [--fingerprint SHA] [--repair]`. Salida: `outcome=… load_id=… fingerprint=… rows=… inserted=… updated=… deleted=… coverage=A..B manifest=s3://…`. La segunda corrida sin cambios da `already_loaded`.
+- `--fingerprint SHA` (64 hex en minúsculas) fuerza un artefacto. Sirve para (a) recuperarse de un manifest antiguo corrupto: un manifest corrupto bloquea la selección automática (exit 1); se carga el fingerprint de un artefacto sano; (b) cargar uno anterior al cargado, que sin el flag da exit 1 por retroceso.
+- Deriva (exit 1, "Warehouse drifted"): `--repair` vuelve a aplicar el artefacto. Su salida imprime `outcome=loaded`.
+- Exit codes: 0 `loaded`, `already_loaded` o migración correcta. 1 permanente: configuración, manifest o hash, constraint, verificación, deriva sin `--repair`, retroceso, migraciones no aplicadas, privilegios, autenticación (28P01, 28000). 2 uso (Typer; `--fingerprint` que no es hex de 64). 3 transitorio, seguro reintentar: S3 transitorio, conexión rechazada, lock ocupado (también el del `db migrate`), 55P03, 40001, 40P01, 57P01, 57P03.
+- Limitación de autenticación: un 28000 sin intercambio de contraseña se clasifica como transitorio (D83).
+- Excepciones no tipadas: traceback y exit 1, sin variables locales.
+- Lock ocupado (exit 3): hay otro `db migrate` o `load` en curso. Esperar y reintentar.
+- Tests: offline `uv run pytest -q`; Postgres `uv run --env-file .env pytest -m pg -q` (incluye el e2e de `tests/contract/test_fx_rate_load_e2e.py`, que lleva ambos markers).
+- Limpieza manual de bases y roles de prueba huérfanos. No hay comando de CLI. Cada test `pg` crea y borra su propia base y sus roles (fixture de alcance función); la sesión solo barre huérfanos con patrones exactos al iniciar. Si quedan restos, con Postgres local y sin sesiones `pg` activas, como admin sobre la base `postgres`: `DROP DATABASE IF EXISTS pits_test_<uuid8> WITH (FORCE);` y luego `DROP ROLE IF EXISTS` para `pits_owner_t<uuid8>`, `pits_loader_t<uuid8>` y `pits_reader_t<uuid8>`. Es destructivo: solo local y con confirmación de Henry. Nunca sobre los roles reales `pits_owner`, `pits_loader` ni `pits_reader`.
+
+**Riesgos abiertos del loader:** `sslmode=disable` (solo loopback); verificador SCRAM en el log del servidor si `log_statement` = `ddl` o `all` (`04` §8.3); `db migrate` requiere la contraseña admin en `.env`; 28000 ambiguo (D83); un manifest corrupto bloquea la selección automática hasta usar `--fingerprint`; `GENERATED ALWAYS` no impide `OVERRIDING SYSTEM VALUE` a quien tiene INSERT (el loader es código propio, D81); D67 sigue pendiente (credenciales de ingesta del raw con permisos admin).
+
 ### Resueltos por D47 y D48 (2026-10-10)
 
 - R1 (grano de `fx_rate`): D47, fecha única; el normalizer expande el rango de la TRM a una fila por día.
@@ -259,7 +304,7 @@ Evidencia y cómo reejecutar en §3. Se escribe cada página como `payload-NNNNN
 
 **Estado: IMPLEMENTADO en PR** (rama `feat/trm-normalize`, worktree `C:\dev\pits-app-trm`, apilada sobre `chore/agents-preflight`, PR #14). Plan aprobado por Henry el 2026-10-11 (literal: "Aprobado todo, continua e implementa"): pasos S1–S7 y D74–D77. Pasos S1–S6 implementados y S7 documentado; evidencia en §3 "Fase 1, hito TRM normalize" (reportada por el orquestador, 2026-10-11). Pendiente: revisión independiente del diff completo, commit final, apertura de PR y CI; ninguno verificado aquí. Loader a Postgres, dbt, Airflow, parquet y apps quedan fuera de este hito.
 
-**Siguiente paso:** decisión de Henry entre Fase 1b (RUNT `u3vn-bdcy`, snapshot mensual) y loader Fase 3 (`01` §10, D40). No iniciado. Descripción previa del hito (2026-10-10), conservada; los puntos actualizados por D74–D77 se marcan en línea. **Prerrequisito cumplido: PR #12 (paso 3) mergeado en `main`, verificado con `gh pr view`.** Rama apilada: `feat/trm-normalize` sale de `chore/agents-preflight` (no de `main`), por instrucción de Henry (2026-10-11). Este hito es técnico de Fase 1 y va separado del alcance de producto (§1-bis): no implica apps, OLTP, outbox ni orden comercial.
+**Siguiente paso sugerido (hito loader fx_rate, §3):** dbt sobre `landing.fx_rate` (hito siguiente según D78), sin fecha; no iniciado. El loader está implementado en la rama, con corrida real OK (§3). Fase 1b (RUNT `u3vn-bdcy`) sigue sin orden decidido por Henry. Descripción previa del hito (2026-10-10), conservada; los puntos actualizados por D74–D77 se marcan en línea. **Prerrequisito cumplido: PR #12 (paso 3) mergeado en `main`, verificado con `gh pr view`.** Rama apilada: `feat/trm-normalize` sale de `chore/agents-preflight` (no de `main`), por instrucción de Henry (2026-10-11). Este hito es técnico de Fase 1 y va separado del alcance de producto (§1-bis): no implica apps, OLTP, outbox ni orden comercial.
 
 - Entrada (D76(a)-(b), reemplaza "el último batch committed"): todos los manifests committed de `superfinanciera_trm`/`32sa-8pi3`, validados estrictamente y ordenados por `commit_order = (extraction_date, finished_at, batch_id)`. Baseline = último `full` más los batches posteriores en orden ascendente; sin `full` committed, la corrida falla. Se leen desde `pits-raw` sin volver a llamar a la API. El loader no entra en este hito (Fase 3, `01` §10, D40).
 - Salida: `fx_rate` (`03_data_model.md` §26) con una fila por día calendario del rango `vigenciadesde`–`vigenciahasta` (D47). Fines de semana y festivos heredan la TRM vigente. Grano: `rate_date` + `currency_from` + `currency_to`. Artefacto: `fx_rate.csv` + `manifest.json` en `pits-normalized` (D74, D76(e)).
@@ -338,12 +383,16 @@ Condición de entrada cumplida (D46, `08_market_research.md` Ficha 2). Entregabl
 - Pendiente de dominio: pregunta abierta 2 (DANE), antes de Fase 1b.
 - Hallazgos de severidad alta de `00_review_findings.md` (R1–R3): ninguno vigente; resueltos por D47 y D48 (ver §3).
 - Configuración D73(c) aplicada localmente con plan específico aprobado: arquitecto alineado con los tres productos; `/orquestar` ya exige preflight y checkout/worktree seguro (§1-ter). Entregado en PR desde `chore/agents-preflight`, pendiente de merge; sin prueba end-to-end del ciclo completo.
-- Pendiente (Henry), aviso de rango largo (D76(f)): la corrida real del 2026-10-11 tuvo un rango de vigencia de 6 días y superó el umbral de aviso de 5 días (aviso, no error). El diseño se basó en 4 días. Decidir si se sube el umbral con una D nueva (regla 4); no se cambió en silencio.
+- Cerrado (Henry, 2026-10-11, literal: "Deja así"): aviso de rango largo D76(f). La corrida real del 2026-10-11 tuvo un rango de vigencia de 6 días y superó el umbral de aviso de 5 días (aviso, no error). El umbral sigue en 5 días; sin D nueva.
 - Suite `-m contract` completa repetida tras la vuelta 2 de S6 (2026-10-11): 36 passed; ver §3 "Fase 1, hito TRM normalize". Cerrado.
 - Pendientes bajos de S3 aplicados en S4 (`3c4310e`): `raw_store.py:181` usa if/raise en vez de assert y `:194` cierra `resp['Body']` antes de devolver None.
 - Deuda técnica: `pits.normalized` depende de `pits.sources.trm` (contract, `FxDay`) y fija la fuente TRM. Parametrizar al llegar una segunda fuente de tasas (D77 no restringe `fx_rate` genérica).
 - Riesgos que siguen abiertos tras el hito: corridas concurrentes del extractor sin lock; truncamiento si el servidor limita `$limit`; huérfanos sin inventario; credenciales admin hasta Fase 3 (D67); disco C: al 97 % (19 GB libres) en la sesión del hito. `pits-normalized` no tiene lifecycle (D74).
-- Pendiente de Fase 3: loader a Postgres y schemas con dbt (`04` §8.3). El loader no está decidido.
+- Loader fx_rate a Postgres (D78–D84, §3): implementado, revisado y con corrida real OK. Pendiente: PR y CI.
+- Riesgo aceptado (Henry, 2026-10-11, literal: "que tengn la misma m vale madre, siguele"): en el `.env` local `PITS_PG_LOADER_PASSWORD` y `PITS_PG_READER_PASSWORD` tienen el mismo valor, así que quien conozca la del reader puede entrar como loader y escribir en `landing.fx_rate`. Antes de dar acceso al reader a terceros (Metabase) o de pasar al VPS, usar valores distintos; `pits db migrate` vuelve a fijar ambos verificadores.
+- Loader: `sslmode=disable` solo en loopback; el VPS requiere una D nueva antes de usar Postgres allí.
+- Loader: el verificador SCRAM de las contraseñas queda en el log del servidor si `log_statement` es `ddl` o `all` (`04` §8.3). La imagen usa el default.
+- Pendiente de dbt: `staging`, `intermediate` y `marts` (hito siguiente; `04` §8.3).
 
 ## 8. Regla para la siguiente conversación
 
