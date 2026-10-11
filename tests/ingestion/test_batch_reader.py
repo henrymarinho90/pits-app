@@ -6,7 +6,7 @@ import json
 from datetime import date
 
 import pytest
-from test_manifest import B1, SS, make_manifest
+from ingestion_helpers import B1, SS, CountingStore, make_manifest
 
 from pits.ingestion.batch_reader import PayloadIntegrityError, iter_verified_pages
 from pits.ingestion.manifest import FileEntry, ManifestError, sha256_hex
@@ -104,8 +104,8 @@ def test_non_array_of_objects_is_permanent(body):
         list(iter_verified_pages(store, manifest_of((e,))))
 
 
-def test_invalid_json_is_permanent():
-    body = b"{not json"
+def test_non_utf8_payload_is_permanent():
+    body = bytes([0xFF])
     e = entry(0, body, row_count=0)
     store = MemoryRawStore()
     store.put_once(e.key, body, "application/json")
@@ -113,14 +113,13 @@ def test_invalid_json_is_permanent():
         list(iter_verified_pages(store, manifest_of((e,))))
 
 
-class CountingStore(MemoryRawStore):
-    def __init__(self):
-        super().__init__()
-        self.gets: list[str] = []
-
-    def get(self, key):
-        self.gets.append(key)
-        return super().get(key)
+def test_invalid_json_is_permanent():
+    body = b"{not json"
+    e = entry(0, body, row_count=0)
+    store = MemoryRawStore()
+    store.put_once(e.key, body, "application/json")
+    with pytest.raises(PayloadIntegrityError, match="not valid"):
+        list(iter_verified_pages(store, manifest_of((e,))))
 
 
 def test_reading_is_lazy_one_get_per_page():

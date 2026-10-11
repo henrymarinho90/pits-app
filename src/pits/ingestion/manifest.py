@@ -472,10 +472,10 @@ def find_latest_committed(store: RawStore, source_system: str, dataset_id: str) 
     """Return the most recent committed manifest of (source_system, dataset_id), or None.
 
     Partitions are scanned newest first and only until one holds a committed batch; inside it
-    the greatest commit_order_key wins (equals list_committed(...)[-1]). Batches without
-    manifest.json are orphans (crashed runs) and are skipped. Unexpected prefixes, corrupt
-    manifests, or manifests of another source/dataset/batch fail loudly: silently skipping
-    them could make the next incremental run reload or skip data.
+    the greatest commit_order_key wins (equals list_committed(...)[-1] when every partition
+    is valid). Batches without manifest.json are orphans (crashed runs) and are skipped.
+    Unexpected prefixes, corrupt manifests, or manifests of another source/dataset/batch fail
+    loudly: silently skipping them could make the next incremental run reload or skip data.
     """
     for partition_date, partition in reversed(_partitions(store, source_system)):
         committed = _read_partition(store, source_system, dataset_id, partition_date, partition)
