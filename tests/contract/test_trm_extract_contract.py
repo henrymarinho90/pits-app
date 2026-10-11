@@ -20,6 +20,8 @@ from s3_helpers import BucketFactory
 from pits.ingestion.manifest import Manifest, find_latest_committed, sha256_hex
 from pits.ingestion.raw_store import (
     MemoryRawStore,
+    PutOutcome,
+    RawObjectConflictError,
     RawObjectExistsError,
     RawObjectNotFoundError,
     S3RawStore,
@@ -92,9 +94,11 @@ class RecordingStore:
         self._inner = inner
         self.written: list[str] = []
 
-    def put_once(self, key: str, body: bytes, content_type: str) -> None:
-        self._inner.put_once(key, body, content_type)
-        self.written.append(key)
+    def put_once(self, key: str, body: bytes, content_type: str) -> PutOutcome:
+        outcome = self._inner.put_once(key, body, content_type)
+        if outcome is PutOutcome.CREATED:
+            self.written.append(key)
+        return outcome
 
     def list_prefixes(self, prefix: str) -> list[str]:
         return self._inner.list_prefixes(prefix)
@@ -177,16 +181,34 @@ def test_second_run_new_batch_becomes_latest(s3: BaseClient, bucket: str) -> Non
     assert latest is not None and latest.batch_id == B2
 
 
-def test_forced_repeated_batch_id_fails_with_real_412(s3: BaseClient, bucket: str) -> None:
+def test_repeated_batch_id_with_different_bytes_fails_with_real_412(
+    s3: BaseClient, bucket: str
+) -> None:
     store = RecordingStore(S3RawStore(s3, bucket))
     first = _run(store, _rows(4), B1, "full", date(2026, 10, 10))
     before = s3.get_object(Bucket=bucket, Key=first.files[0].key)["Body"].read()
 
+    other_rows = [{**r, "valor": "1.5"} for r in _rows(4)]
     with pytest.raises(ExtractPermanentError) as exc_info:
-        _run(store, _rows(4), B1, "full", date(2026, 10, 10))
+        # same day and batch_id (same prefix) but other values -> payload-00000 differs
+        _run(store, other_rows, B1, "full", date(2026, 10, 10))
+    assert isinstance(exc_info.value.__cause__, RawObjectConflictError)
     assert isinstance(exc_info.value.__cause__, RawObjectExistsError)
     # Existing objects are untouched and still a single version.
     assert s3.get_object(Bucket=bucket, Key=first.files[0].key)["Body"].read() == before
+    versions = s3.list_object_versions(Bucket=bucket).get("Versions", [])
+    assert len(versions) == len(first.files) + 1
+
+
+def test_repeated_batch_id_with_identical_bytes_is_idempotent_on_real_s3(
+    s3: BaseClient, bucket: str
+) -> None:
+    store = RecordingStore(S3RawStore(s3, bucket))
+    first = _run(store, _rows(4), B1, "full", date(2026, 10, 10))
+    written = list(store.written)
+    second = _run(store, _rows(4), B1, "full", date(2026, 10, 10))
+    assert second == first
+    assert store.written == written  # every put was ALREADY_IDENTICAL: no new writes
     versions = s3.list_object_versions(Bucket=bucket).get("Versions", [])
     assert len(versions) == len(first.files) + 1
 

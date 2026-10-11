@@ -94,6 +94,7 @@ def world(monkeypatch: pytest.MonkeyPatch) -> Env:
         monkeypatch.setenv(name, value)
     monkeypatch.setenv("SODA_APP_TOKEN", TOKEN)
     monkeypatch.delenv("SODA_BASE_URL", raising=False)
+    monkeypatch.delenv("S3_NORMALIZED_BUCKET", raising=False)
     monkeypatch.setattr(extract_cli, "client_factory", lambda settings: object())
     monkeypatch.setattr(extract_cli, "store_factory", lambda client, bucket: env.store)
     monkeypatch.setattr(
@@ -150,6 +151,18 @@ def test_incremental_without_news_commits_empty_batch(world: Env) -> None:
     result = runner.invoke(app, ["extract", "trm"])
     assert result.exit_code == 0
     assert "rows=0 files=0 watermark_from=2026-01-04 watermark_to=2026-01-04" in result.stdout
+
+
+@pytest.mark.parametrize("value", ["pits-raw", "Bad_Name", "pits-contract-abcd1234"])
+def test_invalid_normalized_bucket_fails_extract_fast(
+    world: Env, monkeypatch: pytest.MonkeyPatch, value: str
+) -> None:
+    # Chosen behavior: storage config is shared, so a bad S3_NORMALIZED_BUCKET fails fast (D74).
+    monkeypatch.setenv("S3_NORMALIZED_BUCKET", value)
+    result = runner.invoke(app, ["extract", "trm"])
+    assert result.exit_code == 1
+    assert result.stdout == "" and "S3_NORMALIZED_BUCKET" in result.stderr
+    assert world.store.objects == {}
 
 
 def test_since_reloads_from_date(world: Env) -> None:

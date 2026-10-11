@@ -12,6 +12,7 @@ import pytest
 from pits.ingestion.manifest import Manifest, find_latest_committed, manifest_key, sha256_hex
 from pits.ingestion.raw_store import (
     MemoryRawStore,
+    RawObjectConflictError,
     RawObjectExistsError,
     RawStoreError,
     RawStoreTransientError,
@@ -365,13 +366,49 @@ def test_two_runs_same_day_use_distinct_batches_without_conflict():
     assert find_latest_committed(store, SOURCE_SYSTEM, DATASET_ID) == second.manifest
 
 
-def test_repeated_batch_id_is_permanent_write_conflict():
+def test_repeated_batch_id_with_different_bytes_is_permanent_write_conflict():
     store = MemoryRawStore()
     fake = FakeSoda(make_rows(4))
     run(fake, store, batch_id=B1)
+    before = dict(store.objects)
+    later = Clock(datetime(2026, 10, 10, 13, 0, tzinfo=UTC))  # same day, different timestamps
     with pytest.raises(ExtractPermanentError, match="already exists") as err:
-        run(fake, store, batch_id=B1)
+        run(fake, store, batch_id=B1, clock=later)
+    assert isinstance(err.value.__cause__, RawObjectConflictError)
     assert isinstance(err.value.__cause__, RawObjectExistsError)
+    assert store.objects == before  # nothing overwritten, nothing new
+
+
+def test_repeated_batch_id_with_identical_bytes_succeeds_without_new_objects():
+    store = MemoryRawStore()
+    fake = FakeSoda(make_rows(4))
+    first = run(fake, store, batch_id=B1)
+    before = dict(store.objects)
+    second = run(fake, store, batch_id=B1)  # same clock and data -> same bytes
+    assert second.manifest == first.manifest
+    assert store.objects == before
+
+
+class LostResponseStore(MemoryRawStore):
+    """Stores the object, then fails the response with 412 once (lost-response retry)."""
+
+    def __init__(self):
+        super().__init__()
+        self.lost = 0
+
+    def put_once(self, key, body, content_type):
+        if key.endswith("payload-00001.json") and not self.lost:
+            self.lost = 1
+            super().put_once(key, body, content_type)
+            # the client retries internally: the object now exists with our own bytes
+        return super().put_once(key, body, content_type)
+
+
+def test_lost_response_then_412_still_commits():
+    store = LostResponseStore()
+    result = run(FakeSoda(make_rows(7)), store)
+    assert store.lost == 1
+    assert find_latest_committed(store, SOURCE_SYSTEM, DATASET_ID) == result.manifest
 
 
 def test_extraction_date_is_utc_date_of_start():

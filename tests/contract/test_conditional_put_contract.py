@@ -12,6 +12,8 @@ from botocore.client import BaseClient
 from botocore.exceptions import ClientError
 from s3_helpers import BucketFactory
 
+from pits.ingestion.raw_store import PutOutcome, RawObjectConflictError, S3RawStore
+
 pytestmark = pytest.mark.contract
 
 KEY = "src/extraction_date=2026-01-01/batch_id=abc/part-0.json"
@@ -67,3 +69,23 @@ def test_conditional_put_after_delete_marker_succeeds(
     assert s3.get_object(Bucket=bucket, Key=KEY, VersionId=old["VersionId"])["Body"].read() == (
         b"first"
     )
+
+
+def test_s3_raw_store_identical_put_is_already_identical_with_one_version(
+    s3: BaseClient, prepared: str
+) -> None:
+    store = S3RawStore(s3, prepared)
+    assert store.put_once(KEY, b"same", "application/json") is PutOutcome.CREATED
+    assert store.put_once(KEY, b"same", "application/json") is PutOutcome.ALREADY_IDENTICAL
+    assert _versions(s3, prepared) == (1, 0)
+
+
+def test_s3_raw_store_different_put_is_conflict_with_one_version(
+    s3: BaseClient, prepared: str
+) -> None:
+    store = S3RawStore(s3, prepared)
+    store.put_once(KEY, b"first", "application/json")
+    with pytest.raises(RawObjectConflictError, match="batch_id=abc"):
+        store.put_once(KEY, b"second", "application/json")
+    assert s3.get_object(Bucket=prepared, Key=KEY)["Body"].read() == b"first"
+    assert _versions(s3, prepared) == (1, 0)

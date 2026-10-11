@@ -1,7 +1,7 @@
 # 04 — Infraestructura y operación
 
-Última actualización: 2026-10-10
-Estado: v6 — nota de separación OLTP/warehouse en §7 y §8.3 (D70); sin cambios en `docker-compose.yml`. Antes: v5 — perfil `core` implementado en `docker-compose.yml` (D60–D63); §8.1 con el contrato del batch raw de la ingesta (D65, paso 3 de Fase 1).
+Última actualización: 2026-10-11
+Estado: v7 — zona normalized `pits-normalized` en §8.2 (D74, D75, D76); sin cambios en `docker-compose.yml`. Antes: v6 — nota de separación OLTP/warehouse en §7 y §8.3 (D70); sin cambios en `docker-compose.yml`. Antes: v5 — perfil `core` implementado en `docker-compose.yml` (D60–D63); §8.1 con el contrato del batch raw de la ingesta (D65, paso 3 de Fase 1).
 
 ## 1. Objetivo
 
@@ -195,6 +195,16 @@ Objetivos:
 - lectura eficiente;
 - schema explícito;
 - facilidad de carga a Postgres.
+
+Zona normalized de la TRM (D74, D75, D76; hito TRM normalize, 2026-10-11):
+
+- Bucket `pits-normalized` (`S3_NORMALIZED_BUCKET`, default `pits-normalized`), validado como D61, distinto del raw y sin prefijo `pits-contract-`. Versioning Enabled; sin Object Lock; sin lifecycle mientras no exista otra D (es derivable del raw; retención revisable).
+- `pits storage init` crea y verifica el bucket de forma idempotente (estado Suspended = error). `pits normalize trm` solo verifica que exista y tenga versioning Enabled; nunca lo crea. `pits extract` también valida `S3_NORMALIZED_BUCKET` (configuración compartida, fail-fast).
+- Key: `fx_rate/source_system=superfinanciera_trm/inputs_until=YYYY-MM-DD/fingerprint=<sha256>/fx_rate.csv` y `manifest.json`. `inputs_until` = `extraction_date` del último input; `fingerprint` = sha256 del JSON canónico {transform (name, rules_version), raw_bucket, inputs} (D76(e)).
+- Formato: CSV UTF-8 sin BOM, LF, sin quoting. Parquet no se usa aún: se evalúa en Fase 3, porque el parquet embebe metadata del writer.
+- Write-once (D62, D75): `put_once` ante 412 compara sha256 y longitud del objeto existente; igual = `already_identical`; distinto = conflicto permanente. Cada objeto (CSV y manifest) se sube con un solo `put_object` y debe ser ≤ 8 MiB (D65); si excede, error permanente. El CSV va primero y el manifest al final, como commit marker.
+- Errores de verificación del bucket por BotoCoreError o 5xx: exit 3 (transitorio).
+- Fuera de este hito: loader a Postgres, dbt y Airflow (Fase 3, `01` §10, D40).
 
 ### 8.3 PostgreSQL
 

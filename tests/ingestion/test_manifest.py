@@ -7,71 +7,33 @@ from dataclasses import replace
 from datetime import UTC, date, datetime, timedelta, timezone
 
 import pytest
+from ingestion_helpers import (
+    B1,
+    B2,
+    B3,
+    DS,
+    SS,
+    CountingStore,
+    commit,
+    make_manifest,
+    mutated,
+)
 
 from pits.ingestion.manifest import (
     MANIFEST_NAME,
-    Extractor,
     FileEntry,
     Manifest,
     ManifestError,
     Query,
     SchemaColumn,
     Watermark,
+    commit_order_key,
     find_latest_committed,
+    list_committed,
     manifest_key,
     sha256_hex,
 )
 from pits.ingestion.raw_store import MemoryRawStore, batch_prefix
-
-SS = "superfinanciera_trm"
-DS = "32sa-8pi3"
-B1 = "0b6f6c1e-3c1a-4f0e-9a51-2d4c6f8e9a10"
-B2 = "1c7a7d2f-4d2b-4a1f-8b62-3e5d7a9fab21"
-B3 = "2d8b8e30-5e3c-4b20-9c73-4f6e8bafbc32"
-
-
-def make_manifest(batch_id=B1, day=date(2026, 10, 10), finished=None, **overrides) -> Manifest:
-    prefix = batch_prefix(SS, day, batch_id)
-    started = overrides.get("started_at") or datetime(day.year, day.month, day.day, 12, tzinfo=UTC)
-    base = {
-        "source_system": SS,
-        "dataset_id": DS,
-        "source_url": "https://www.datos.gov.co/resource/32sa-8pi3.json",
-        "license": "CC_40_BY_SA",
-        "attribution": "Superintendencia Financiera de Colombia - SUPERFINANCIERA, Bogotá D.C.",
-        "batch_id": batch_id,
-        "extraction_date": day,
-        "started_at": started,
-        "finished_at": finished or started + timedelta(seconds=30),
-        "extractor": Extractor("pits.sources.trm", "0.1.0"),
-        "source_rows_updated_at": 1760054700,
-        "app_token_used": False,
-        "query": Query(order="vigenciadesde ASC, :id ASC", page_size=1000, where=None),
-        "watermark": Watermark("vigenciadesde", "full", None, date(2026, 10, 10)),
-        "schema": (SchemaColumn("valor", "number"), SchemaColumn("vigenciadesde", "calendar_date")),
-        "row_count": 1500,
-        "files": (
-            FileEntry(
-                prefix + "payload-00000.json", 0, 1000, 120, sha256_hex(b"a"), "application/json"
-            ),
-            FileEntry(
-                prefix + "payload-00001.json", 1000, 500, 60, sha256_hex(b"b"), "application/json"
-            ),
-        ),
-    }
-    base.update(overrides)
-    return Manifest(**base)
-
-
-def commit(store: MemoryRawStore, manifest: Manifest) -> None:
-    prefix = batch_prefix(manifest.source_system, manifest.extraction_date, manifest.batch_id)
-    store.put_once(manifest_key(prefix), manifest.to_json(), "application/json")
-
-
-def mutated(manifest: Manifest, mutate) -> bytes:
-    data = json.loads(manifest.to_json())
-    mutate(data)
-    return json.dumps(data).encode()
 
 
 def test_roundtrip_is_byte_identical():
@@ -378,3 +340,103 @@ def test_find_latest_invalid_partition_date_is_loud():
     store.put_once(f"{SS}/extraction_date=2026-13-45/batch_id={B1}/manifest.json", b"{}", "a/b")
     with pytest.raises(ManifestError, match="ISO date"):
         find_latest_committed(store, SS, DS)
+
+
+class ShuffledStore(MemoryRawStore):
+    """list_prefixes returns descending order to prove no dependence on LIST order."""
+
+    def list_prefixes(self, prefix):
+        return sorted(super().list_prefixes(prefix), reverse=True)
+
+
+def test_commit_order_key_fields():
+    m = make_manifest(B2)
+    assert commit_order_key(m) == (m.extraction_date, m.finished_at, B2)
+
+
+def test_list_committed_empty_and_orphans_ignored():
+    store = MemoryRawStore()
+    assert list_committed(store, SS, DS) == ()
+    store.put_once(batch_prefix(SS, date(2026, 10, 10), B1) + "payload-00000.json", b"[]", "a/b")
+    assert list_committed(store, SS, DS) == ()
+
+
+def test_list_committed_orders_by_commit_order_despite_shuffled_list():
+    store = ShuffledStore()
+    a = make_manifest(B3, date(2026, 10, 8))
+    b = make_manifest(B1, date(2026, 10, 9))
+    c = make_manifest(B2, date(2026, 10, 9))  # same finished_at as b -> batch_id tie-break
+    d = make_manifest(B1, date(2026, 10, 10))
+    for m in (d, b, a, c):
+        commit(store, m)
+    assert list_committed(store, SS, DS) == (a, b, c, d)
+    assert list_committed(store, SS, DS)[-1] == find_latest_committed(store, SS, DS)
+
+
+def test_list_committed_last_equals_find_latest_same_day_finished_at():
+    store = ShuffledStore()
+    early = make_manifest(B2)
+    late = make_manifest(B1, finished=early.finished_at + timedelta(hours=1))
+    commit(store, early)
+    commit(store, late)
+    assert list_committed(store, SS, DS) == (early, late)
+    assert list_committed(store, SS, DS)[-1] == find_latest_committed(store, SS, DS) == late
+
+
+def test_list_committed_corrupt_manifest_in_old_partition_is_loud():
+    store = MemoryRawStore()
+    store.put_once(manifest_key(batch_prefix(SS, date(2026, 10, 1), B1)), b"{oops", "a/b")
+    commit(store, make_manifest(B2, date(2026, 10, 10)))
+    with pytest.raises(ManifestError, match="manifest.json"):
+        list_committed(store, SS, DS)
+    # find_latest keeps reading only the newest partition with a committed batch
+    assert find_latest_committed(store, SS, DS).batch_id == B2
+
+
+def test_list_committed_other_dataset_is_loud():
+    store = MemoryRawStore()
+    commit(store, replace(make_manifest(), dataset_id="zzzz-0000"))
+    with pytest.raises(ManifestError, match="expected"):
+        list_committed(store, SS, DS)
+
+
+def test_list_committed_location_mismatch_is_loud():
+    store = MemoryRawStore()
+    wrong_batch = batch_prefix(SS, date(2026, 10, 10), B2)
+    store.put_once(manifest_key(wrong_batch), make_manifest(B1).to_json(), "application/json")
+    with pytest.raises(ManifestError, match="do not match its location"):
+        list_committed(store, SS, DS)
+    store = MemoryRawStore()
+    wrong_part = batch_prefix(SS, date(2026, 10, 9), B1)
+    store.put_once(manifest_key(wrong_part), make_manifest(B1).to_json(), "application/json")
+    with pytest.raises(ManifestError, match="do not match its location"):
+        list_committed(store, SS, DS)
+
+
+def test_list_committed_version_not_one_is_loud():
+    store = MemoryRawStore()
+    key = manifest_key(batch_prefix(SS, date(2026, 10, 10), B1))
+    data = mutated(make_manifest(), lambda d: d.__setitem__("manifest_version", 2))
+    store.put_once(key, data, "application/json")
+    with pytest.raises(ManifestError, match="manifest_version"):
+        list_committed(store, SS, DS)
+
+
+def test_list_committed_unexpected_prefixes_are_loud():
+    store = MemoryRawStore()
+    store.put_once(f"{SS}/junk/file.json", b"x", "a/b")
+    with pytest.raises(ManifestError, match="Unexpected prefix"):
+        list_committed(store, SS, DS)
+    store = MemoryRawStore()
+    store.put_once(f"{SS}/extraction_date=2026-10-10/oops/file.json", b"x", "a/b")
+    with pytest.raises(ManifestError, match="Unexpected prefix"):
+        list_committed(store, SS, DS)
+
+
+def test_find_latest_reads_only_newest_committed_partition():
+    store = CountingStore()
+    commit(store, make_manifest(B1, date(2026, 10, 8)))
+    commit(store, make_manifest(B2, date(2026, 10, 9)))
+    store.gets.clear()
+    assert find_latest_committed(store, SS, DS).batch_id == B2
+    assert len(store.gets) == 1

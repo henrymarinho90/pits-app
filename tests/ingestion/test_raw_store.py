@@ -8,13 +8,15 @@ from datetime import date, datetime
 import boto3
 import pytest
 from botocore.config import Config
-from botocore.exceptions import ConnectTimeoutError, ReadTimeoutError
+from botocore.exceptions import ClientError, ConnectTimeoutError, ReadTimeoutError
 from botocore.response import StreamingBody
 from botocore.stub import Stubber
 
 from pits.ingestion.raw_store import (
     MAX_OBJECT_BYTES,
     MemoryRawStore,
+    PutOutcome,
+    RawObjectConflictError,
     RawObjectExistsError,
     RawObjectNotFoundError,
     RawStoreError,
@@ -69,10 +71,16 @@ class _StubbedS3:
             expected = _put_params(key, body, content_type)
             if key in self._objects:
                 _client_error(self._stubber, "put_object", "PreconditionFailed", 412, expected)
+                existing = self._objects[key]  # D75: the store verifies the stored bytes
+                self._stubber.add_response(
+                    "get_object",
+                    {"Body": StreamingBody(io.BytesIO(existing), len(existing))},
+                    {"Bucket": BUCKET, "Key": key},
+                )
             else:
                 self._stubber.add_response("put_object", {}, expected)
                 self._objects[key] = body
-        self._inner.put_once(key, body, content_type)
+        return self._inner.put_once(key, body, content_type)
 
     def get(self, key):
         if key in self._objects:
@@ -101,11 +109,24 @@ def test_put_then_get_roundtrip(store):
     assert store.get("a/b/payload.json") == b"[1]"
 
 
-def test_put_twice_raises_exists_and_keeps_original(store):
+def test_put_returns_created_then_already_identical_for_same_bytes(store):
+    assert store.put_once("a/k.json", b"same", "application/json") is PutOutcome.CREATED
+    assert store.put_once("a/k.json", b"same", "application/json") is PutOutcome.ALREADY_IDENTICAL
+    assert store.get("a/k.json") == b"same"
+
+
+def test_put_twice_with_different_bytes_conflicts_and_keeps_original(store):
     store.put_once("a/k.json", b"first", "application/json")
-    with pytest.raises(RawObjectExistsError, match="a/k.json"):
+    with pytest.raises(RawObjectConflictError, match="a/k.json") as err:
         store.put_once("a/k.json", b"second", "application/json")
+    assert isinstance(err.value, RawObjectExistsError)
     assert store.get("a/k.json") == b"first"
+
+
+def test_put_same_length_different_bytes_conflicts(store):
+    store.put_once("a/k.json", b"aaaa", "application/json")
+    with pytest.raises(RawObjectConflictError):
+        store.put_once("a/k.json", b"bbbb", "application/json")
 
 
 def test_get_missing_raises_not_found(store):
@@ -169,12 +190,112 @@ def test_size_limit(store):
         store.put_once("big.bin", b"x" * (MAX_OBJECT_BYTES + 1), "application/octet-stream")
 
 
-def test_s3_412_maps_to_exists_error(s3):
+def _ok_get(stubber, key, body):
+    stubber.add_response(
+        "get_object",
+        {"Body": StreamingBody(io.BytesIO(body), len(body))},
+        {"Bucket": BUCKET, "Key": key},
+    )
+
+
+def test_s3_412_with_identical_bytes_is_already_identical_without_second_write(s3):
     client, stubber = s3
     _client_error(stubber, "put_object", "PreconditionFailed", 412, _put_params("k", b"x", "t/p"))
-    with pytest.raises(RawObjectExistsError):
+    _ok_get(stubber, "k", b"x")
+    assert S3RawStore(client, BUCKET).put_once("k", b"x", "t/p") is PutOutcome.ALREADY_IDENTICAL
+    stubber.assert_no_pending_responses()  # exactly one put and one get, nothing else queued
+
+
+def test_s3_412_with_different_bytes_is_conflict(s3):
+    client, stubber = s3
+    _client_error(stubber, "put_object", "PreconditionFailed", 412, _put_params("k", b"x", "t/p"))
+    _ok_get(stubber, "k", b"y")
+    with pytest.raises(RawObjectConflictError, match="'k'"):
         S3RawStore(client, BUCKET).put_once("k", b"x", "t/p")
     stubber.assert_no_pending_responses()
+
+
+def test_s3_412_then_get_5xx_is_transient(s3):
+    client, stubber = s3
+    _client_error(stubber, "put_object", "PreconditionFailed", 412)
+    _client_error(stubber, "get_object", "InternalError", 500)
+    with pytest.raises(RawStoreTransientError):
+        S3RawStore(client, BUCKET).put_once("k", b"x", "t/p")
+
+
+class _PreconditionThenBrokenGet:
+    def put_object(self, **kwargs):
+        raise ClientError(
+            {"Error": {"Code": "PreconditionFailed"}, "ResponseMetadata": {"HTTPStatusCode": 412}},
+            "PutObject",
+        )
+
+    def get_object(self, **kwargs):
+        raise ConnectTimeoutError(endpoint_url="https://secret-host.test/pits-raw/k")
+
+
+def test_s3_412_then_get_botocore_error_is_transient():
+    with pytest.raises(RawStoreTransientError, match="ConnectTimeoutError") as err:
+        S3RawStore(_PreconditionThenBrokenGet(), BUCKET).put_once("k", b"x", "t/p")
+    assert "secret-host" not in str(err.value)
+
+
+def test_s3_412_then_truncated_body_is_transient(s3):
+    client, stubber = s3
+    _client_error(stubber, "put_object", "PreconditionFailed", 412)
+    stubber.add_response(
+        "get_object",
+        {"Body": StreamingBody(io.BytesIO(b"x"), 5)},  # declared 5 bytes, only 1 delivered
+        {"Bucket": BUCKET, "Key": "k"},
+    )
+    with pytest.raises(RawStoreTransientError):
+        S3RawStore(client, BUCKET).put_once("k", b"x", "t/p")
+
+
+def test_s3_412_content_length_mismatch_is_conflict_without_reading_body(s3):
+    client, stubber = s3
+    _client_error(stubber, "put_object", "PreconditionFailed", 412)
+
+    class ExplodingBody:
+        def close(self):
+            pass
+
+        def read(self, *args):
+            raise AssertionError("body must not be read")
+
+    stubber.add_response(
+        "get_object",
+        {"Body": ExplodingBody(), "ContentLength": 9},
+        {"Bucket": BUCKET, "Key": "k"},
+    )
+    with pytest.raises(RawObjectConflictError, match="'k'"):
+        S3RawStore(client, BUCKET).put_once("k", b"x", "t/p")
+
+
+def test_s3_412_then_get_not_found_is_cannot_verify(s3):
+    client, stubber = s3
+    _client_error(stubber, "put_object", "PreconditionFailed", 412)
+    _client_error(stubber, "get_object", "NoSuchKey", 404)
+    with pytest.raises(RawStoreError, match="cannot verify") as err:
+        S3RawStore(client, BUCKET).put_once("k", b"x", "t/p")
+    assert not isinstance(err.value, RawObjectExistsError | RawStoreTransientError)
+
+
+def test_s3_412_then_get_access_denied_is_cannot_verify(s3):
+    client, stubber = s3
+    _client_error(stubber, "put_object", "PreconditionFailed", 412)
+    _client_error(stubber, "get_object", "AccessDenied", 403)
+    with pytest.raises(RawStoreError, match="cannot verify") as err:
+        S3RawStore(client, BUCKET).put_once("k", b"x", "t/p")
+    assert not isinstance(err.value, RawObjectExistsError | RawStoreTransientError)
+
+
+def test_memory_put_conflict_is_not_transient():
+    memory = MemoryRawStore()
+    memory.put_once("k", b"x", "t/p")
+    with pytest.raises(RawObjectConflictError) as err:
+        memory.put_once("k", b"y", "t/p")
+    assert not isinstance(err.value, RawStoreTransientError)
 
 
 def test_s3_other_errors_become_raw_store_error(s3):
