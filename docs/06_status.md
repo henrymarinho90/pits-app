@@ -1,13 +1,13 @@
 # 06 — Estado del proyecto
 
 Última actualización: 2026-10-10
-Estado: paso 2 de Fase 1 (storage y Postgres locales, perfil `core`) CERRADO en PR; D60–D63 aprobadas por Henry el 2026-10-10 y registradas en `05` (v10). Siguiente paso: paso 3 (extractor TRM). Antes: D57 (storage SeaweedFS, memoria M1 768m, inmutabilidad opción A), D58 (marker `contract`) y D59 (demanda solo `ACTIVO`) aprobadas por Henry el 2026-10-10 y registradas en `05` (v9). Antes: spike de storage SeaweedFS 4.48 completado en la rama `spike/seaweedfs` (`docs/spikes/seaweedfs.md`; 14/14 tests de contrato y 30 offline); Fase 1 paso 1 cerrado (D49). Antes: spike planeado y bloqueo de storage (sin evidencia); segunda ronda regional y D52–D56 (calibración del parque con Boyacá y Risaralda, marca primero, servicio público aparte, alcance de la demanda). Antes: D50 y D51; Fase 0.5 y D43–D48 (D47 grano de `fx_rate`; D48 demanda con parque RUNT, marca/modelo sintético).
+Estado: paso 3 de Fase 1 (extractor TRM) implementado en PR, con evidencia de corrida real; D64–D67 aprobadas por Henry el 2026-10-10 y registradas en `05` (v11). Siguiente paso: normalización TRM (D47) y replay desde raw (sin implementar). Antes: paso 2 de Fase 1 (storage y Postgres locales, perfil `core`) CERRADO en PR; D60–D63 aprobadas por Henry el 2026-10-10 y registradas en `05` (v10). Antes: D57 (storage SeaweedFS, memoria M1 768m, inmutabilidad opción A), D58 (marker `contract`) y D59 (demanda solo `ACTIVO`) aprobadas por Henry el 2026-10-10 y registradas en `05` (v9). Antes: spike de storage SeaweedFS 4.48 completado en la rama `spike/seaweedfs` (`docs/spikes/seaweedfs.md`; 14/14 tests de contrato y 30 offline); Fase 1 paso 1 cerrado (D49). Antes: spike planeado y bloqueo de storage (sin evidencia); segunda ronda regional y D52–D56 (calibración del parque con Boyacá y Risaralda, marca primero, servicio público aparte, alcance de la demanda). Antes: D50 y D51; Fase 0.5 y D43–D48 (D47 grano de `fx_rate`; D48 demanda con parque RUNT, marca/modelo sintético).
 
 Este archivo se actualiza al final de cada sesión y funciona como punto de partida para una conversación nueva.
 
 ## 1. Fase actual
 
-**Fase actual: Fase 1 — primera ingesta real: EN CURSO (pasos 1 y 2 cerrados, D49 y D60–D63; paso 3 siguiente).**
+**Fase actual: Fase 1 — primera ingesta real: EN CURSO (pasos 1, 2 y 3 implementados: D49, D60–D63 y D64–D67; paso 3 en PR; siguiente: normalización TRM).**
 
 Fase 0.5 — investigación de mercado y validación de fuentes: CERRADA, con brechas documentadas.
 
@@ -29,9 +29,9 @@ Paso 1 (esqueleto Python) cerrado (D49): hay `pyproject.toml`, `uv.lock`, paquet
 | `00_review_findings.md` | "Auditoría de consistencia" v1.3 (2026-10-10; R1–R3 resueltos por D47 y D48, R6 por D49, R2 renombrada por D51; la original nunca se versionó) |
 | `01_project_brief.md` | v3 (2026-10-10); MinIO reemplazado por SeaweedFS (D57) |
 | `02_domain_taxonomy.md` | v12 (2026-10-10); `fleet_operator` (D54) |
-| `03_data_model.md` | v8 (2026-10-10); `vehicle_registration_stat` renombrada a `vehicle_fleet_snapshot` (D51); desglose por servicio y marca primero (D52–D56); filtro `ACTIVO` (D59) |
-| `04_infra.md` | v4 (2026-10-10); perfil `core` (D60–D63); GOMEMLIMIT SeaweedFS 500MiB (D63); bucket `pits-raw` (D61) |
-| `05_decisions_log.md` | v10 (2026-10-10); D1–D63 (D60–D63 aprobadas 2026-10-10) |
+| `03_data_model.md` | v9 (2026-10-10); mapeo del manifest en §3 (D65, D66); `vehicle_registration_stat` renombrada a `vehicle_fleet_snapshot` (D51); desglose por servicio y marca primero (D52–D56); filtro `ACTIVO` (D59) |
+| `04_infra.md` | v5 (2026-10-10); §8.1 con el contrato del batch raw (D65); perfil `core` (D60–D63); GOMEMLIMIT SeaweedFS 500MiB (D63); bucket `pits-raw` (D61) |
+| `05_decisions_log.md` | v11 (2026-10-10); D1–D67 (D60–D63 aprobadas 2026-10-10; D64–D67 aprobadas 2026-10-10) |
 | `spikes/seaweedfs.md` | spike SeaweedFS 4.48 (2026-10-10), mergeado en `main` (PR #9); incluye los borradores D57 y D58 (aprobados; ver `05`) |
 | `06_status.md` | vigente (2026-10-10) |
 | `07_lessons_learned.md` | vigente, sin versión (2026-10-10) |
@@ -81,6 +81,25 @@ La TRM tiene relevancia de dominio secundaria: los precios del marketplace se fi
 - Write-once (D62): `tests/contract/test_conditional_put_contract.py` con `IfNoneMatch="*"`: 2.º put → 412, contenido intacto, 1 versión.
 - Tests: offline (`uv run pytest -q`) con `botocore.stub.Stubber` para `load_storage_settings` y `ensure_raw_bucket`, y CLI `pits storage init` con `CliRunner`. Contrato: `uv run --env-file .env pytest -m contract -q`.
 - Cierre del plan (paso 7, 2026-10-10): `ruff check` y `ruff format --check` OK, `pytest -q` 90 passed (22 contract deselected); `docker compose down` sin `-v` (volúmenes `pits_postgres_data`, `pits_seaweedfs_data` y `pits_spike_seaweedfs_data` conservados).
+
+### Fase 1, paso 3: extractor TRM (D64–D67; en PR)
+
+- Código: cliente SODA con reintentos y timeouts (`src/pits/sources/soda/`, D64); raw store write-once y manifest v1 (`src/pits/ingestion/`, D65); extractor de la TRM (`src/pits/sources/trm/`, D66); CLI `pits extract trm`. Tests offline con `httpx.MockTransport` y `MemoryRawStore`; contrato contra SeaweedFS (`tests/contract`).
+- `CLAUDE.md` (Stack) ya dice SeaweedFS; lo editó Henry y se comitea en este PR.
+- Corrida real del 2026-10-11 UTC contra datos.gov.co, con SeaweedFS local:
+  - 1.ª corrida (sin batch previo; `incremental` se registra como `mode=full`): 8.365 filas, 9 archivos `payload-*.json`, 1.001.892 bytes (≈ 0,96 MiB), watermark hasta 2026-10-10, 5,5 s.
+  - 2.ª corrida (incremental): 0 filas; arrastra el watermark (2026-10-10), 1,7 s.
+- Tests: `uv run --env-file .env pytest -m contract` 28 passed; `uv run pytest -q` 296 passed.
+- Memoria (criterio D63, `scripts/measure_storage_memory.sh`, `memory.peak` del contenedor SeaweedFS): 3/3 corridas `-m contract` (26 tests; medidas antes de añadir los 2 últimos tests de contrato de TRM) con picos 499,8 / 515,6 / 515,8 MiB (524120064 / 540663808 / 540880896 B), frente a 652,8 MiB (684510412 B = 85 % de 768 MiB). Sin OOM.
+- Cómo reejecutar (D66):
+  - `uv run --env-file .env pits extract trm`: incremental desde el watermark (`vigenciadesde > watermark`, sin relectura). Sin batch committed, hace backfill completo desde 1991-12-02 y lo registra como `mode=full`; la salida imprime el modo efectivo.
+  - `--full`: recarga todo el dataset.
+  - `--since YYYY-MM-DD`: recarga desde esa fecha inclusive. Si deja un hueco respecto al watermark (más de un día después), sale con exit 2.
+  - Cada corrida crea un batch nuevo (`batch_id` uuid4). Nunca sobrescribe batches previos; un batch sin `manifest.json` es huérfano y se ignora.
+  - Las fechas (`extraction_date`, `started_at`, `finished_at`) van en UTC. `extraction_date` es la fecha UTC de `started_at`.
+- Exit codes: 0 committed; 1 error permanente o de configuración (esquema cambiado, manifest corrupto, 412 de escritura); 2 uso (`--full` con `--since`, fecha inválida, `--since` con hueco); 3 transitorio, seguro reintentar (red, 429/5xx tras 4 intentos, dataset reemplazado durante la corrida, dataset vacío en `--full`).
+- Salida: `batch_id=… mode=… rows=… files=… watermark_from=… watermark_to=… manifest=s3://pits-raw/…/manifest.json`. Errores en stderr como `error: …`; el token nunca se imprime.
+- Limitaciones aceptadas (detalle en `05`): 412 ambiguo tras un reintento (D65); correcciones a TRMs ya cargadas no se capturan sin `--full` o `--since` (D66).
 
 ### Resueltos por D47 y D48 (2026-10-10)
 
@@ -163,15 +182,27 @@ Evidencia en §3. Pendientes técnicos heredados de D57 (no bloquean el paso 3):
 - Volumen `pits_spike_seaweedfs_data` conservado con datos de prueba: borrarlo (`docker volume rm`) es decisión de Henry.
 - Disco C: 29 GB libres (`df -h /c` tras la medición del paso 2, 2026-10-10). Las mediciones son de Docker sobre WSL2; el VPS es Linux nativo.
 
-### Próximo paso — paso 3 (extractor TRM)
+### Paso 3 — hecho (D64–D67, en PR)
 
-**Siguiente paso sugerido:** rama propia desde `main` tras el merge del PR de este paso, con `/orquestar`. Paso 3: extractor SODA de `superfinanciera_trm` que escribe el payload en `pits-raw` con `IfNoneMatch="*"` (D62), `TransferConfig` con concurrencia ≤ 2 y partes de 8 MiB (carga medida en el paso 2, D63), y medir la carga del paso 3.
+Evidencia y cómo reejecutar en §3. Se escribe cada página como `payload-NNNNN.json` con `IfNoneMatch="*"` (D62) y objetos ≤ 8 MiB con `put_object` secuencial (D65); no hay multipart ni `TransferConfig`. Medición de memoria con el criterio de D63: 3/3 corridas `-m contract` (26 tests; medidas antes de añadir los 2 últimos tests de contrato de TRM).
+
+### Próximo paso — normalización TRM (D47) y replay desde raw
+
+**Siguiente paso:** hito técnico aparte, sin implementar. Rama propia desde `main` tras el merge del PR del paso 3, con `/orquestar`.
+
+- Entrada: el último batch committed de `superfinanciera_trm` (su `manifest.json` y sus `payload-NNNNN.json`), leído desde `pits-raw` sin volver a llamar a la API.
+- Salida: `fx_rate` (`03_data_model.md` §26) con una fila por día calendario del rango `vigenciadesde`–`vigenciahasta` (D47). Fines de semana y festivos heredan la TRM vigente. Grano: `rate_date` + `currency_from` + `currency_to`.
+- Monedas: Henry pidió "Solo COP y USD" (2026-10-10); no es regla del modelo hasta que exista una D nueva aprobada (ver §7).
+- Dedupe: por `rate_date`, con el batch committed más reciente (D65). Reejecutar un batch no crea duplicados lógicos.
+- Replay: reconstruir la salida completa desde el raw, sin tocar la fuente. El raw conserva el rango original (D47).
+- Tests: unitarios de la expansión y del dedupe; replay sobre `MemoryRawStore`; validaciones de dominio (§7).
+
 Contexto del storage (paso 2): MinIO comunitario ya no se distribuye (repo `minio/minio` archivado 2026-04-25, imágenes `minio/minio` y `minio/mc` en 404 en Docker Hub, CVE altos sin parche libre, p. ej. CVE-2026-41145, GHSA-hv4r-mvr4-25vw); se usa SeaweedFS. `04_infra.md` §8.1 guarda `manifest.json` junto al payload en el storage, así que Postgres no es requisito del manifest.
 
 ### Pasos siguientes
 
-3. Extractor SODA de TRM: paginación con `$order`, backoff, token opcional (`X-App-Token`, desde variable de entorno). Escribe el payload original en `pits-raw` (SeaweedFS, D57) con la key de D61: `superfinanciera_trm/extraction_date=YYYY-MM-DD/batch_id=<uuid>/payload.*`, con escritura condicional `IfNoneMatch="*"` (D62).
-4. Manifest de ingesta (`manifest.json`) con los campos de `03_data_model.md` §3 (`source_system`, `ingestion_batch_id`, `ingested_at`, `raw_object_path`, `record_hash` opcional), ID del dataset fijado y atribución. `source_record_id` no aplica: la TRM no trae ID de registro; la llave natural es `vigenciadesde`.
+3. (Hecho en el paso 3, D64 y D65.) Extractor SODA de TRM: paginación con `$order`, reintentos, token opcional (`X-App-Token`, desde variable de entorno). Escribe cada página en `pits-raw` (SeaweedFS, D57) con la key de D61: `superfinanciera_trm/extraction_date=YYYY-MM-DD/batch_id=<uuid>/payload-NNNNN.json`, con escritura condicional `IfNoneMatch="*"` (D62).
+4. (Hecho en el paso 3, D65.) Manifest v1 (`manifest.json`, escrito al final como commit marker) con ID del dataset, atribución y licencia. Mapeo a `03_data_model.md` §3: `ingestion_batch_id` = `batch_id`; `ingested_at` = `finished_at`; `raw_object_path` = `s3://pits-raw/<files[].key>`; `record_hash` = `files[].sha256` (por archivo). `source_record_id` no aplica: la TRM no trae ID de registro; la llave natural es `vigenciadesde`.
 5. Parser/normalizer: casteo de strings, validación de schema y salida normalizada que expande cada rango (`vigenciadesde`-`vigenciahasta`) a una fila por día calendario (D47, grano `rate_date` de `03_data_model.md` §26), deduplicada por fecha para que reejecutar un batch no cree duplicados lógicos; tests unitarios. Documentar cómo reejecutar un batch.
 
 Después: Fase 1b con RUNT `u3vn-bdcy` (snapshot mensual). El DAG de Airflow (D5, D44) corresponde a Fase 4 (`01_project_brief.md` §10), con perfil `orchestration` (`04_infra.md` §10.1).
@@ -194,7 +225,7 @@ Después: Fase 1b con RUNT `u3vn-bdcy` (snapshot mensual). El DAG de Airflow (D5
 
 - Fines de semana y festivos: una fila cubre varios días (`vigenciadesde` 2026-10-03, `vigenciahasta` 2026-10-05). El normalizer expande el rango a una fila por día (D47); raw y manifest conservan el rango original.
 - Hay al menos 9 datasets TRM duplicados con esquemas distintos (`mcec-87by`, `ceyp-9c7c`, `djvb-n8kv`, `dit9-nnvp`, otros). Fijar `32sa-8pi3` y verificar atribución en el manifest.
-- Rate limit sin token: número exacto no encontrado en la documentación. Registrar un token y manejar reintentos con backoff.
+- Rate limit sin token: número exacto no encontrado en la documentación. Registrar un token y manejar reintentos con backoff (reintentos implementados en D64; token opcional).
 - Paginar siempre con `$order=vigenciadesde` (o `:id`).
 - Tope por petición: 50.000 es el límite documentado para Socrata API 2.0; 08 no verificó qué versión sirve datos.gov.co. Con 8.360 filas cabría en una petición, pero se pagina para demostrar el patrón.
 
@@ -210,10 +241,19 @@ Condición de entrada cumplida (D46, `08_market_research.md` Ficha 2). Entregabl
 
 - Pendiente (Henry): en su `.env` local, `POSTGRES_HOST_PORT=5433` si no lo puso (D60; 5432 suele estar ocupado por Postgres nativo de Windows).
 - Pendiente (Henry): la auditoría semanal (`.github/workflows/claude-recurrente.yml`, D44) no funciona. El `workflow_dispatch` del PR #6 (run 38072914197, 2026-10-10) pasó checkout, setup-uv y `uv sync --locked --no-install-project`, pero falló en `anthropics/claude-code-action@v1`: "Claude Code is not installed on this repository". Acción (Henry): instalar la GitHub App https://github.com/apps/claude en el repo, confirmar el secret `CLAUDE_CODE_OAUTH_TOKEN` y relanzar con `gh workflow run claude-recurrente.yml`.
-- Pendiente (Henry): `CLAUDE.md` (sección Stack) dice MinIO; actualizar a SeaweedFS (D57).
 - Pendiente (Henry): borrar o conservar el volumen `pits_spike_seaweedfs_data` (con datos de prueba). Borrarlo es destructivo: no se ejecutó.
 - Pendiente técnico: s3fs y dbt no probados contra SeaweedFS (entran con el primer consumidor). La validación de memoria se hizo con GOMEMLIMIT 500MiB (D63).
-- Pendiente (Henry): propuesta de D62 para Fase 3: quitar `s3:DeleteObject` a las credenciales de ingesta del raw.
+- Aprobado como D67 (2026-10-10): en Fase 3, las credenciales de ingesta del raw no tendrán `s3:DeleteObject`. Pendiente técnico de Fase 3: aplicarlo y probarlo.
+- Riesgo abierto (D65): 412 ambiguo. Si un `put_object` se guarda pero se pierde la respuesta, el reintento recibe 412 y la corrida sale con exit 1 aunque el objeto sea propio. Limitación aceptada; caso en `07` (lección 83).
+- Riesgo abierto: corridas concurrentes sin lock. Dos corridas a la vez crean dos batches; ambos pueden quedar committed. El watermark sale del batch con `finished_at` más reciente dentro de la partición `extraction_date` más nueva.
+- Riesgo abierto: posible truncamiento. La paginación termina cuando `len(rows) < $limit`; si el servidor limita `$limit` por debajo de 1000, un batch incompleto podría quedar committed como válido. Falta una guarda contra el total de la API.
+- Riesgo abierto: huérfanos sin inventario. Los batches sin `manifest.json` (corridas abortadas) se acumulan en `pits-raw`; los lectores los ignoran, pero no hay listado ni limpieza.
+- Riesgo abierto: credenciales admin de SeaweedFS en la ingesta hasta Fase 3 (D67).
+- Riesgo abierto: token sobre http. El default de `SODA_BASE_URL` es https; si se configura http, `X-App-Token` viaja sin cifrar.
+- Riesgo abierto (D65): un manifest corrupto bloquea las corridas incremental y `--since` (exit 1); `--full` no lee manifests previos. Runbook: con D67 solo un administrador puede corregirlo.
+- Pendiente de dominio, normalizer (paso 5 siguiente): validaciones de dominio no definidas, por ejemplo rangos con `vigenciahasta` anterior a `vigenciadesde` o rangos solapados. Definir con Henry antes de implementar.
+- Pendiente de dominio: "Solo COP y USD" (Henry, 2026-10-10) aplica al normalizer. No está escrito en `03_data_model.md` §26; si es una regla del modelo, requiere una D nueva aprobada antes de implementar (regla 4).
+- Pendiente de Fase 4 (DAG): Henry pidió la "Tasa promedio a las 10:00 AM CST". Aclarar antes de fijar el horario: CST es UTC-6 en sentido literal, y la hora de Colombia es UTC-5 todo el año. Además, EE. UU. central usa CDT (UTC-5) hasta el 1 de noviembre de 2026, así que "10:00 CST" puede significar 15:00 UTC (CDT) o 16:00 UTC (CST literal). El dataset se reemplaza a ~23:05 UTC (D66).
 - Pendiente técnico: el spike corrió sobre Docker/WSL2 con C: al 95 % (26 GB libres en el spike; 29 GB tras el paso 2); validar en VPS requiere confirmación explícita de Henry (regla 10).
 - Pendiente (Henry): KEK de SSE-S3 en texto plano en el filer (el log avisa si falta `s3.sse.kek.passphrase`; cifrado en reposo no habilitado): decidir antes del VPS.
 - Pendiente (Henry), método de pooling de D55: suma de conteos u otra ponderación (`05` §F, punto 5). La interpretación aplicada está sujeta al PR.

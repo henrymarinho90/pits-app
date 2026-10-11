@@ -1,7 +1,7 @@
 # 03 — Modelo de datos
 
 Última actualización: 2026-10-10
-Estado: v8 — alineado con `02_domain_taxonomy.md` v12.
+Estado: v9 — alineado con `02_domain_taxonomy.md` v12; nota de mapeo del manifest en §3 (paso 3 de Fase 1, D65 y D66). Sin cambios de modelo.
 
 ## 1. Propósito
 
@@ -45,6 +45,21 @@ Campos o metadata de control esperados:
 | `record_hash` | Opcional; detección de cambios/duplicados |
 
 No es obligatorio duplicar estas columnas en todas las tablas de negocio. La implementación puede combinar columnas técnicas y tablas de control.
+
+### Mapeo del manifest v1 a estos campos (paso 3, D65 y D66)
+
+Nota de implementación; el modelo no cambia. El manifest (`manifest.json`, `04_infra.md` §8.1) es la fuente de la metadata técnica del raw:
+
+| Campo de esta sección | Origen en el manifest v1 | Nota |
+|---|---|---|
+| `source_system` | `source_system` | Para la TRM: `superfinanciera_trm` (D61). |
+| `source_record_id` | no aplica en el raw | La TRM no trae ID de registro. La llave natural es `vigenciadesde`; el dedupe lógico se hace en el parser (paso 5). |
+| `ingestion_batch_id` | `batch_id` | uuid4 de la corrida. |
+| `ingested_at` | `finished_at` | Momento de cierre del batch, en UTC. |
+| `raw_object_path` | `s3://pits-raw/<files[].key>` | Una ruta por payload. Una fila pertenece al archivo cuyo rango `offset` a `offset + row_count` la contiene. |
+| `record_hash` | `files[].sha256` | Hash por archivo (payload completo), no por fila. El hash por fila, si se necesita, lo calcula el parser. |
+
+Los campos `watermark` (`mode`, `from_exclusive`, `to_observed`) y `source_rows_updated_at` del manifest no son columnas de negocio: sirven a la ingesta incremental (D66).
 
 ## 4. Diagrama entidad-relación conceptual
 
