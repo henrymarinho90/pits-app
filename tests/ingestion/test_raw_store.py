@@ -257,6 +257,9 @@ def test_s3_412_content_length_mismatch_is_conflict_without_reading_body(s3):
     _client_error(stubber, "put_object", "PreconditionFailed", 412)
 
     class ExplodingBody:
+        def close(self):
+            pass
+
         def read(self, *args):
             raise AssertionError("body must not be read")
 

@@ -178,7 +178,8 @@ class S3RawStore:
     def get(self, key: str) -> bytes:
         _check_key(key)
         data = self._read(key, None)
-        assert data is not None
+        if data is None:  # unreachable without expected_length; explicit instead of assert
+            raise RawStoreError(f"get_object returned no data for '{key}'")
         return data
 
     def _read(self, key: str, expected_length: int | None) -> bytes | None:
@@ -190,6 +191,7 @@ class S3RawStore:
             resp = self._client.get_object(Bucket=self._bucket, Key=key)
             length = resp.get("ContentLength")
             if expected_length is not None and length is not None and length != expected_length:
+                resp["Body"].close()  # release the connection without reading the body
                 return None
             return resp["Body"].read()
         except ClientError as exc:
