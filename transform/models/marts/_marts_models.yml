@@ -1,0 +1,45 @@
+version: 2
+
+models:
+  - name: fct_fx_rate_daily
+    description: "Daily FX rates (grain: rate_date + currency pair); contract for BI. Same 7 columns as landing.fx_rate."
+    data_tests:
+      - unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [rate_date, currency_from, currency_to]
+    columns:
+      - name: rate_date
+        description: "Calendar day the rate applies to."
+        data_tests:
+          - not_null
+      - name: currency_from
+        description: "ISO 4217 code of the base currency (1 unit of this currency)."
+        data_tests:
+          - not_null
+      - name: currency_to
+        description: "ISO 4217 code of the quoted currency."
+        data_tests:
+          - not_null
+      - name: rate
+        description: "Units of currency_to per 1 currency_from, exactly as published (no rounding)."
+        data_tests:
+          - not_null
+      - name: source_system
+        description: "Source the rate came from."
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ['superfinanciera_trm']
+      - name: source_reference
+        description: "Raw object path/row the rate came from (lineage to raw)."
+        data_tests:
+          - not_null
+      - name: load_id
+        description: "ops.load_run row that last wrote this rate."
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: source('ops', 'load_run')
+                field: load_id

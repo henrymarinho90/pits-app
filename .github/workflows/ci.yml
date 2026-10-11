@@ -41,5 +41,8 @@ jobs:
       - name: Tests
         run: uv run pytest -q
 
+      - name: dbt parse (offline)
+        run: uv run pits transform parse
+
       - name: CLI smoke
         run: uv run pits version
