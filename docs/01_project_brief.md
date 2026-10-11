@@ -1,7 +1,7 @@
 # 01 — Project Brief: Data Platform for an Auto Parts Marketplace
 
 Última actualización: 2026-10-10
-Estado: v3 — revisado después de la auditoría integral del proyecto.
+Estado: v4 — alcance alineado con D68–D73 (tres productos, mercados por país, fuera de alcance reformulado, diagrama con OLTP, outbox y raw). Métricas (§12) y distinción stock/flujo sin cambios.
 
 ## 1. Objetivo personal
 
@@ -22,15 +22,21 @@ El proyecto se publicará como caso de estudio en el portafolio de Henry constru
 
 ## 2. Visión del producto
 
-Construir la **plataforma de datos de un marketplace de repuestos para carros y motos**, inicialmente enfocado en Colombia y diseñado para poder expandirse posteriormente a otros mercados de Latinoamérica.
+Pits es un repo con **tres productos** (D68). Cada uno avanza por hitos aprobados uno a uno:
 
-El producto debe representar tres necesidades reales del sector:
+1. **Plataforma de datos** (portafolio de Data Engineering; base actual del repo): ingesta reproducible, raw, normalización, warehouse, transformaciones, orquestación, calidad y analítica. Sus fases están en §10 (D40).
+2. **Marketplace web de autopartes y repuestos** para carros y motos, en **Colombia y Estados Unidos** (D71). Sus mercados son domésticos y separados; sin cross-border en el MVP.
+3. **App de gestión de talleres pequeños**, **solo Colombia**, con facturación electrónica (D68, D69, D72).
+
+El marketplace debe representar tres necesidades reales del sector:
 
 1. **Encontrar el repuesto correcto.** Resolver compatibilidad entre vehículo, pieza, marca y códigos equivalentes.
 2. **Conectar oferta y demanda.** Permitir que compradores y vendedores publiquen, busquen, negocien y generen ofertas o contraofertas.
 3. **Convertirse en una fuente de inteligencia del mercado.** Medir disponibilidad, precios, demanda, búsquedas sin resultado, actividad comercial y confiabilidad de los participantes.
 
-El proyecto de Data Engineering **no construirá inicialmente el frontend, pagos ni logística del marketplace**. Sí construirá el modelo de datos y los eventos que esos componentes producirían, usando un generador sintético cuando no exista una fuente real.
+El **warehouse es la base analítica**: no procesa checkout, reservas de inventario ni emisión fiscal (D68, D70). Las apps tienen persistencia transaccional y autorización propias (base OLTP separada; D70, D72). Los hechos operativos llegan al warehouse por outbox transaccional y export al raw con manifest.
+
+La plataforma de datos **no construye frontend, pagos ni logística**. Sí construye el modelo de datos y los eventos que esos componentes producirían, usando un generador sintético cuando no exista una fuente real. El frontend de los productos web es un hito de su producto, no de la plataforma (D68, que reemplaza a D34 en ese punto); los pagos y la logística reales siguen fuera hasta una decisión propia.
 
 ## 3. Problemas que resuelve
 
@@ -101,11 +107,15 @@ Algunas de estas preguntas requieren fases posteriores de historial de precios o
 9. Analítica de demanda satisfecha e insatisfecha.
 10. Base de datos histórica que pueda convertirse en una fuente de inteligencia para comerciantes del sector.
 
-## 5. Segmento inicial
+## 5. Mercados y segmento
 
-El mercado inicial es Colombia.
+Mercados domésticos separados (D71). Cada mercado tiene su moneda, impuestos, políticas y vendedores; el catálogo técnico es compartible; no hay cross-border en el MVP.
 
-Los actores considerados en el dominio incluyen:
+- **Marketplace:** Colombia y Estados Unidos (moneda COP y USD).
+- **App de talleres:** solo Colombia (D68).
+- **Plataforma de datos:** Colombia (fuentes de Fase 1 y 1b, D46 y D48) y Estados Unidos (WA DOL, D43). Investigación de mercado de EE. UU.: `09_us_market_research.md`; de Colombia: `08_market_research.md`.
+
+Los actores considerados en el dominio incluyen (pendiente de validar por mercado; detalles de dominio en `05` §F):
 
 - conductor o dueño del vehículo;
 - mecánico independiente;
@@ -157,9 +167,11 @@ Cada dato ingerido debe poder responder, cuando aplique:
 - dónde está su payload raw;
 - qué transformación lo llevó al modelo analítico.
 
-## 8. Alcance del MVP de Data Engineering
+## 8. Alcance
 
-### Incluido
+### 8.1 Plataforma de datos (MVP de Data Engineering)
+
+Incluido:
 
 - fuentes reales y sintéticas;
 - catálogo y fitment;
@@ -179,44 +191,67 @@ Cada dato ingerido debe poder responder, cuando aplique:
 - Metabase;
 - despliegue en VPS.
 
-### Fuera de alcance por ahora
+### 8.2 Productos (por hito; D68)
 
-- frontend completo del marketplace;
-- procesamiento real de pagos;
+Cada producto avanza por hitos aprobados uno a uno (D68): un hito se aprueba antes de implementarse.
+
+- **Marketplace web (CO y EE. UU.; D71):** el orden comercial del MVP (taller frente a marketplace) y el stack de la app quedan pendientes (`05` §F).
+- **App de taller (CO; D69, D72):** la mano de obra y los servicios entran como entidades operativas nuevas (orden de servicio y sus líneas), con diseño en hito propio. Tenant y autenticación propios (D72).
+- **Persistencia de las apps:** base OLTP propia, separada del warehouse por base y rol; los hechos llegan al warehouse por outbox y export al raw (D70).
+
+### 8.3 Fuera de alcance
+
+- pagos reales (fuera hasta una decisión propia; D68);
 - logística/envíos;
-- autenticación de producción;
+- checkout, reservas de inventario y emisión fiscal en el warehouse (D68, D70); la emisión fiscal del taller requiere proveedor aprobado (`05` §F);
+- cross-border entre Colombia y EE. UU. en el MVP (D71);
 - conciliación financiera real;
 - extracción de contenido protegido por licencia;
-- Spark sin una necesidad de volumen que lo justifique.
+- Spark sin una necesidad de volumen que lo justifique (D6).
+
+La autenticación de producción no es parte de la plataforma de datos; las apps la tendrán en su propio hito (D72).
 
 ## 9. Arquitectura conceptual
 
 ```text
-Real APIs / files          Synthetic marketplace generator
-        \                         /
-         \                       /
-          ------ ingestion ------
-                   |
-                   v
-             S3 raw zone (SeaweedFS, D57)
-        immutable source payloads
-                   |
-                   v
-        normalized files / loaders
-                   |
-                   v
-             PostgreSQL
-                   |
-                   v
-       dbt staging -> intermediate -> marts
-                   |
-          +--------+--------+
-          |                 |
-      data tests         Metabase
-          |
-       Airflow orchestration
-          |
-    alerts / run metadata
+PLATAFORMA DE DATOS (warehouse analítico)
+
+Fuentes reales (TRM, RUNT, WA DOL)     Generador sintético
+            \                              /
+             ------ ingestion ------      (payload + manifest, D65)
+                        |
+                        v
+S3 raw (SeaweedFS, D57): payloads inmutables
+                        |
+                        v
+            normalized files / loaders
+                        |
+                        v
+PostgreSQL WAREHOUSE (analítico; sin checkout, reservas ni emisión fiscal; D68, D70)
+                        |
+                        v
+          dbt staging -> intermediate -> marts
+                        |
+           +------------+------------+
+           |                         |
+       data tests                 Metabase
+           |
+   Airflow orquesta datos (ingesta, load, dbt, tests)
+
+PRODUCTOS (apps, por hito; D68)
+
+Marketplace web (CO, US)        App de taller (CO)
+            \                          /
+             PostgreSQL OLTP propia por app
+             (base y rol separados del warehouse; D70; tenant_id, D72)
+                        |
+                        v
+             tabla outbox transaccional (event_id)
+                        |
+                        v
+   export con manifest hacia S3 raw (al menos una vez; dedupe por event_id; no exactly-once; D70)
+
+Worker operacional: facturas electrónicas y webhooks (no es Airflow; D70)
 ```
 
 ## 10. Fases y objetivos de aprendizaje
@@ -235,6 +270,8 @@ Real APIs / files          Synthetic marketplace generator
 | 8 opcional | Historial de precios/SCD2 | Slowly Changing Dimensions e historia |
 | 9 opcional | Streaming de búsquedas/ofertas con Redpanda | Event streaming y consumidores |
 | 10 opcional | Réplica cloud con IaC | Terraform y arquitectura cloud |
+
+Las fases 0 a 10 no cambian por D68. Pista de productos (D68, sin fechas): marketplace web y app de taller avanzan por hitos aprobados uno a uno, fuera de esta tabla. Su orden comercial (taller frente a marketplace) y el stack de las apps quedan abiertos (`05` §F; `06` §1-bis).
 
 ## 11. Criterios de éxito técnicos
 
