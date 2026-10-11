@@ -39,7 +39,7 @@ line-ending = "lf"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-pythonpath = ["tests/contract", "tests/sources"]
+pythonpath = ["tests/contract", "tests/sources", "tests/pg"]
 addopts = "-ra --strict-markers --strict-config -m 'not contract and not pg'"
 markers = [
     "contract: needs a live S3 endpoint (S3_ENDPOINT_URL); excluded by default",

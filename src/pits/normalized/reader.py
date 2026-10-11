@@ -65,7 +65,8 @@ class SelectedArtifact:
     manifest_key: str
     manifest_sha256: str
     csv_key: str
-    manifest_bytes: bytes = field(repr=False)  # verbatim, stored as jsonb in ops.load_run
+    # Stored parsed as jsonb in ops.load_run; manifest_sha256 vouches for the exact bytes.
+    manifest_bytes: bytes = field(repr=False)
 
     @property
     def last_input(self) -> InputRef:
