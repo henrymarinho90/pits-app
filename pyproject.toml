@@ -3,14 +3,16 @@ name = "pits-app"
 version = "0.1.0"
 description = "Data platform for an auto/moto parts marketplace"
 requires-python = ">=3.12,<3.13"
-dependencies = ["typer>=0.27"]
+dependencies = [
+    "boto3>=1.43.111",
+    "typer>=0.27",
+]
 
 [project.scripts]
 pits = "pits.cli:app"
 
 [dependency-groups]
 dev = [
-    "boto3>=1.43.111",
     "pytest>=8",
     "ruff>=0.17",
 ]
