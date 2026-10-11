@@ -8,6 +8,7 @@ from dataclasses import dataclass, field
 from urllib.parse import urlparse
 
 DEFAULT_REGION = "us-east-1"
+DEFAULT_NORMALIZED_BUCKET = "pits-normalized"  # D74
 RESERVED_BUCKET_PREFIX = "pits-contract-"  # reserved for contract tests (D61)
 
 _BUCKET_RE = re.compile(r"^[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]$")
@@ -29,9 +30,10 @@ class StorageSettings:
     secret_access_key: str = field(repr=False)
     region: str
     raw_bucket: str
+    normalized_bucket: str = DEFAULT_NORMALIZED_BUCKET
 
 
-def validate_bucket_name(name: str) -> None:
+def validate_bucket_name(name: str, variable: str = "S3_RAW_BUCKET") -> None:
     """Validate an S3 bucket name and reject the reserved contract-test prefix."""
     if (
         not _BUCKET_RE.match(name)
@@ -41,12 +43,12 @@ def validate_bucket_name(name: str) -> None:
         or name.endswith(_FORBIDDEN_SUFFIXES)
     ):
         raise StorageConfigError(
-            "S3_RAW_BUCKET is not a valid S3 bucket name "
+            f"{variable} is not a valid S3 bucket name "
             "(3-63 chars of a-z, 0-9, '-', '.'; alphanumeric ends; not an IP address; "
             "no reserved AWS prefix/suffix)"
         )
     if name.startswith(RESERVED_BUCKET_PREFIX):
-        raise StorageConfigError(f"S3_RAW_BUCKET must not start with '{RESERVED_BUCKET_PREFIX}'")
+        raise StorageConfigError(f"{variable} must not start with '{RESERVED_BUCKET_PREFIX}'")
 
 
 def _required(env: Mapping[str, str], name: str) -> str:
@@ -70,6 +72,10 @@ def load_storage_settings(env: Mapping[str, str]) -> StorageSettings:
     if parsed.username is not None or parsed.password is not None:
         raise StorageConfigError("S3_ENDPOINT_URL must not embed credentials")
     validate_bucket_name(raw_bucket)
+    normalized_bucket = env.get("S3_NORMALIZED_BUCKET", "").strip() or DEFAULT_NORMALIZED_BUCKET
+    validate_bucket_name(normalized_bucket, "S3_NORMALIZED_BUCKET")
+    if normalized_bucket == raw_bucket:
+        raise StorageConfigError("S3_NORMALIZED_BUCKET must differ from S3_RAW_BUCKET")
 
     return StorageSettings(
         endpoint_url=endpoint_url,
@@ -77,4 +83,5 @@ def load_storage_settings(env: Mapping[str, str]) -> StorageSettings:
         secret_access_key=secret_access_key,
         region=region,
         raw_bucket=raw_bucket,
+        normalized_bucket=normalized_bucket,
     )

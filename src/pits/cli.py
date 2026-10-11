@@ -3,6 +3,7 @@
 import typer
 
 from pits import __version__
+from pits.normalized.cli import normalize_app
 from pits.sources.cli import extract_app
 from pits.storage.cli import storage_app
 
@@ -14,6 +15,7 @@ app = typer.Typer(
 )
 app.add_typer(storage_app, name="storage")
 app.add_typer(extract_app, name="extract")
+app.add_typer(normalize_app, name="normalize")
 
 
 # Root callback keeps `version` as a subcommand (Typer collapses single-command apps).

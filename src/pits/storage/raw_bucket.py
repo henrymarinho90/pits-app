@@ -1,4 +1,4 @@
-"""Idempotent provisioning of the raw bucket (versioned, no Object Lock; D61)."""
+"""Idempotent provisioning of versioned buckets (raw D61, normalized D74; no Object Lock)."""
 
 from __future__ import annotations
 
@@ -9,19 +9,29 @@ from botocore.exceptions import ClientError
 
 _MISSING_CODES = {"404", "NoSuchBucket", "NotFound"}
 _DENIED_CODES = {"403", "Forbidden", "AccessDenied"}
+_TRANSIENT_CODES = {"SlowDown", "RequestTimeout", "InternalError", "ServiceUnavailable"}
 
 
 class RawBucketError(RuntimeError):
-    """Raised when the raw bucket cannot be provisioned in the expected state."""
+    """Raised when a platform bucket (raw or normalized) is not in the expected state."""
 
 
 @dataclass(frozen=True)
 class EnsureResult:
-    """Outcome of ensure_raw_bucket."""
+    """Outcome of ensure_versioned_bucket."""
 
     bucket: str
     created: bool
     versioning_changed: bool
+
+
+class RawBucketTransientError(RawBucketError):
+    """The storage answered with a transient failure (5xx, throttling): retry later."""
+
+
+def _is_transient(exc: ClientError) -> bool:
+    status = exc.response.get("ResponseMetadata", {}).get("HTTPStatusCode")
+    return _code(exc) in _TRANSIENT_CODES or (isinstance(status, int) and status >= 500)
 
 
 def _code(exc: ClientError) -> str:
@@ -40,7 +50,8 @@ def _bucket_exists(client: BaseClient, bucket: str) -> bool:
                 f"Access denied to bucket '{bucket}': it may belong to another owner "
                 "or the credentials lack permission"
             ) from exc
-        raise RawBucketError(f"head_bucket failed for '{bucket}': {code or exc}") from exc
+        error = RawBucketTransientError if _is_transient(exc) else RawBucketError
+        raise error(f"head_bucket failed for '{bucket}': {code or exc}") from exc
     return True
 
 
@@ -63,12 +74,11 @@ def _versioning_status(client: BaseClient, bucket: str) -> str | None:
     try:
         return client.get_bucket_versioning(Bucket=bucket).get("Status")
     except ClientError as exc:
-        raise RawBucketError(
-            f"get_bucket_versioning failed for '{bucket}': {_code(exc) or exc}"
-        ) from exc
+        error = RawBucketTransientError if _is_transient(exc) else RawBucketError
+        raise error(f"get_bucket_versioning failed for '{bucket}': {_code(exc) or exc}") from exc
 
 
-def ensure_raw_bucket(client: BaseClient, bucket: str) -> EnsureResult:
+def ensure_versioned_bucket(client: BaseClient, bucket: str) -> EnsureResult:
     """Make sure `bucket` exists with versioning Enabled; safe to re-run."""
     created = False
     if not _bucket_exists(client, bucket):
@@ -93,3 +103,21 @@ def ensure_raw_bucket(client: BaseClient, bucket: str) -> EnsureResult:
     if final != "Enabled":
         raise RawBucketError(f"Versioning on '{bucket}' is '{final}' after enabling it")
     return EnsureResult(bucket=bucket, created=created, versioning_changed=True)
+
+
+def ensure_raw_bucket(client: BaseClient, bucket: str) -> EnsureResult:
+    """Raw-bucket name for ensure_versioned_bucket (same behavior)."""
+    return ensure_versioned_bucket(client, bucket)
+
+
+def verify_versioned_bucket(client: BaseClient, bucket: str) -> None:
+    """Check only (never create or change): bucket exists and versioning is Enabled."""
+    if not _bucket_exists(client, bucket):
+        raise RawBucketError(f"Bucket '{bucket}' does not exist; run `pits storage init` first")
+    status = _versioning_status(client, bucket)
+    if status != "Enabled":
+        shown = status or "not enabled"
+        raise RawBucketError(
+            f"Versioning on '{bucket}' is {shown}; run `pits storage init` "
+            "(a Suspended bucket must be fixed manually)"
+        )
