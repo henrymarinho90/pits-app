@@ -1,7 +1,7 @@
 # 06 — Estado del proyecto
 
 Última actualización: 2026-10-10
-Estado: paso 3 de Fase 1 (extractor TRM) implementado en PR, con evidencia de corrida real; D64–D67 aprobadas por Henry el 2026-10-10 y registradas en `05` (v11). Siguiente paso: normalización TRM (D47) y replay desde raw (sin implementar). Antes: paso 2 de Fase 1 (storage y Postgres locales, perfil `core`) CERRADO en PR; D60–D63 aprobadas por Henry el 2026-10-10 y registradas en `05` (v10). Antes: D57 (storage SeaweedFS, memoria M1 768m, inmutabilidad opción A), D58 (marker `contract`) y D59 (demanda solo `ACTIVO`) aprobadas por Henry el 2026-10-10 y registradas en `05` (v9). Antes: spike de storage SeaweedFS 4.48 completado en la rama `spike/seaweedfs` (`docs/spikes/seaweedfs.md`; 14/14 tests de contrato y 30 offline); Fase 1 paso 1 cerrado (D49). Antes: spike planeado y bloqueo de storage (sin evidencia); segunda ronda regional y D52–D56 (calibración del parque con Boyacá y Risaralda, marca primero, servicio público aparte, alcance de la demanda). Antes: D50 y D51; Fase 0.5 y D43–D48 (D47 grano de `fx_rate`; D48 demanda con parque RUNT, marca/modelo sintético).
+Estado: alineación de alcance (rama `docs/scope-alignment`, apilada sobre `feat/phase1-step3-trm-extractor`, PR #12): D68–D73 aprobadas por Henry el 2026-10-10 y registradas en `05` (v12); `01` v4, `03` v10, `04` v6 alineados; alcance vigente en §1-bis. Siguiente hito técnico: TRM (§5), que requiere PR #12 mergeado antes. Antes: paso 3 de Fase 1 (extractor TRM) implementado en PR, con evidencia de corrida real; D64–D67 aprobadas por Henry el 2026-10-10 y registradas en `05` (v11). Siguiente paso: normalización TRM (D47) y replay desde raw (sin implementar). Antes: paso 2 de Fase 1 (storage y Postgres locales, perfil `core`) CERRADO en PR; D60–D63 aprobadas por Henry el 2026-10-10 y registradas en `05` (v10). Antes: D57 (storage SeaweedFS, memoria M1 768m, inmutabilidad opción A), D58 (marker `contract`) y D59 (demanda solo `ACTIVO`) aprobadas por Henry el 2026-10-10 y registradas en `05` (v9). Antes: spike de storage SeaweedFS 4.48 completado en la rama `spike/seaweedfs` (`docs/spikes/seaweedfs.md`; 14/14 tests de contrato y 30 offline); Fase 1 paso 1 cerrado (D49). Antes: spike planeado y bloqueo de storage (sin evidencia); segunda ronda regional y D52–D56 (calibración del parque con Boyacá y Risaralda, marca primero, servicio público aparte, alcance de la demanda). Antes: D50 y D51; Fase 0.5 y D43–D48 (D47 grano de `fx_rate`; D48 demanda con parque RUNT, marca/modelo sintético).
 
 Este archivo se actualiza al final de cada sesión y funciona como punto de partida para una conversación nueva.
 
@@ -22,16 +22,42 @@ Objetivo de la Fase 1: primera ingesta real (`source -> raw SeaweedFS (D57) -> m
 
 Paso 1 (esqueleto Python) cerrado (D49): hay `pyproject.toml`, `uv.lock`, paquete `pits` (src layout), CLI `pits` (`--help`, `version`), 7 tests y CI mínimo en `.github/workflows/ci.yml`. Paso 2 cerrado (en PR): `docker-compose.yml` (perfil `core`), `pits storage init` y bucket `pits-raw` (ver §3).
 
+## 1-bis. Alcance vigente (D68–D73, 2026-10-10)
+
+Aprobado por Henry el 2026-10-10 (literal: "Aprobado, implementa cambios del prompt"). Fuente: `05` §D68–D73; cita de visión en D68. No cambia la fase actual (§1).
+
+**Qué está aprobado:**
+
+- **Tres productos en un repo** (D68): (1) plataforma de datos, la base actual con las fases de `01` §10 (D40); (2) marketplace web de autopartes para Colombia y EE. UU. (D71); (3) app de gestión de talleres pequeños, solo Colombia, con facturación electrónica (D68, D69, D72). Cada producto avanza por hitos aprobados uno a uno.
+- **Warehouse analítico** (D68, D70): no procesa checkout, reservas de inventario ni emisión fiscal. Las apps tienen base OLTP propia, separada del warehouse por base y rol (en local puede ser la misma instancia, sin aislamiento de CPU/I/O). Ninguna app escribe en el warehouse ni lo lee para operar. Los hechos llegan por outbox transaccional y export al raw con manifest (al menos una vez; dedupe por `event_id`; no exactly-once). Airflow orquesta datos; un worker operacional maneja facturas y webhooks.
+- **Mercados domésticos separados** (D71): Colombia y EE. UU. con moneda, impuestos, políticas y vendedores propios por mercado; catálogo compartible; sin cross-border en el MVP.
+- **Taller** (D69): mano de obra y servicios entran como entidades operativas nuevas (orden de servicio y sus líneas), con diseño en hito propio. Marketplace sin servicios. `repair_job`/`repair_job_part` siguen siendo conocimiento técnico (`03` §15-16).
+- **Identidad de apps** (D72): `user` (autenticación) y tenant con `membership`; `account` sigue siendo la identidad comercial del marketplace; toda fila privada del taller lleva `tenant_id` y se autoriza en el servidor.
+- **Proceso** (D73): D45 confirmado (dentro de un plan aprobado, los agentes hacen commits, push y PR sin pedir permiso; Henry aprueba plan y PR; `CLAUDE.md` línea 38 alineado en este hito por instrucción de Henry). Al reemplazar o ajustar una decisión, en la fila vieja solo se edita Estado. `/orquestar` con worktree queda pendiente de un plan propio.
+- **Reemplazos**: D22 → "Reemplazada por D69 para el producto taller"; D34 → "Reemplazada parcialmente por D68 (frontend)". Ajustes de Estado: D2 y D60 (D70), D30 (D72), D46 (D71). Pagos y logística reales siguen fuera hasta decisión propia.
+
+**Qué NO está aprobado** (no se implementa sin decisión propia):
+
+- Stack de las apps: FastAPI, SQLAlchemy/Alembic, Next.js u otros son ejemplos de D70, no decisiones.
+- Orden comercial del MVP (taller frente a marketplace) y si el marketplace captura lead o procesa checkout.
+- Detalles de dominio: definición de tenant, autos y motos por país, política de compatibilidad visible, servicios de taller en detalle.
+- Proveedor fiscal y proveedor de pagos.
+- Cualquier app o compose nuevo: este hito es solo documental.
+
+**Preguntas abiertas** (`05` §F, puntos 6 a 15, sin ID hasta resolver): stack de apps; proveedor fiscal y de pagos; retención de datos personales y fiscales frente a D61; política de compatibilidad visible frente a D21; prioridad comercial del MVP; marketplace lead frente a checkout; autos y motos por país; definición de tenant (D72); "Solo COP y USD" en `fx_rate`; clientes oficiales en el taller frente a D56.
+
+**Aplicado por instrucción de Henry ("aplica todos los cambios y sigue", 2026-10-10):** Estado de D2 y D60 → ajustada por D70; D30 → ajustada por D72; D46 → ajustada por D71 (D73(b)). `CLAUDE.md` alineado: título, Proyecto, regla 4 (D73(b)), línea de 01, línea de 09 (tracks) y línea de Agentes (D45, D73(a)).
+
 ## 2. Documentación vigente
 
 | Archivo | Versión/estado |
 |---|---|
 | `00_review_findings.md` | "Auditoría de consistencia" v1.3 (2026-10-10; R1–R3 resueltos por D47 y D48, R6 por D49, R2 renombrada por D51; la original nunca se versionó) |
-| `01_project_brief.md` | v3 (2026-10-10); MinIO reemplazado por SeaweedFS (D57) |
-| `02_domain_taxonomy.md` | v12 (2026-10-10); `fleet_operator` (D54) |
-| `03_data_model.md` | v9 (2026-10-10); mapeo del manifest en §3 (D65, D66); `vehicle_registration_stat` renombrada a `vehicle_fleet_snapshot` (D51); desglose por servicio y marca primero (D52–D56); filtro `ACTIVO` (D59) |
-| `04_infra.md` | v5 (2026-10-10); §8.1 con el contrato del batch raw (D65); perfil `core` (D60–D63); GOMEMLIMIT SeaweedFS 500MiB (D63); bucket `pits-raw` (D61) |
-| `05_decisions_log.md` | v11 (2026-10-10); D1–D67 (D60–D63 aprobadas 2026-10-10; D64–D67 aprobadas 2026-10-10) |
+| `01_project_brief.md` | v4 (2026-10-10); tres productos, mercados por país, fuera de alcance reformulado, diagrama OLTP/outbox/raw (D68–D71); SeaweedFS (D57) |
+| `02_domain_taxonomy.md` | v13 (2026-10-10); nota en §17 sobre frontend (D68); `fleet_operator` (D54) |
+| `03_data_model.md` | v10 (2026-10-10); §1 aclara modelo fuente/analítico frente a OLTP (D70, D72); mapeo del manifest en §3 (D65, D66); `vehicle_registration_stat` renombrada a `vehicle_fleet_snapshot` (D51); desglose por servicio y marca primero (D52–D56); filtro `ACTIVO` (D59) |
+| `04_infra.md` | v6 (2026-10-10); nota OLTP/warehouse en §7 y §8.3 (D70), sin cambios de compose; §8.1 con el contrato del batch raw (D65); perfil `core` (D60–D63); GOMEMLIMIT SeaweedFS 500MiB (D63); bucket `pits-raw` (D61) |
+| `05_decisions_log.md` | v12 (2026-10-10); D1–D73 (D68–D73 alineación de alcance, aprobadas 2026-10-10); celdas Estado de D2, D22, D30, D34, D46 y D60 actualizadas (D73(b)); D60–D63 y D64–D67 aprobadas 2026-10-10 |
 | `spikes/seaweedfs.md` | spike SeaweedFS 4.48 (2026-10-10), mergeado en `main` (PR #9); incluye los borradores D57 y D58 (aprobados; ver `05`) |
 | `06_status.md` | vigente (2026-10-10) |
 | `07_lessons_learned.md` | vigente, sin versión (2026-10-10) |
@@ -64,7 +90,7 @@ Paso 1 (esqueleto Python) cerrado (D49): hay `pyproject.toml`, `uv.lock`, paquet
 
 Justificación por ruta crítica: RUNT va antes que WA DOL porque es parque (STOCK) de Colombia, el mercado principal, y aplica la regla demanda = parque. WA DOL es FLUJO (transacciones) y de EE. UU.
 
-La TRM tiene relevancia de dominio secundaria: los precios del marketplace se fijan primero en COP (confirmado por Henry). Sirve como referencia de costo de importación (Inferencia, `08_market_research.md`). Se elige primero por ingeniería: ejercita el patrón raw -> manifest -> parser sin el ruido del dominio.
+La TRM tiene relevancia de dominio secundaria: los precios del marketplace se fijan primero en COP (confirmado por Henry; ajustado por D71: cada mercado en su moneda, COP en Colombia y USD en EE. UU.). Sirve como referencia de costo de importación (Inferencia, `08_market_research.md`). Se elige primero por ingeniería: ejercita el patrón raw -> manifest -> parser sin el ruido del dominio.
 
 ### Fase 1, paso 1: esqueleto Python (D49)
 
@@ -186,9 +212,9 @@ Evidencia en §3. Pendientes técnicos heredados de D57 (no bloquean el paso 3):
 
 Evidencia y cómo reejecutar en §3. Se escribe cada página como `payload-NNNNN.json` con `IfNoneMatch="*"` (D62) y objetos ≤ 8 MiB con `put_object` secuencial (D65); no hay multipart ni `TransferConfig`. Medición de memoria con el criterio de D63: 3/3 corridas `-m contract` (26 tests; medidas antes de añadir los 2 últimos tests de contrato de TRM).
 
-### Próximo paso — normalización TRM (D47) y replay desde raw
+### Próximo paso — hito técnico TRM: normalización (D47), replay desde raw, reconciliación 412 y loader
 
-**Siguiente paso:** hito técnico aparte, sin implementar. Rama propia desde `main` tras el merge del PR del paso 3, con `/orquestar`.
+**Siguiente paso:** hito técnico TRM, sin implementar. **Prerrequisito: PR #12 (paso 3) mergeado en `main`.** La rama nueva sale de `main` después del merge, con `/orquestar`. Este hito es técnico de Fase 1 y va separado del alcance de producto (§1-bis): no implica apps, OLTP, outbox ni orden comercial.
 
 - Entrada: el último batch committed de `superfinanciera_trm` (su `manifest.json` y sus `payload-NNNNN.json`), leído desde `pits-raw` sin volver a llamar a la API.
 - Salida: `fx_rate` (`03_data_model.md` §26) con una fila por día calendario del rango `vigenciadesde`–`vigenciahasta` (D47). Fines de semana y festivos heredan la TRM vigente. Grano: `rate_date` + `currency_from` + `currency_to`.
@@ -196,6 +222,8 @@ Evidencia y cómo reejecutar en §3. Se escribe cada página como `payload-NNNNN
 - Dedupe: por `rate_date`, con el batch committed más reciente (D65). Reejecutar un batch no crea duplicados lógicos.
 - Replay: reconstruir la salida completa desde el raw, sin tocar la fuente. El raw conserva el rango original (D47).
 - Tests: unitarios de la expansión y del dedupe; replay sobre `MemoryRawStore`; validaciones de dominio (§7).
+- Reconciliación de 412 por hash (D65, lección 83): ante un 412 se compararía el hash del objeto existente con el del payload propio antes de fallar. Cambia la limitación aceptada de D65, así que requiere una D nueva aprobada antes de implementar (regla 4).
+- Loader a Postgres: su diseño (schema, tablas, carga) no está decidido. Requiere decisión propia antes de implementar; ver `04_infra.md` §8.3 y D70 (el warehouse no recibe escrituras de las apps).
 
 Contexto del storage (paso 2): MinIO comunitario ya no se distribuye (repo `minio/minio` archivado 2026-04-25, imágenes `minio/minio` y `minio/mc` en 404 en Docker Hub, CVE altos sin parche libre, p. ej. CVE-2026-41145, GHSA-hv4r-mvr4-25vw); se usa SeaweedFS. `04_infra.md` §8.1 guarda `manifest.json` junto al payload en el storage, así que Postgres no es requisito del manifest.
 
@@ -264,6 +292,7 @@ Condición de entrada cumplida (D46, `08_market_research.md` Ficha 2). Entregabl
 - Pendiente: auditar el VPS (re-medir lo registrado en `04_infra.md` §4–§6, medición del 2026-10-03 no re-verificada, ver R9, y cumplir el checklist de §15). Requiere confirmación explícita de Henry antes de ejecutar cualquier comando contra el VPS. No bloquea el desarrollo local de Fase 1; bloquea cualquier despliegue.
 - Pendiente de dominio: pregunta abierta 2 (DANE), antes de Fase 1b.
 - Hallazgos de severidad alta de `00_review_findings.md` (R1–R3): ninguno vigente; resueltos por D47 y D48 (ver §3).
+- Pendiente de configuración (D73(c)): `.claude/agents/arquitecto.md:7` dice "marketplace de repuestos auto/moto, Colombia/LATAM"; no se corrige en docs/. Se corrige con el plan específico de D73(c), que cubre los cambios en `.claude/`.
 
 ## 8. Regla para la siguiente conversación
 

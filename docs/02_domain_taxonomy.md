@@ -1,7 +1,7 @@
 # 02 — Taxonomía del dominio
 
 Última actualización: 2026-10-10
-Estado: v12 — referencia vigente para el dominio.
+Estado: v13 — nota en §17 sobre frontend (D68); referencia vigente para el dominio.
 
 Los valores en `código` son los valores previstos para tablas, seeds y columnas: inglés en `snake_case`.
 
@@ -427,7 +427,7 @@ Cada orden representa una relación entre **un comprador y un vendedor**. Si una
 
 El modelo debe conservar el precio acordado en la orden aunque luego cambie el precio publicado.
 
-Pagos y logística reales quedan fuera del MVP.
+Pagos y logística reales quedan fuera del MVP (D34; el frontend pasó a estar en alcance por D68, pagos y logística siguen fuera hasta una decisión propia).
 
 ## 18. Reputación comercial
 
