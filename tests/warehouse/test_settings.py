@@ -45,15 +45,72 @@ def test_loader_profile_does_not_need_admin_or_reader():
         s.credentials(Profile.ADMIN)
 
 
-@pytest.mark.parametrize("host", ["0.0.0.0", "db.example.com", "10.0.0.5", "127.0.0.1.evil.com"])
+@pytest.mark.parametrize(
+    "host",
+    [
+        "0.0.0.0",
+        "db.example.com",
+        "postgres.example.com",
+        "POSTGRES",
+        "Postgres",
+        "10.0.0.5",
+        "127.0.0.1.evil.com",
+        "127.0.0.2",
+        "post gres",
+        "pg",
+    ],
+)
 def test_rejects_non_loopback_host(host):
     with pytest.raises(WarehouseConfigError, match="loopback"):
         load_warehouse_settings({**BASE_ENV, "PITS_PG_HOST": host}, ALL)
 
 
-@pytest.mark.parametrize("host", ["127.0.0.1", "localhost", "::1"])
-def test_accepts_loopback_hosts(host):
+@pytest.mark.parametrize("host", ["127.0.0.1", "localhost", "::1", "postgres"])
+def test_accepts_allowed_hosts(host):
     assert load_warehouse_settings({**BASE_ENV, "PITS_PG_HOST": host}, ALL).host == host
+
+
+@pytest.mark.parametrize("host", ["", "   "])
+def test_empty_or_blank_host_falls_back_to_default(host):
+    # `_get` strips and an empty value means "unset" -> default loopback, never a blank host.
+    assert load_warehouse_settings({**BASE_ENV, "PITS_PG_HOST": host}, ALL).host == "127.0.0.1"
+
+
+def test_host_with_inner_whitespace_is_rejected_without_leaking():
+    with pytest.raises(WarehouseConfigError) as info:
+        load_warehouse_settings({**BASE_ENV, "PITS_PG_HOST": "bad host"}, ALL)
+    assert "bad host" not in str(info.value)
+
+
+def test_host_surrounding_whitespace_is_stripped():
+    s = load_warehouse_settings({**BASE_ENV, "PITS_PG_HOST": " postgres "}, ALL)
+    assert s.host == "postgres"
+
+
+@pytest.mark.parametrize("host", ["127.0.0.1", "localhost", "::1"])
+def test_port_5432_rejected_with_loopback(host):
+    with pytest.raises(WarehouseConfigError, match="POSTGRES_HOST_PORT"):
+        load_warehouse_settings(
+            {**BASE_ENV, "PITS_PG_HOST": host, "POSTGRES_HOST_PORT": "5432"}, ALL
+        )
+
+
+def test_port_5432_allowed_with_compose_host():
+    env = {**BASE_ENV, "PITS_PG_HOST": "postgres", "POSTGRES_HOST_PORT": "5432"}
+    s = load_warehouse_settings(env, ALL)
+    assert (s.host, s.port) == ("postgres", 5432)
+
+
+def test_port_5432_rejected_with_default_host():
+    with pytest.raises(WarehouseConfigError, match="POSTGRES_HOST_PORT"):
+        load_warehouse_settings({**BASE_ENV, "POSTGRES_HOST_PORT": "5432"}, ALL)
+
+
+@pytest.mark.parametrize("host", ["POSTGRES", "postgres.example.com", "10.0.0.5", "bad host"])
+def test_host_errors_never_contain_the_value(host):
+    with pytest.raises(WarehouseConfigError) as info:
+        load_warehouse_settings({**BASE_ENV, "PITS_PG_HOST": host}, ALL)
+    assert host not in str(info.value)
 
 
 @pytest.mark.parametrize("port", ["5432", "0", "65536", "abc", "-1", "54 33"])
