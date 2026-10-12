@@ -1,7 +1,7 @@
 # 03 — Modelo de datos
 
 Última actualización: 2026-10-11
-Estado: v12 — notas de linaje de `landing.fx_rate` en §3 y de la tabla en §26 (D79–D82, hito loader fx_rate, 2026-10-11); sin cambio de entidades ni de grano. Antes: v11 — nota de implementación de `fx_rate` para la TRM (D77, D76): par USD→COP, `rate` = COP por 1 USD, `source_reference`, columnas del CSV normalizado; sin cambio de grano (D47). Antes: v10 — aclaración de §1 sobre modelo fuente/analítico frente a OLTP (D70, D72). Sin cambios de entidades. Antes: v9 — alineado con `02_domain_taxonomy.md` v12; nota de mapeo del manifest en §3 (paso 3 de Fase 1, D65 y D66).
+Estado: v13 — linaje dbt de `landing.fx_rate` → `staging.stg_fx_rate` → `marts.fct_fx_rate_daily` en §3 y §26 (D85–D88, hito dbt, 2026-10-11); mismas 7 columnas en cada capa, sin derivadas; sin cambio de entidades ni de grano. Antes: v12 — notas de linaje de `landing.fx_rate` en §3 y de la tabla en §26 (D79–D82, hito loader fx_rate, 2026-10-11); sin cambio de entidades ni de grano. Antes: v11 — nota de implementación de `fx_rate` para la TRM (D77, D76): par USD→COP, `rate` = COP por 1 USD, `source_reference`, columnas del CSV normalizado; sin cambio de grano (D47). Antes: v10 — aclaración de §1 sobre modelo fuente/analítico frente a OLTP (D70, D72). Sin cambios de entidades. Antes: v9 — alineado con `02_domain_taxonomy.md` v12; nota de mapeo del manifest en §3 (paso 3 de Fase 1, D65 y D66).
 
 ## 1. Propósito
 
@@ -78,6 +78,18 @@ Nota de implementación; el modelo no cambia y no hay columnas derivadas. `landi
 | `loaded_at` | `load_id` → `ops.load_run.loaded_at` | No es columna. |
 
 `ops.load_run.normalized_manifest` guarda el contenido parseado del manifest normalizado, no sus bytes; los bytes exactos los acredita `manifest_sha256` junto con `manifest_key`.
+
+### Linaje dbt de `fx_rate` (D85–D88, hito dbt, 2026-10-11)
+
+Nota de implementación; el modelo no cambia y no hay columnas nuevas ni derivadas. Cada capa conserva las mismas 7 columnas (`rate_date`, `currency_from`, `currency_to`, `rate`, `source_system`, `source_reference`, `load_id`):
+
+| Capa | Objeto | Materialización (dbt, D87) | Origen |
+|---|---|---|---|
+| `landing` | `landing.fx_rate` | tabla (la crea `pits db migrate`, D81) | `pits load fx-rate` (D82) |
+| `staging` | `staging.stg_fx_rate` | view | `select` 1:1 sobre `landing.fx_rate` |
+| `marts` | `marts.fct_fx_rate_daily` | table | `select` sobre `stg_fx_rate` |
+
+`ops.load_run` no es una capa de datos del modelo: dbt la usa como fuente de freshness (`loaded_at`, filtro `dataset = 'fx_rate'`) y como destino de la prueba `relationships` de `load_id`. La metadata de este documento sigue saliendo de la unión con `ops.load_run`, como antes. El reader ve solo `marts` (D86).
 
 ## 4. Diagrama entidad-relación conceptual
 
@@ -607,7 +619,7 @@ Implementación en Postgres (`landing.fx_rate`, D79–D82; hito loader fx_rate, 
 - CHECK: moneda en `^[A-Z]{3}$`, par con monedas distintas, `rate > 0` sin NaN ni Infinity, y `source_system` y `source_reference` no vacíos. Detalle en `05` D81.
 - Carga desde `fx_rate.csv` con `pits load fx-rate` (D82): la tabla queda igual al artefacto mediante `MERGE`; las filas de la TRM que ya no están en el artefacto se borran.
 - Linaje: ver §3 (sin columnas derivadas).
-- Las capas `staging`, `intermediate` y `marts` las crea dbt en el hito siguiente.
+- Capas de dbt (hito dbt, D85–D88, 2026-10-11): `staging.stg_fx_rate` (view, 1:1 sobre `landing.fx_rate`, 7 columnas) y `marts.fct_fx_rate_daily` (table, 7 columnas). Los schemas `staging`, `intermediate` y `marts` los crea el bootstrap con dueño `pits_owner` (D86), no dbt; `intermediate` queda vacío. Sin columnas derivadas, sin inversa y sin conversiones (fuera de este hito). Pruebas y freshness: D87. Lectura: el reader solo ve `marts` (D86).
 
 ## 27. `vehicle_fleet_snapshot`
 

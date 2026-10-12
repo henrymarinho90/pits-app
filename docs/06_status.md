@@ -1,7 +1,7 @@
 # 06 — Estado del proyecto
 
-Última actualización: 2026-10-11
-Estado: hito loader fx_rate a Postgres (Fase 3, D78–D84) IMPLEMENTADO en `feat/fx-rate-loader` (worktree `C:\dev\pits-app-load`), apilado sobre `feat/trm-normalize` (base `d89d997`, según el plan); pasos S1–S7 implementados, revisados y commiteados; corrida real contra `pits_warehouse` OK el 2026-10-11 (§3). Pendiente: PR, CI y merge. Antes: hito TRM normalize IMPLEMENTADO en `feat/trm-normalize` (worktree `C:\dev\pits-app-trm`), apilado sobre `chore/agents-preflight` (PR #14); pendiente de PR, revisión independiente del diff y commit final; plan aprobado por Henry el 2026-10-11 (D74–D77). Sin merge ni CI verificados. PR #12 (extractor TRM) y PR #13 (alineación de alcance D68–D73) mergeados en `main`, verificados con `gh pr view` en esta sesión. Ajustes de agentes y `/orquestar` de D73 con plan específico aprobado; entregados en PR desde `chore/agents-preflight` (base `origin/main` `d1d867f`), pendiente de merge (§1-ter). Siguiente paso sugerido: dbt sobre `landing.fx_rate` (hito siguiente según D78), sin fecha; no iniciado (§5).
+Última actualización: 2026-10-12
+Estado: hito dbt sobre `landing.fx_rate` (D78, D85–D88) IMPLEMENTADO en `feat/dbt-fx-rate` (worktree `C:\dev\pits-app-dbt`), sobre `main` `2980760`; pasos S1–S5 implementados y revisados por el revisor (puntajes 9,3–9,5); corrida real OK el 2026-10-11 (§3). Revisión independiente del diff completo por `revisor-senior` (2026-10-12): vuelta 1 CAMBIOS 9,2/10, solo docs, corregidos en S6. Pendiente: re-revisión, commit final, PR, CI y merge (§3, §5, §7). Sin merge ni CI verificados por el documentador; no hay siguiente hito iniciado (§5). Antes: hito loader fx_rate a Postgres (Fase 3, D78–D84) IMPLEMENTADO en `feat/fx-rate-loader` (worktree `C:\dev\pits-app-load`), apilado sobre `feat/trm-normalize` (base `d89d997`, según el plan); pasos S1–S7 implementados, revisados y commiteados; corrida real contra `pits_warehouse` OK el 2026-10-11 (§3). Pendiente: PR, CI y merge. Antes: hito TRM normalize IMPLEMENTADO en `feat/trm-normalize` (worktree `C:\dev\pits-app-trm`), apilado sobre `chore/agents-preflight` (PR #14); pendiente de PR, revisión independiente del diff y commit final; plan aprobado por Henry el 2026-10-11 (D74–D77). Sin merge ni CI verificados. PR #12 (extractor TRM) y PR #13 (alineación de alcance D68–D73) mergeados en `main`, verificados con `gh pr view` en esta sesión. Ajustes de agentes y `/orquestar` de D73 con plan específico aprobado; entregados en PR desde `chore/agents-preflight` (base `origin/main` `d1d867f`), pendiente de merge (§1-ter). Siguiente paso sugerido: dbt sobre `landing.fx_rate` (hito siguiente según D78), sin fecha; no iniciado (§5).
 
 Histórico de hitos anteriores (evidencia conservada, no reejecutada aquí): D68–D73 aprobadas por Henry el 2026-10-10 y registradas en `05` (v12); `01` v4, `03` v10, `04` v6 alineados; alcance vigente en §1-bis. Antes: paso 3 de Fase 1 (extractor TRM) implementado en PR, con evidencia de corrida real; D64–D67 aprobadas por Henry el 2026-10-10 y registradas en `05` (v11). Antes: paso 2 de Fase 1 (storage y Postgres locales, perfil `core`) CERRADO en PR; D60–D63 aprobadas por Henry el 2026-10-10 y registradas en `05` (v10). Antes: D57 (storage SeaweedFS, memoria M1 768m, inmutabilidad opción A), D58 (marker `contract`) y D59 (demanda solo `ACTIVO`) aprobadas por Henry el 2026-10-10 y registradas en `05` (v9). Antes: spike de storage SeaweedFS 4.48 completado en la rama `spike/seaweedfs` (`docs/spikes/seaweedfs.md`; 14/14 tests de contrato y 30 offline); Fase 1 paso 1 cerrado (D49). Antes: spike planeado y bloqueo de storage (sin evidencia); segunda ronda regional y D52–D56 (calibración del parque con Boyacá y Risaralda, marca primero, servicio público aparte, alcance de la demanda). Antes: D50 y D51; Fase 0.5 y D43–D48 (D47 grano de `fx_rate`; D48 demanda con parque RUNT, marca/modelo sintético).
 
@@ -9,7 +9,7 @@ Este archivo se actualiza al final de cada sesión y funciona como punto de part
 
 ## 1. Fase actual
 
-**Fase actual: Fase 1 — primera ingesta real: EN CURSO (pasos 1, 2 y 3 implementados: D49, D60–D63 y D64–D67; paso 3 mergeado en PR #12; hito TRM normalize implementado en PR, D74–D77, §3 y §5; hito loader fx_rate (Fase 3, D78–D84) implementado en la rama, §3 y §5; siguiente sugerido: dbt sobre `landing.fx_rate`, sin fecha).**
+**Fase actual: Fase 1 — primera ingesta real: EN CURSO (pasos 1, 2 y 3 implementados: D49, D60–D63 y D64–D67; paso 3 mergeado en PR #12; hito TRM normalize implementado en PR, D74–D77, §3 y §5; hito loader fx_rate (Fase 3, D78–D84) implementado en la rama, §3 y §5; hito dbt sobre `landing.fx_rate` (D85–D88) implementado en la rama, §3; siguiente paso sin elegir: Fase 4 (Airflow, D40) o Metabase sobre `marts.fct_fx_rate_daily`, lo decide Henry, §5).**
 
 Fase 0.5 — investigación de mercado y validación de fuentes: CERRADA, con brechas documentadas.
 
@@ -71,12 +71,12 @@ Plan específico aprobado por Henry en esta sesión (literal: "Aprobado: aplicar
 | `00_review_findings.md` | "Auditoría de consistencia" v1.3 (2026-10-10; R1–R3 resueltos por D47 y D48, R6 por D49, R2 renombrada por D51; la original nunca se versionó) |
 | `01_project_brief.md` | v4 (2026-10-10); tres productos, mercados por país, fuera de alcance reformulado, diagrama OLTP/outbox/raw (D68–D71); SeaweedFS (D57) |
 | `02_domain_taxonomy.md` | v13 (2026-10-10); nota en §17 sobre frontend (D68); `fleet_operator` (D54) |
-| `03_data_model.md` | v12 (2026-10-11); linaje de `landing.fx_rate` en §3 y tabla en §26 (D79–D82); v11 (2026-10-11); nota de implementación de `fx_rate` para la TRM en §26 (D77, D76); v10 (2026-10-10); §1 aclara modelo fuente/analítico frente a OLTP (D70, D72); mapeo del manifest en §3 (D65, D66); `vehicle_registration_stat` renombrada a `vehicle_fleet_snapshot` (D51); desglose por servicio y marca primero (D52–D56); filtro `ACTIVO` (D59) |
-| `04_infra.md` | v8 (2026-10-11); PostgreSQL del warehouse en §8.3, medición de memoria de Postgres en §9, notas de roles y log en §11 y §13 (D79–D82); v7 (2026-10-11); zona `pits-normalized` en §8.2 (D74, D75, D76); v6 (2026-10-10); nota OLTP/warehouse en §7 y §8.3 (D70), sin cambios de compose; §8.1 con el contrato del batch raw (D65); perfil `core` (D60–D63); GOMEMLIMIT SeaweedFS 500MiB (D63); bucket `pits-raw` (D61) |
-| `05_decisions_log.md` | v14 (2026-10-11); D1–D84 (D78–D84 hito loader fx_rate, aprobadas 2026-10-11; Estado de D74 ajustado por D79); v13 (2026-10-11); D1–D77 (D74–D77 hito TRM normalize, aprobadas 2026-10-11; Estado de D62 y D65 ajustado por D75); v12 (2026-10-10); D1–D73 (D68–D73 alineación de alcance, aprobadas 2026-10-10); celdas Estado de D2, D22, D30, D34, D46 y D60 actualizadas (D73(b)); D60–D63 y D64–D67 aprobadas 2026-10-10 |
+| `03_data_model.md` | v13 (2026-10-11); linaje dbt de `fx_rate` en §3 y §26 (D85–D88); v12 (2026-10-11); linaje de `landing.fx_rate` en §3 y tabla en §26 (D79–D82); v11 (2026-10-11); nota de implementación de `fx_rate` para la TRM en §26 (D77, D76); v10 (2026-10-10); §1 aclara modelo fuente/analítico frente a OLTP (D70, D72); mapeo del manifest en §3 (D65, D66); `vehicle_registration_stat` renombrada a `vehicle_fleet_snapshot` (D51); desglose por servicio y marca primero (D52–D56); filtro `ACTIVO` (D59) |
+| `04_infra.md` | v9 (2026-10-11); rol `pits_transformer`, matriz, `profiles.yml`, dependencias dbt y `.venv` en §8.3–§8.4, §9 y §11 (D85–D88); v8 (2026-10-11); PostgreSQL del warehouse en §8.3, medición de memoria de Postgres en §9, notas de roles y log en §11 y §13 (D79–D82); v7 (2026-10-11); zona `pits-normalized` en §8.2 (D74, D75, D76); v6 (2026-10-10); nota OLTP/warehouse en §7 y §8.3 (D70), sin cambios de compose; §8.1 con el contrato del batch raw (D65); perfil `core` (D60–D63); GOMEMLIMIT SeaweedFS 500MiB (D63); bucket `pits-raw` (D61) |
+| `05_decisions_log.md` | v15 (2026-10-11); D1–D88 (D85–D88 hito dbt, aprobadas 2026-10-11; Estado de D79 y D80 ajustado por D86 y de D49 por D88); v14 (2026-10-11); D1–D84 (D78–D84 hito loader fx_rate, aprobadas 2026-10-11; Estado de D74 ajustado por D79); v13 (2026-10-11); D1–D77 (D74–D77 hito TRM normalize, aprobadas 2026-10-11; Estado de D62 y D65 ajustado por D75); v12 (2026-10-10); D1–D73 (D68–D73 alineación de alcance, aprobadas 2026-10-10); celdas Estado de D2, D22, D30, D34, D46 y D60 actualizadas (D73(b)); D60–D63 y D64–D67 aprobadas 2026-10-10 |
 | `spikes/seaweedfs.md` | spike SeaweedFS 4.48 (2026-10-10), mergeado en `main` (PR #9); incluye los borradores D57 y D58 (aprobados; ver `05`) |
 | `06_status.md` | vigente (2026-10-11) |
-| `07_lessons_learned.md` | vigente, sin versión; lecciones 1–101 (96–101 del hito loader fx_rate, 2026-10-11) |
+| `07_lessons_learned.md` | vigente, sin versión; lecciones 1–105 (102–105 del hito dbt, 2026-10-11; 96–101 del hito loader fx_rate, 2026-10-11) |
 | `08_market_research.md` | fechas de consulta 2026-10-03 (antes `claude_08_market_research.md`) |
 | `09_us_market_research.md` | tercera ronda, 2026-10-09 (antes `claude_09_us_market_research.md`) |
 | `research/parque_por_marca.md` | investigación 2026-10-10 (D50); segunda ronda 2026-10-10, sección "Segunda ronda" (base de D52 y D55) |
@@ -215,6 +215,50 @@ Procedencia: plan aprobado por Henry el 2026-10-11 (literal: "aprobado", sobre e
 
 **Riesgos abiertos del loader:** `sslmode=disable` (solo loopback); verificador SCRAM en el log del servidor si `log_statement` = `ddl` o `all` (`04` §8.3); `db migrate` requiere la contraseña admin en `.env`; 28000 ambiguo (D83); un manifest corrupto bloquea la selección automática hasta usar `--fingerprint`; `GENERATED ALWAYS` no impide `OVERRIDING SYSTEM VALUE` a quien tiene INSERT (el loader es código propio, D81); D67 sigue pendiente (credenciales de ingesta del raw con permisos admin).
 
+### Hito dbt sobre `landing.fx_rate` (D78, D85–D88; implementado en la rama)
+
+Procedencia: plan aprobado por Henry el 2026-10-11 (literal: "aprobado", sobre D85–D88 y sus cuatro recomendaciones: freshness warn 2 días y error 7 días; `marts.fct_fx_rate_daily` desde ya; conversiones e inversa fuera del hito; reader solo ve `marts`). Base `main` `2980760` (PR #17). Worktree `C:\dev\pits-app-dbt`, rama `feat/dbt-fx-rate`. Commits de implementación: S1 `0f29b6c` (build, D85), S2 `a976402` (rol transformer, D86), S3 `f2af10c` (`pits transform`, D88), S4 `c61bee5` (modelos y tests, D87) y S5 `43a91a7` (tests pg). S6 es este documento. Puntajes del revisor: S1 9,4 (vuelta 2), S2 9,3, S3 9,5 (vuelta 2), S4 9,5 (vuelta 2), S5 9,4. El documentador no tiene Bash: los hashes y puntajes son los que reporta el orquestador y no se verificaron contra Git. La comparación contra `base_commit` la hace el revisor-senior.
+
+**Demostrado (sesión del 2026-10-11, reportado por el orquestador y el revisor):**
+
+- Gates del revisor: `pytest -q` 728 passed; `pytest -m pg` 120 passed (unos 2 minutos); contract+pg 1 passed; `ruff` OK; `pits transform parse` OK sin warnings.
+- Corrida real (Docker local, `uv run --env-file .env`; no VPS; fuente: `dbt_real_run.md`):
+  - `df C:`: 44 GB libres antes y después; volúmenes Docker 88,59 MB después.
+  - `pits db migrate` → `database=pits_warehouse applied=1 skipped=2` (exit 0): solo se aplicó `0003_transformer_grants.sql`.
+  - `pits transform build` (1.ª) → `PASS=35 WARN=0 ERROR=0 SKIP=0 TOTAL=35` (exit 0, ~7 s).
+  - `pits transform build` (2.ª) → `PASS=35 TOTAL=35` (exit 0, ~9 s).
+  - `pits transform freshness` → `1 of 1 PASS freshness of ops.load_run` (exit 0).
+  - Como `pits_reader`: `marts.fct_fx_rate_daily` con 12.735 filas, 1991-12-02..2026-10-13; mart contra landing con `EXCEPT ALL` en ambos sentidos = 0 filas; `staging.stg_fx_rate` → `InsufficientPrivilege`.
+  - Contraseña del transformer en `transform/target` y `transform/logs`: 0 archivos.
+  - Las tres contraseñas de rol en `.env` son distintas (verificado sin imprimirlas); `pits db migrate` fijó los verificadores. Rota la del reader que cambió Henry (§7).
+- Evidencia de S4 en base de prueba (revisor, sin datos reales): build 35 PASS; freshness WARN a 3 días y ERROR a 8 días; si falla un test de staging, el mart queda en SKIP y el anterior intacto; la contraseña no aparece en 91 archivos de `target/` y `logs/`.
+
+**Aprobado (2026-10-11):**
+
+- D85–D88 (literal "aprobado") con las cuatro recomendaciones del plan.
+- Estado de D79 y D80 → "ajustada por D86"; de D49 → "ajustada por D88" (D73(b)). D85 se redactó ya con el host de `profiles.yml` como `env_var`, según lo acordado con el orquestador.
+- Tres ajustes que figuran en D85 y D88 pero no en el texto del plan aprobado, confirmados por Henry el 2026-10-12 (literal: "si"): `exclude-dependencies` de `dbt-core-experimental-parser`; el host de `profiles.yml` por `env_var('PITS_PG_HOST','127.0.0.1')`; y `claude-recurrente.yml` con `--only-group dev`.
+
+**Demostrado: pico de memoria de Postgres con carga dbt (`pytest -m pg`):**
+
+- Criterio D63 aplicado a Postgres en §3 del loader. Mide el contenedor `pits-postgres`, no el proceso dbt del host (subproceso de `pits transform`), que no se midió. Resultado: 3/3 corridas de `pytest -m pg` (120 tests, incluidos los 7 de dbt) con `scripts/measure_storage_memory.sh` (`C=pits-postgres`, `DATA_DIR=/var/lib/postgresql/data`, reinicia el contenedor), 2026-10-11: rc=0, sin OOM, `RestartCount=0`; `memory.peak` 80.752.640 B (77,01 MiB), 67.342.336 B (64,22 MiB) y 64.163.840 B (61,19 MiB); máximo = 7,5 % de 1 GiB (límite 85 % = 912.680.550 B). `CRITERIO: OK`. Datos de Postgres: 76M. Log: scratchpad `measure_pg_dbt.log` (no versionado).
+
+**Pendiente:**
+
+- Revisión del diff completo por `revisor-senior` contra `base_commit` `2980760`: vuelta 1 (2026-10-12) CAMBIOS 9,2/10, sin críticas ni altas; hallazgos de docs (etiqueta de la medición de memoria, `README.md`, `04` §8.3) corregidos en S6. Gates de esa vuelta: `uv sync --locked`, `ruff check`, `ruff format --check`, `pytest -q` 728 passed, `pits transform parse` y `git diff --check`, todos exit 0; `pytest -m pg` no reejecutado (Docker apagado). Falta re-revisión, commit final, PR y CI (el paso `pits transform parse` de `ci.yml` no está verificado en GitHub Actions).
+
+**Runbook del hito dbt**
+
+- Migrar: `uv run --env-file .env pits db migrate`. Exige `PITS_PG_TRANSFORMER_PASSWORD` (16 caracteres o más): un `.env` sin ella rompe la migración, aunque loader y reader estén completos.
+- Construir: `uv run --env-file .env pits transform build` (dbt build: modelos y pruebas como `pits_transformer`, con preflight y lock).
+- Frescura: `uv run --env-file .env pits transform freshness` (`ops.load_run`, warn a 2 días y error a 7 días).
+- Parse offline: `uv run pits transform parse` (sin credenciales ni conexión; es el paso de CI).
+- Equivalente directo con dbt: `uv run dbt build --project-dir transform --profiles-dir transform`. Aviso: se salta las protecciones del wrapper (validación de la contraseña, preflight, lock y entorno limpio). Sin la contraseña en el entorno, libpq puede leer `pgpass.conf` del usuario de Windows.
+- Recuperación: si `landing` quedó mal, corregirlo con `uv run --env-file .env pits load fx-rate --repair` (o con un artefacto nuevo, `--fingerprint`) y volver a correr `pits transform build`. No se edita el mart a mano.
+- `dbt --version` consulta PyPI (requiere red); no es telemetría.
+
+**Riesgos abiertos del hito:** `assert_mart_equals_staging` lee el mart y corre después de materializarlo (conciliación, no compuerta; D87); las vistas que algún día existan en `marts` correrían con los privilegios de `pits_transformer` (usar `security_invoker`; hoy no hay, D86); `dbt build` no corre en CI hasta Fase 5 (D40); sesión de dbt sin `TimeZone` fijada (`04` §8.4).
+
 ### Resueltos por D47 y D48 (2026-10-10)
 
 - R1 (grano de `fx_rate`): D47, fecha única; el normalizer expande el rango de la TRM a una fila por día.
@@ -304,7 +348,7 @@ Evidencia y cómo reejecutar en §3. Se escribe cada página como `payload-NNNNN
 
 **Estado: IMPLEMENTADO en PR** (rama `feat/trm-normalize`, worktree `C:\dev\pits-app-trm`, apilada sobre `chore/agents-preflight`, PR #14). Plan aprobado por Henry el 2026-10-11 (literal: "Aprobado todo, continua e implementa"): pasos S1–S7 y D74–D77. Pasos S1–S6 implementados y S7 documentado; evidencia en §3 "Fase 1, hito TRM normalize" (reportada por el orquestador, 2026-10-11). Pendiente: revisión independiente del diff completo, commit final, apertura de PR y CI; ninguno verificado aquí. Loader a Postgres, dbt, Airflow, parquet y apps quedan fuera de este hito.
 
-**Siguiente paso sugerido (hito loader fx_rate, §3):** dbt sobre `landing.fx_rate` (hito siguiente según D78), sin fecha; no iniciado. El loader está implementado en la rama, con corrida real OK (§3). Fase 1b (RUNT `u3vn-bdcy`) sigue sin orden decidido por Henry. Descripción previa del hito (2026-10-10), conservada; los puntos actualizados por D74–D77 se marcan en línea. **Prerrequisito cumplido: PR #12 (paso 3) mergeado en `main`, verificado con `gh pr view`.** Rama apilada: `feat/trm-normalize` sale de `chore/agents-preflight` (no de `main`), por instrucción de Henry (2026-10-11). Este hito es técnico de Fase 1 y va separado del alcance de producto (§1-bis): no implica apps, OLTP, outbox ni orden comercial.
+**Siguiente paso sugerido (hito loader fx_rate, §3; superado por el hito dbt, §3 y §5):** dbt sobre `landing.fx_rate` (hito siguiente según D78), sin fecha; no iniciado al cerrar el loader. El loader está implementado en la rama, con corrida real OK (§3). Fase 1b (RUNT `u3vn-bdcy`) sigue sin orden decidido por Henry. Descripción previa del hito (2026-10-10), conservada; los puntos actualizados por D74–D77 se marcan en línea. **Prerrequisito cumplido: PR #12 (paso 3) mergeado en `main`, verificado con `gh pr view`.** Rama apilada: `feat/trm-normalize` sale de `chore/agents-preflight` (no de `main`), por instrucción de Henry (2026-10-11). Este hito es técnico de Fase 1 y va separado del alcance de producto (§1-bis): no implica apps, OLTP, outbox ni orden comercial.
 
 - Entrada (D76(a)-(b), reemplaza "el último batch committed"): todos los manifests committed de `superfinanciera_trm`/`32sa-8pi3`, validados estrictamente y ordenados por `commit_order = (extraction_date, finished_at, batch_id)`. Baseline = último `full` más los batches posteriores en orden ascendente; sin `full` committed, la corrida falla. Se leen desde `pits-raw` sin volver a llamar a la API. El loader no entra en este hito (Fase 3, `01` §10, D40).
 - Salida: `fx_rate` (`03_data_model.md` §26) con una fila por día calendario del rango `vigenciadesde`–`vigenciahasta` (D47). Fines de semana y festivos heredan la TRM vigente. Grano: `rate_date` + `currency_from` + `currency_to`. Artefacto: `fx_rate.csv` + `manifest.json` en `pits-normalized` (D74, D76(e)).
@@ -316,6 +360,10 @@ Evidencia y cómo reejecutar en §3. Se escribe cada página como `payload-NNNNN
 - Loader a Postgres: su diseño (schema, tablas, carga) no está decidido. Requiere decisión propia antes de implementar; ver `04_infra.md` §8.3 y D70 (el warehouse no recibe escrituras de las apps). Fuera de este hito (D74): queda en Fase 3 (`01` §10, D40).
 
 Contexto del storage (paso 2): MinIO comunitario ya no se distribuye (repo `minio/minio` archivado 2026-04-25, imágenes `minio/minio` y `minio/mc` en 404 en Docker Hub, CVE altos sin parche libre, p. ej. CVE-2026-41145, GHSA-hv4r-mvr4-25vw); se usa SeaweedFS. `04_infra.md` §8.1 guarda `manifest.json` junto al payload en el storage, así que Postgres no es requisito del manifest.
+
+### Siguiente paso — decide Henry (tras el hito dbt)
+
+Sin elegir y sin iniciar. Opciones registradas, no decisiones: (a) Fase 4, Airflow (D40, D5) para orquestar la carga del loader y el `pits transform build`; (b) Metabase sobre `marts.fct_fx_rate_daily` (el reader ya lo ve, D86), con su propia decisión de acceso antes de dar el reader a terceros (§7). Cualquiera requiere plan aprobado por Henry (D45). No se ha creado ninguna D nueva para elegir.
 
 ### Pasos siguientes
 
@@ -389,10 +437,13 @@ Condición de entrada cumplida (D46, `08_market_research.md` Ficha 2). Entregabl
 - Deuda técnica: `pits.normalized` depende de `pits.sources.trm` (contract, `FxDay`) y fija la fuente TRM. Parametrizar al llegar una segunda fuente de tasas (D77 no restringe `fx_rate` genérica).
 - Riesgos que siguen abiertos tras el hito: corridas concurrentes del extractor sin lock; truncamiento si el servidor limita `$limit`; huérfanos sin inventario; credenciales admin hasta Fase 3 (D67); disco C: al 97 % (19 GB libres) en la sesión del hito. `pits-normalized` no tiene lifecycle (D74).
 - Loader fx_rate a Postgres (D78–D84, §3): implementado, revisado y con corrida real OK. Pendiente: PR y CI.
-- Riesgo aceptado (Henry, 2026-10-11, literal: "que tengn la misma m vale madre, siguele"): en el `.env` local `PITS_PG_LOADER_PASSWORD` y `PITS_PG_READER_PASSWORD` tienen el mismo valor, así que quien conozca la del reader puede entrar como loader y escribir en `landing.fx_rate`. Antes de dar acceso al reader a terceros (Metabase) o de pasar al VPS, usar valores distintos; `pits db migrate` vuelve a fijar ambos verificadores.
+- CERRADO (2026-10-11, hito dbt, §3): las tres contraseñas de rol (loader, reader y transformer) son distintas en `.env`; Henry cambió la del reader y `pits db migrate` fijó los verificadores. Texto original, conservado sin cambios: Riesgo aceptado (Henry, 2026-10-11, literal: "que tengn la misma m vale madre, siguele"): en el `.env` local `PITS_PG_LOADER_PASSWORD` y `PITS_PG_READER_PASSWORD` tienen el mismo valor, así que quien conozca la del reader puede entrar como loader y escribir en `landing.fx_rate`. Antes de dar acceso al reader a terceros (Metabase) o de pasar al VPS, usar valores distintos; `pits db migrate` vuelve a fijar ambos verificadores.
 - Loader: `sslmode=disable` solo en loopback; el VPS requiere una D nueva antes de usar Postgres allí.
 - Loader: el verificador SCRAM de las contraseñas queda en el log del servidor si `log_statement` es `ddl` o `all` (`04` §8.3). La imagen usa el default.
-- Pendiente de dbt: `staging`, `intermediate` y `marts` (hito siguiente; `04` §8.3).
+- CERRADO (hito dbt, 2026-10-11; D86 y D85–D88): los schemas `staging`, `intermediate` y `marts` los crea el bootstrap, y dbt está implementado (§3). Texto original, conservado: Pendiente de dbt: `staging`, `intermediate` y `marts` (hito siguiente; `04` §8.3).
+- CERRADO (Henry, 2026-10-12, literal: "si"): tres ajustes de D85 y D88 confirmados (§3, hito dbt).
+- CERRADO (2026-10-12): pico de memoria de Postgres con carga dbt medido, `CRITERIO: OK` (§3, hito dbt). Sigue sin medir la memoria del proceso dbt en el host; se mide al orquestarlo en Fase 4.
+- Riesgo abierto (revisión 2026-10-12): el lock de `pits transform` no se coordina con `pits load fx-rate` ni `pits db migrate`; una carga durante `dbt build` puede hacer que tests y mart vean estados distintos de `landing`. Aceptable en local; resolver al orquestar en Airflow (Fase 4).
 
 ## 8. Regla para la siguiente conversación
 
