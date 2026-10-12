@@ -1,8 +1,8 @@
 """Warehouse (Postgres) settings loaded from environment variables (D79).
 
-Three profiles, no DSN: `admin` (POSTGRES_USER/POSTGRES_PASSWORD, only for `pits db migrate`),
-`loader` and `reader`. Only the requested profiles are validated, so the loader does not
-need the admin password.
+Four profiles, no DSN: `admin` (POSTGRES_USER/POSTGRES_PASSWORD, only for `pits db migrate`),
+`loader`, `reader` and `transformer` (dbt, D86). Only the requested profiles are validated,
+so the loader does not need the admin password.
 """
 
 from __future__ import annotations
@@ -19,6 +19,7 @@ DEFAULT_PORT = 5433
 MIN_PASSWORD_LENGTH = 16
 LOADER_ROLE = "pits_loader"
 READER_ROLE = "pits_reader"
+TRANSFORMER_ROLE = "pits_transformer"
 OWNER_ROLE = "pits_owner"
 
 _LOOPBACK_HOSTS = frozenset({"127.0.0.1", "localhost", "::1"})
@@ -32,9 +33,10 @@ class RoleNames:
     owner: str = OWNER_ROLE
     loader: str = LOADER_ROLE
     reader: str = READER_ROLE
+    transformer: str = TRANSFORMER_ROLE
 
     def __post_init__(self) -> None:
-        for name in (self.owner, self.loader, self.reader):
+        for name in (self.owner, self.loader, self.reader, self.transformer):
             if not _IDENT_RE.match(name):
                 raise WarehouseConfigError("Role names must match ^[a-z][a-z0-9_]{0,62}$")
 
@@ -43,6 +45,7 @@ class Profile(StrEnum):
     ADMIN = "admin"
     LOADER = "loader"
     READER = "reader"
+    TRANSFORMER = "transformer"
 
 
 @dataclass(frozen=True)
@@ -56,6 +59,7 @@ class WarehouseSettings:
     admin_password: str | None = field(default=None, repr=False)
     loader_password: str | None = field(default=None, repr=False)
     reader_password: str | None = field(default=None, repr=False)
+    transformer_password: str | None = field(default=None, repr=False)
     roles: RoleNames = field(default_factory=RoleNames)
 
     def credentials(self, profile: Profile) -> tuple[str, str]:
@@ -64,8 +68,10 @@ class WarehouseSettings:
             user, password = self.admin_user, self.admin_password
         elif profile is Profile.LOADER:
             user, password = self.roles.loader, self.loader_password
-        else:
+        elif profile is Profile.READER:
             user, password = self.roles.reader, self.reader_password
+        else:
+            user, password = self.roles.transformer, self.transformer_password
         if not user or not password:
             raise WarehouseConfigError(f"Credentials for profile '{profile.value}' not loaded")
         return user, password
@@ -116,6 +122,7 @@ def load_warehouse_settings(
         raise WarehouseConfigError("PITS_WAREHOUSE_DB must match ^[a-z][a-z0-9_]{0,62}$")
 
     admin_user = admin_password = loader_password = reader_password = None
+    transformer_password = None
     if Profile.ADMIN in wanted:
         admin_user = _get(env, "POSTGRES_USER")
         if not admin_user:
@@ -125,6 +132,8 @@ def load_warehouse_settings(
         loader_password = _password(env, "PITS_PG_LOADER_PASSWORD")
     if Profile.READER in wanted:
         reader_password = _password(env, "PITS_PG_READER_PASSWORD")
+    if Profile.TRANSFORMER in wanted:
+        transformer_password = _password(env, "PITS_PG_TRANSFORMER_PASSWORD")
 
     return WarehouseSettings(
         host=host,
@@ -134,4 +143,5 @@ def load_warehouse_settings(
         admin_password=admin_password,
         loader_password=loader_password,
         reader_password=reader_password,
+        transformer_password=transformer_password,
     )

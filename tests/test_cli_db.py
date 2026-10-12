@@ -18,6 +18,7 @@ def env(monkeypatch):
     monkeypatch.setenv("POSTGRES_PASSWORD", SENTINEL)
     monkeypatch.setenv("PITS_PG_LOADER_PASSWORD", SENTINEL + "-l")
     monkeypatch.setenv("PITS_PG_READER_PASSWORD", SENTINEL + "-r")
+    monkeypatch.setenv("PITS_PG_TRANSFORMER_PASSWORD", SENTINEL + "-t")
 
 
 def test_help_lists_migrate():

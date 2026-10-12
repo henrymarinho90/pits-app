@@ -1,0 +1,14 @@
+# Only env_var lookups, no secrets (D85). Defaults mirror .env.example.
+pits_transform:
+  target: dev
+  outputs:
+    dev:
+      type: postgres
+      host: "{{ env_var('PITS_PG_HOST', '127.0.0.1') }}"
+      port: "{{ env_var('POSTGRES_HOST_PORT', '5433') | as_number }}"
+      dbname: "{{ env_var('PITS_WAREHOUSE_DB', 'pits_warehouse') }}"
+      user: "{{ env_var('PITS_PG_TRANSFORMER_USER', 'pits_transformer') }}"
+      password: "{{ env_var('PITS_PG_TRANSFORMER_PASSWORD', '') }}"
+      sslmode: disable
+      schema: staging
+      threads: 1

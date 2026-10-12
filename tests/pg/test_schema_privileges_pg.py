@@ -78,7 +78,11 @@ def warehouse(pg_settings):
 
 def test_packaged_migrations_are_the_expected_ones():
     names = [m.filename for m in discover_migrations()]
-    assert names[:2] == ["0001_ops_load_run.sql", "0002_landing_fx_rate.sql"]
+    assert names == [
+        "0001_ops_load_run.sql",
+        "0002_landing_fx_rate.sql",
+        "0003_transformer_grants.sql",
+    ]
 
 
 def test_load_run_columns_match_d81(warehouse):
