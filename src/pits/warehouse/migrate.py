@@ -30,9 +30,9 @@ from pits.warehouse.errors import (
     WarehouseTransientError,
     to_warehouse_error,
 )
+from pits.warehouse.locks import MIGRATE_LOCK_KEY as MIGRATE_LOCK_KEY
 from pits.warehouse.settings import Profile, RoleNames, WarehouseSettings
 
-MIGRATE_LOCK_KEY = 0x5049545302  # advisory lock key inside the warehouse database
 LOCK_TIMEOUT = "10s"
 STATEMENT_TIMEOUT = "10min"
 
@@ -193,12 +193,14 @@ def run_migrate(settings: WarehouseSettings, source: Traversable | None = None) 
     """Bootstrap (layer 1) then apply pending migrations (layer 2) as the admin profile.
 
     One run-wide session lock (see `run_lock`) covers both layers; if it is busy the run
-    fails as transient before the bootstrap touches anything. The per-migration transaction
-    lock inside the warehouse database stays as a second line of defense.
+    fails as transient before the bootstrap touches anything. After the database exists, the
+    warehouse write lock (D90, see `warehouse_lock`) is held until the last migration, so the
+    load and the transform cannot overlap; if it is busy the run fails as transient before
+    writing any object. The per-migration transaction lock inside the warehouse database stays
+    as a second line of defense.
     """
     migrations = discover_migrations(source)  # fail before touching the server
-    with run_lock(settings) as maintenance:
-        bootstrap_locked(maintenance, settings)
+    with run_lock(settings) as maintenance, bootstrap_locked(maintenance, settings):
         conn = connect(settings, Profile.ADMIN, autocommit=False, application_name="pits-migrate")
         try:
             return apply_migrations(conn, migrations, settings.roles)

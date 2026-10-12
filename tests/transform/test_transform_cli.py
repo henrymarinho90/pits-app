@@ -218,13 +218,6 @@ def test_session_preflight_transient_propagates(monkeypatch):
         pass
 
 
-def test_lock_key_differs_from_existing_ones():
-    from pits.warehouse.bootstrap import RUN_LOCK_KEY
-    from pits.warehouse.migrate import MIGRATE_LOCK_KEY
-
-    assert len({rn.TRANSFORM_LOCK_KEY, RUN_LOCK_KEY, MIGRATE_LOCK_KEY}) == 3
-
-
 def test_default_project_dir_is_the_repo_transform_folder():
     path = rn.default_project_dir()
     assert isinstance(path, Path) and (path / "dbt_project.yml").is_file()

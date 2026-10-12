@@ -1,0 +1,22 @@
+# Contexto de build de pits-airflow: solo entra lo que el Dockerfile copia por ruta explicita.
+# Secretos (nunca en la imagen; .env.example tampoco hace falta), en cualquier nivel
+.env
+.env.*
+**/.env
+**/.env.*
+# Entornos y metadatos locales
+.venv
+**/.venv
+.git
+.hermes
+.claude
+# Artefactos de dbt y caches
+transform/target
+transform/logs
+transform/dbt_packages
+**/__pycache__
+.ruff_cache
+.pytest_cache
+# No se usan en la imagen
+docs
+tests

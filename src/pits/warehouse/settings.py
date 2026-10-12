@@ -23,6 +23,10 @@ TRANSFORMER_ROLE = "pits_transformer"
 OWNER_ROLE = "pits_owner"
 
 _LOOPBACK_HOSTS = frozenset({"127.0.0.1", "localhost", "::1"})
+# D91: closed allow-list (not configurable). `postgres` is the compose service name, reachable
+# only on the internal network (Airflow containers); loopback is the host-side dev default.
+_COMPOSE_HOST = "postgres"
+_ALLOWED_HOSTS = _LOOPBACK_HOSTS | {_COMPOSE_HOST}
 _IDENT_RE = re.compile(r"^[a-z][a-z0-9_]{0,62}$")
 
 
@@ -101,9 +105,9 @@ def load_warehouse_settings(
         raise WarehouseConfigError("At least one profile is required")
 
     host = _get(env, "PITS_PG_HOST") or "127.0.0.1"
-    if host not in _LOOPBACK_HOSTS:
+    if host not in _ALLOWED_HOSTS:
         raise WarehouseConfigError(
-            "PITS_PG_HOST must be a loopback host (127.0.0.1, localhost, ::1)"
+            "PITS_PG_HOST must be a loopback host (127.0.0.1, localhost, ::1) or 'postgres'"
         )
 
     raw_port = _get(env, "POSTGRES_HOST_PORT") or str(DEFAULT_PORT)
@@ -112,9 +116,9 @@ def load_warehouse_settings(
     port = int(raw_port)
     if not 1 <= port <= 65535:
         raise WarehouseConfigError("POSTGRES_HOST_PORT must be between 1 and 65535")
-    if port == 5432:
+    if port == 5432 and host != _COMPOSE_HOST:
         raise WarehouseConfigError(
-            "POSTGRES_HOST_PORT must not be 5432 (reserved for native Postgres)"
+            "POSTGRES_HOST_PORT must not be 5432 with a loopback host (native Postgres port)"
         )
 
     dbname = _get(env, "PITS_WAREHOUSE_DB") or DEFAULT_DB

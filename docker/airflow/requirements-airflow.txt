@@ -1,0 +1,13 @@
+# Drivers de la metadata DB de Airflow (versiones del constraints oficial constraints-3.3.2 / py3.12):
+# - psycopg2-binary 2.9.13: driver sincrono.
+# - asyncpg 0.31.0: Airflow 3.3 deriva de la URL postgresql+psycopg2 un motor async postgresql+asyncpg
+#   y falla al arrancar si no esta instalado. Sin dependencias transitivas en py3.12
+#   (async_timeout solo para python < 3.11; gssapi/sspilib solo con el extra gssauth, no usado).
+# Hashes de PyPI (https://pypi.org/pypi/<paquete>/<version>/json, 2026-10-12) solo para cp312
+# manylinux x86_64 y aarch64.
+psycopg2-binary==2.9.13 \
+    --hash=sha256:e3861eba31f8ea8663fd876166b032fd89179e42aa63764d6feb281f13f9eb60 \
+    --hash=sha256:3dc3372b3731b3ef23407fe06b94f640ef87a2bda242fa386033d5589c87514a
+asyncpg==0.31.0 \
+    --hash=sha256:aad7a33913fb8bcb5454313377cc330fbb19a0cd5faa7272407d8a0c4257b671 \
+    --hash=sha256:12b3b2e39dc5470abd5e98c8d3373e4b1d1234d9fbdedf538798b2c13c64460a

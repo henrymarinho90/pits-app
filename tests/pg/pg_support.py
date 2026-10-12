@@ -7,8 +7,9 @@ Isolation: roles are cluster-global, so every test gets its OWN database
 `pits_test_<uuid8>` and its OWN suffixed roles (`pits_owner_t<uuid8>`, ...). The real
 `pits_warehouse` database and the real `pits_owner/pits_loader/pits_reader` roles are never
 touched. Loader/reader/transformer passwords are random per test and only live in memory.
-Teardown drops the database and the roles. Only loopback and a port != 5432 are accepted
-(settings enforce it).
+Teardown drops the database and the roles. Only loopback (never the compose host `postgres`, D91)
+and a port != 5432 are accepted: the guards live in `_admin_base` and run before any
+connection (orphan sweep included).
 Run: `uv run --env-file ../pits-app/.env pytest -m pg -q` (admin = POSTGRES_USER/PASSWORD).
 """
 
@@ -28,16 +29,29 @@ from pits.warehouse.errors import WarehouseConfigError
 from pits.warehouse.settings import Profile, RoleNames, WarehouseSettings, load_warehouse_settings
 
 REAL_DB = "pits_warehouse"
+_PG_TEST_HOSTS = frozenset({"127.0.0.1", "localhost", "::1"})
 # Only names that match these EXACTLY (uuid8 suffix) may ever be swept; real names never match.
-_ORPHAN_DB_RE = re.compile(r"pits_test_[0-9a-f]{8}")
-_ORPHAN_ROLE_RE = re.compile(r"pits_(?:owner|loader|reader|transformer)_t[0-9a-f]{8}")
+_ORPHAN_DB_RE = re.compile(r"pits_test_[0-9a-f]{8}|airflow_meta_t[0-9a-f]{8}")
+_ORPHAN_ROLE_RE = re.compile(
+    r"pits_(?:owner|loader|reader|transformer)_t[0-9a-f]{8}|airflow_meta_t[0-9a-f]{8}"
+)
 
 
 def _admin_base() -> WarehouseSettings:
+    """Admin settings for pg tests; shared by the orphan sweep and `pg_settings`.
+
+    Guards run BEFORE any connection: D84/D91 pg tests only talk to a loopback Postgres on a
+    port != 5432, never to the compose-internal host. Messages never include values.
+    """
     try:
-        return load_warehouse_settings(os.environ, [Profile.ADMIN])
+        base = load_warehouse_settings(os.environ, [Profile.ADMIN])
     except WarehouseConfigError as exc:
         pytest.fail(f"pg tests need POSTGRES_USER/POSTGRES_PASSWORD (use --env-file): {exc}")
+    if base.host not in _PG_TEST_HOSTS:
+        pytest.fail("pg tests accept loopback hosts only (D84/D91)")
+    if base.port == 5432:
+        pytest.fail("pg tests must not use port 5432 (D84)")
+    return base
 
 
 @pytest.fixture(scope="session", autouse=True)
@@ -76,7 +90,7 @@ def pg_settings():
             transformer=f"pits_transformer_t{tag}",
         ),
     )
-    assert settings.dbname != REAL_DB and settings.port != 5432
+    assert settings.dbname != REAL_DB
     yield settings
     _cleanup(settings)
 

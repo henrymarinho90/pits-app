@@ -83,7 +83,7 @@ def build_conninfo(
         password=password,
         connect_timeout=CONNECT_TIMEOUT_SECONDS,
         application_name=application_name,
-        sslmode="disable",  # loopback only (settings enforce it)
+        sslmode="disable",  # loopback or `postgres` only (D91, enforced by settings)
         client_encoding="UTF8",
         options="-c TimeZone=UTC -c DateStyle=ISO",
     )

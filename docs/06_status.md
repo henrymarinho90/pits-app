@@ -1,7 +1,7 @@
 # 06 — Estado del proyecto
 
 Última actualización: 2026-10-12
-Estado: hito dbt sobre `landing.fx_rate` (D78, D85–D88) IMPLEMENTADO en `feat/dbt-fx-rate` (worktree `C:\dev\pits-app-dbt`), sobre `main` `2980760`; pasos S1–S5 implementados y revisados por el revisor (puntajes 9,3–9,5); corrida real OK el 2026-10-11 (§3). Revisión independiente del diff completo por `revisor-senior` (2026-10-12): vuelta 1 CAMBIOS 9,2/10, solo docs, corregidos en S6. Pendiente: re-revisión, commit final, PR, CI y merge (§3, §5, §7). Sin merge ni CI verificados por el documentador; no hay siguiente hito iniciado (§5). Antes: hito loader fx_rate a Postgres (Fase 3, D78–D84) IMPLEMENTADO en `feat/fx-rate-loader` (worktree `C:\dev\pits-app-load`), apilado sobre `feat/trm-normalize` (base `d89d997`, según el plan); pasos S1–S7 implementados, revisados y commiteados; corrida real contra `pits_warehouse` OK el 2026-10-11 (§3). Pendiente: PR, CI y merge. Antes: hito TRM normalize IMPLEMENTADO en `feat/trm-normalize` (worktree `C:\dev\pits-app-trm`), apilado sobre `chore/agents-preflight` (PR #14); pendiente de PR, revisión independiente del diff y commit final; plan aprobado por Henry el 2026-10-11 (D74–D77). Sin merge ni CI verificados. PR #12 (extractor TRM) y PR #13 (alineación de alcance D68–D73) mergeados en `main`, verificados con `gh pr view` en esta sesión. Ajustes de agentes y `/orquestar` de D73 con plan específico aprobado; entregados en PR desde `chore/agents-preflight` (base `origin/main` `d1d867f`), pendiente de merge (§1-ter). Siguiente paso sugerido: dbt sobre `landing.fx_rate` (hito siguiente según D78), sin fecha; no iniciado (§5).
+Estado: hito Fase 4, orquestación con Airflow (D89–D95) IMPLEMENTADO en `feat/airflow-trm` (worktree `C:\dev\pits-app-airflow`), sobre base `b74e8c0` (merge del PR #18, mergeado 2026-10-12 14:35 UTC; el hito dbt quedó en ese PR); S1–S6 implementados y revisados (puntajes finales 94–96); S7 es este cierre documental. Pendiente: revisión final del diff completo por `revisor-senior` contra `b74e8c0`, commit final, PR, CI y merge (§3, §5, §7). Sin merge, CI ni despliegue verificados por el documentador. Antes: hito dbt sobre `landing.fx_rate` (D78, D85–D88) IMPLEMENTADO en `feat/dbt-fx-rate` (worktree `C:\dev\pits-app-dbt`), sobre `main` `2980760`; pasos S1–S5 implementados y revisados por el revisor (puntajes 9,3–9,5); corrida real OK el 2026-10-11 (§3). Revisión independiente del diff completo por `revisor-senior` (2026-10-12): vuelta 1 CAMBIOS 9,2/10, solo docs, corregidos en S6. Pendiente: re-revisión, commit final, PR, CI y merge (§3, §5, §7). Sin merge ni CI verificados por el documentador; no hay siguiente hito iniciado (§5). Antes: hito loader fx_rate a Postgres (Fase 3, D78–D84) IMPLEMENTADO en `feat/fx-rate-loader` (worktree `C:\dev\pits-app-load`), apilado sobre `feat/trm-normalize` (base `d89d997`, según el plan); pasos S1–S7 implementados, revisados y commiteados; corrida real contra `pits_warehouse` OK el 2026-10-11 (§3). Pendiente: PR, CI y merge. Antes: hito TRM normalize IMPLEMENTADO en `feat/trm-normalize` (worktree `C:\dev\pits-app-trm`), apilado sobre `chore/agents-preflight` (PR #14); pendiente de PR, revisión independiente del diff y commit final; plan aprobado por Henry el 2026-10-11 (D74–D77). Sin merge ni CI verificados. PR #12 (extractor TRM) y PR #13 (alineación de alcance D68–D73) mergeados en `main`, verificados con `gh pr view` en esta sesión. Ajustes de agentes y `/orquestar` de D73 con plan específico aprobado; entregados en PR desde `chore/agents-preflight` (base `origin/main` `d1d867f`), pendiente de merge (§1-ter). Siguiente paso sugerido: dbt sobre `landing.fx_rate` (hito siguiente según D78), sin fecha; no iniciado (§5).
 
 Histórico de hitos anteriores (evidencia conservada, no reejecutada aquí): D68–D73 aprobadas por Henry el 2026-10-10 y registradas en `05` (v12); `01` v4, `03` v10, `04` v6 alineados; alcance vigente en §1-bis. Antes: paso 3 de Fase 1 (extractor TRM) implementado en PR, con evidencia de corrida real; D64–D67 aprobadas por Henry el 2026-10-10 y registradas en `05` (v11). Antes: paso 2 de Fase 1 (storage y Postgres locales, perfil `core`) CERRADO en PR; D60–D63 aprobadas por Henry el 2026-10-10 y registradas en `05` (v10). Antes: D57 (storage SeaweedFS, memoria M1 768m, inmutabilidad opción A), D58 (marker `contract`) y D59 (demanda solo `ACTIVO`) aprobadas por Henry el 2026-10-10 y registradas en `05` (v9). Antes: spike de storage SeaweedFS 4.48 completado en la rama `spike/seaweedfs` (`docs/spikes/seaweedfs.md`; 14/14 tests de contrato y 30 offline); Fase 1 paso 1 cerrado (D49). Antes: spike planeado y bloqueo de storage (sin evidencia); segunda ronda regional y D52–D56 (calibración del parque con Boyacá y Risaralda, marca primero, servicio público aparte, alcance de la demanda). Antes: D50 y D51; Fase 0.5 y D43–D48 (D47 grano de `fx_rate`; D48 demanda con parque RUNT, marca/modelo sintético).
 
@@ -9,7 +9,7 @@ Este archivo se actualiza al final de cada sesión y funciona como punto de part
 
 ## 1. Fase actual
 
-**Fase actual: Fase 1 — primera ingesta real: EN CURSO (pasos 1, 2 y 3 implementados: D49, D60–D63 y D64–D67; paso 3 mergeado en PR #12; hito TRM normalize implementado en PR, D74–D77, §3 y §5; hito loader fx_rate (Fase 3, D78–D84) implementado en la rama, §3 y §5; hito dbt sobre `landing.fx_rate` (D85–D88) implementado en la rama, §3; siguiente paso sin elegir: Fase 4 (Airflow, D40) o Metabase sobre `marts.fct_fx_rate_daily`, lo decide Henry, §5).**
+**Fase actual: Fase 4 (orquestación)**: hito Airflow (D89–D95) IMPLEMENTADO en `feat/airflow-trm`, pendiente de revisión final, PR, CI y merge (§3); siguiente paso sin elegir, lo decide Henry (§5). Antes: **Fase actual: Fase 1 — primera ingesta real: EN CURSO (pasos 1, 2 y 3 implementados: D49, D60–D63 y D64–D67; paso 3 mergeado en PR #12; hito TRM normalize implementado en PR, D74–D77, §3 y §5; hito loader fx_rate (Fase 3, D78–D84) implementado en la rama, §3 y §5; hito dbt sobre `landing.fx_rate` (D85–D88) implementado en la rama, §3; siguiente paso sin elegir: Fase 4 (Airflow, D40) o Metabase sobre `marts.fct_fx_rate_daily`, lo decide Henry, §5).**
 
 Fase 0.5 — investigación de mercado y validación de fuentes: CERRADA, con brechas documentadas.
 
@@ -72,11 +72,11 @@ Plan específico aprobado por Henry en esta sesión (literal: "Aprobado: aplicar
 | `01_project_brief.md` | v4 (2026-10-10); tres productos, mercados por país, fuera de alcance reformulado, diagrama OLTP/outbox/raw (D68–D71); SeaweedFS (D57) |
 | `02_domain_taxonomy.md` | v13 (2026-10-10); nota en §17 sobre frontend (D68); `fleet_operator` (D54) |
 | `03_data_model.md` | v13 (2026-10-11); linaje dbt de `fx_rate` en §3 y §26 (D85–D88); v12 (2026-10-11); linaje de `landing.fx_rate` en §3 y tabla en §26 (D79–D82); v11 (2026-10-11); nota de implementación de `fx_rate` para la TRM en §26 (D77, D76); v10 (2026-10-10); §1 aclara modelo fuente/analítico frente a OLTP (D70, D72); mapeo del manifest en §3 (D65, D66); `vehicle_registration_stat` renombrada a `vehicle_fleet_snapshot` (D51); desglose por servicio y marca primero (D52–D56); filtro `ACTIVO` (D59) |
-| `04_infra.md` | v9 (2026-10-11); rol `pits_transformer`, matriz, `profiles.yml`, dependencias dbt y `.venv` en §8.3–§8.4, §9 y §11 (D85–D88); v8 (2026-10-11); PostgreSQL del warehouse en §8.3, medición de memoria de Postgres en §9, notas de roles y log en §11 y §13 (D79–D82); v7 (2026-10-11); zona `pits-normalized` en §8.2 (D74, D75, D76); v6 (2026-10-10); nota OLTP/warehouse en §7 y §8.3 (D70), sin cambios de compose; §8.1 con el contrato del batch raw (D65); perfil `core` (D60–D63); GOMEMLIMIT SeaweedFS 500MiB (D63); bucket `pits-raw` (D61) |
-| `05_decisions_log.md` | v15 (2026-10-11); D1–D88 (D85–D88 hito dbt, aprobadas 2026-10-11; Estado de D79 y D80 ajustado por D86 y de D49 por D88); v14 (2026-10-11); D1–D84 (D78–D84 hito loader fx_rate, aprobadas 2026-10-11; Estado de D74 ajustado por D79); v13 (2026-10-11); D1–D77 (D74–D77 hito TRM normalize, aprobadas 2026-10-11; Estado de D62 y D65 ajustado por D75); v12 (2026-10-10); D1–D73 (D68–D73 alineación de alcance, aprobadas 2026-10-10); celdas Estado de D2, D22, D30, D34, D46 y D60 actualizadas (D73(b)); D60–D63 y D64–D67 aprobadas 2026-10-10 |
+| `04_infra.md` | v10 (2026-10-12); orquestación con Airflow en §9 (medición), §10.1 (perfil `orchestration` y los dos archivos de compose, D95), §11 (secretos y riesgos) y §13 (logs), D89–D95; v9 (2026-10-11); rol `pits_transformer`, matriz, `profiles.yml`, dependencias dbt y `.venv` en §8.3–§8.4, §9 y §11 (D85–D88); v8 (2026-10-11); PostgreSQL del warehouse en §8.3, medición de memoria de Postgres en §9, notas de roles y log en §11 y §13 (D79–D82); v7 (2026-10-11); zona `pits-normalized` en §8.2 (D74, D75, D76); v6 (2026-10-10); nota OLTP/warehouse en §7 y §8.3 (D70), sin cambios de compose; §8.1 con el contrato del batch raw (D65); perfil `core` (D60–D63); GOMEMLIMIT SeaweedFS 500MiB (D63); bucket `pits-raw` (D61) |
+| `05_decisions_log.md` | v16 (2026-10-12); D1–D95 (D89–D95 hito Fase 4, Airflow, aprobadas 2026-10-12; Estado de D79 ajustado por D91, D80 por D90, D82 por D90, D85 por D91 y D88 por D90 y D91, D73(b)); v15 (2026-10-11); D1–D88 (D85–D88 hito dbt, aprobadas 2026-10-11; Estado de D79 y D80 ajustado por D86 y de D49 por D88); v14 (2026-10-11); D1–D84 (D78–D84 hito loader fx_rate, aprobadas 2026-10-11; Estado de D74 ajustado por D79); v13 (2026-10-11); D1–D77 (D74–D77 hito TRM normalize, aprobadas 2026-10-11; Estado de D62 y D65 ajustado por D75); v12 (2026-10-10); D1–D73 (D68–D73 alineación de alcance, aprobadas 2026-10-10); celdas Estado de D2, D22, D30, D34, D46 y D60 actualizadas (D73(b)); D60–D63 y D64–D67 aprobadas 2026-10-10 |
 | `spikes/seaweedfs.md` | spike SeaweedFS 4.48 (2026-10-10), mergeado en `main` (PR #9); incluye los borradores D57 y D58 (aprobados; ver `05`) |
-| `06_status.md` | vigente (2026-10-11) |
-| `07_lessons_learned.md` | vigente, sin versión; lecciones 1–105 (102–105 del hito dbt, 2026-10-11; 96–101 del hito loader fx_rate, 2026-10-11) |
+| `06_status.md` | vigente (2026-10-12) |
+| `07_lessons_learned.md` | vigente, sin versión; lecciones 1–117 (106–117 del hito Airflow, 2026-10-12; 102–105 del hito dbt, 2026-10-11; 96–101 del hito loader fx_rate, 2026-10-11) |
 | `08_market_research.md` | fechas de consulta 2026-10-03 (antes `claude_08_market_research.md`) |
 | `09_us_market_research.md` | tercera ronda, 2026-10-09 (antes `claude_09_us_market_research.md`) |
 | `research/parque_por_marca.md` | investigación 2026-10-10 (D50); segunda ronda 2026-10-10, sección "Segunda ronda" (base de D52 y D55) |
@@ -259,6 +259,62 @@ Procedencia: plan aprobado por Henry el 2026-10-11 (literal: "aprobado", sobre D
 
 **Riesgos abiertos del hito:** `assert_mart_equals_staging` lee el mart y corre después de materializarlo (conciliación, no compuerta; D87); las vistas que algún día existan en `marts` correrían con los privilegios de `pits_transformer` (usar `security_invoker`; hoy no hay, D86); `dbt build` no corre en CI hasta Fase 5 (D40); sesión de dbt sin `TimeZone` fijada (`04` §8.4).
 
+### Fase 4, orquestación con Airflow (D89–D95; implementada en `feat/airflow-trm`)
+
+Procedencia: plan S1–S7 y D89–D94 aprobados por Henry el 2026-10-12 (literal: "Aprobadas todas tus recomendaciones, sigue"), con P1–P9 resueltas en esa misma respuesta (lista en "Aprobado" abajo); D95 aprobada con "1. opcion b" y "2. Si, seteala tu mismo" (`AIRFLOW_API_SECRET_KEY`). Merge del PR #18 y arranque de Airflow: "merge y arranca Airflow". Base `b74e8c0` (merge del PR #18). Worktree `C:\dev\pits-app-airflow`, rama `feat/airflow-trm`. Commits de implementación: S2 `91544fd`, S1 `85b7596`, S3 `40ac5ce`, S4 `3b719eb`, S5 `523844f` y S6 `6c1a77a` (HEAD antes de este cierre); S7 es este cierre documental. Revisiones del revisor (vuelta inicial → final): S1 78→91→95; S2 88→92→96; S3 79→94; S4 91→94; S5 82→94; S6 88→94. El documentador no tiene Bash: hashes y puntajes son los que reporta el orquestador y no se verificaron contra Git; la comparación contra `base_commit` `b74e8c0` la hace el revisor-senior.
+
+**Demostrado (sesión del 2026-10-12, reportado por el orquestador y el revisor):**
+
+- Gates: `pytest -q` 778 passed; `pytest -m pg` 126 passed tras S1, 132 passed tras S4 (revisor) y 135 passed en la revisión final (2026-10-12); orchestration 83 passed dentro de la imagen; `ruff` OK.
+- `pits db init-airflow-meta`: `status=created` y luego `status=unchanged`.
+- Primer `up`: falló con `database "airflow_meta\n" does not exist` (el `print` dentro del `_CMD` dejaba el newline); corregido (lección 108).
+- Stack healthy; `/api/v2/monitor/health` con metadatabase, scheduler y dag_processor healthy.
+- Primera corrida programada `scheduled__2026-10-12T15:00:00+00:00` en success en 29 s: extract incremental con 0 filas; normalize created con inputs=3 y fingerprint `b1c56b61…`; load loaded con `load_id=2` y 0/0/0; build PASS=35; freshness PASS.
+- Nota de la metadata: la corrida `scheduled__2026-10-12T15:00:00+00:00` aparece con build=failed (17:58:34 UTC) y load con attempt 2 (18:00 UTC). Viene de un `tasks clear` sin fechas y de una versión previa de `tasks test` durante el desarrollo de S6 (lección 115). Los 29 s originales (17:45:43–17:46:11 UTC) siguen valiendo; no es una regresión.
+- Suite `-m airflow`: 7 passed en 1365,6 s (incluye lock retenido y SeaweedFS caído con el backoff real).
+- Escaneo de secretos en los logs: 0 apariciones de las variables; `SODA_APP_TOKEN` vacío. El escaneo se hizo desde el scheduler y no incluye `AIRFLOW_ADMIN_PASSWORD` (solo lo tiene el apiserver).
+- Host: disco C: 47–48 GB libres; imagen `pits-airflow:dev` de 1380040724 B (1,38 GB; `docker image inspect`, build del 2026-10-12 a las 20:06:39 UTC).
+
+**Demostrado: memoria con el criterio de D89 (análogo a D63), 2026-10-12:**
+
+- 3/3 corridas por contenedor, rc=0, sin OOM ni reinicios. `CRITERIO OK`.
+- scheduler (límite 2 GiB): picos 603742208/610160640/569274368 B; máximo 581,9 MiB (28 %); IDLE 120 s.
+- apiserver (límite 1 GiB): 254160896/253865984/254291968 B; 242,5 MiB (24 %); IDLE 60 s.
+- dag-processor (límite 768 MiB): 266727424/266993664/266350592 B; 254,6 MiB (33 %); IDLE 60 s.
+- postgres (`pits-postgres`, instancia compartida con el warehouse y la metadata; límite 1 GiB): 69353472/61849600/59973632 B; 66,1 MiB (6,5 %); IDLE 60 s.
+- Carga: `scripts/run_dag_and_wait.sh trm_daily` (extract incremental). Una primera tanda en segundo plano la cortó Claude Code por RAM del host; se repitió (lección 116).
+- El revisor confirmó que bajar IDLE no invalida el criterio (`memory.peak` se acumula desde el restart).
+- Procedencia de las cifras: las del scheduler salen de la primera tanda (`measure_airflow.log`, IDLE 120 s), que también terminó apiserver y dag-processor con CRITERIO OK pero no llegó a postgres. Apiserver, dag-processor y postgres reportados vienen de la repetición (logs 2–4, IDLE 60 s).
+- No se midió una corrida con extract full. dbt corre dentro del cgroup del scheduler (subproceso de la tarea); no hay medición separada del proceso dbt.
+
+**Aprobado (2026-10-12):**
+
+- Plan S1–S7 y D89–D94: "Aprobadas todas tus recomendaciones, sigue". D95: "1. opcion b"; "2. Si, seteala tu mismo" para `AIRFLOW_API_SECRET_KEY`.
+- P1: 10:00 America/Bogota (15:00 UTC); la "tasa promedio" es la TRM de `32sa-8pi3`. P2: metadata DB en la misma instancia. P3: imagen slim. P4: exit desconocido o señal sin reintento. P5: WSL2 con 12381814784 B (~11,5 GiB), medido con `docker info` el 2026-10-12. P6: credenciales S3 admin aceptadas solo en local; D67 queda para su propio hito. P7: se acepta que `pits-normalized` crezca (~1,8 MB por corrida). P8: reutilizar `POSTGRES_HOST_PORT`. P9: freshness ERROR hace fallar la corrida.
+- Levantar: "ya encendi docker, autorizo que corras ese comando" (core up) y "autorizo el up de orchestration, sigue".
+- Secretos: se añadieron al final de `C:\dev\pits-app\.env` cinco variables generadas (`AIRFLOW_METADB_PASSWORD`, `AIRFLOW_FERNET_KEY`, `AIRFLOW_API_JWT_SECRET`, `AIRFLOW_API_SECRET_KEY` y `AIRFLOW_ADMIN_PASSWORD`), según el orquestador, sin leer el archivo ni imprimir valores.
+- Repetir la medición de memoria cortada: "1".
+
+**Pendiente:**
+
+- Revisión final del diff completo por `revisor-senior` contra `base_commit` `b74e8c0`; commit final de S7; PR; CI; merge. Nada de esto está verificado por el documentador.
+- Job `orchestration` de `.github/workflows/ci.yml` (D94): no verificado en GitHub Actions.
+- No medido: corrida con extract full; proceso dbt separado; `COMPOSE_FILE` con `:` en Linux (no probado).
+- Riesgos abiertos del hito: §7.
+
+**Runbook del hito Airflow**
+
+- Levantar: `docker compose -f docker-compose.yml -f docker-compose.orchestration.yml --profile core --profile orchestration up -d`, o `COMPOSE_FILE` con separador `;` en Windows. UI en `http://127.0.0.1:8080`, usuario `admin`, contraseña `AIRFLOW_ADMIN_PASSWORD`.
+- `uv run --env-file .env pits db init-airflow-meta` antes del primer `up` de orchestration, con el core ya arriba (requiere Postgres; idempotente; `status=created` o `status=unchanged`).
+- Al des-pausar un DAG, Airflow crea la corrida del último punto cron ya pasado.
+- `pools set` en `airflow-init` revierte los cambios de slots hechos en la UI.
+- Reprocesar: trigger con conf `extract_mode` = `since` o `full`. `--repair` y `--fingerprint` solo por CLI manual.
+- Cambiar DAGs exige `docker build` y recrear los contenedores.
+- Tests de orchestration: dentro de la imagen (no colectan en el host Windows, D94). CI los corre en Linux: `uv run --locked --project orchestration pytest orchestration/tests -q`. En Windows, el comando verificado por el revisor (83 passed; necesita red) está en `README.md`, sección Orquestación.
+- Integración (`-m airflow`): solo desde Git Bash, lejos de las 15:00 UTC y sin corridas activas; `MSYS_NO_PATHCONV=1`.
+- `airflow tasks clear` sin fechas limpia todas las corridas; usar `-s`/`-e` con `-t load` (`-t '^load$'` no limpia nada).
+- Exit 2 de `scripts/run_dag_and_wait.sh` deja la corrida viva.
+
 ### Resueltos por D47 y D48 (2026-10-10)
 
 - R1 (grano de `fx_rate`): D47, fecha única; el normalizer expande el rango de la TRM a una fila por día.
@@ -361,7 +417,11 @@ Evidencia y cómo reejecutar en §3. Se escribe cada página como `payload-NNNNN
 
 Contexto del storage (paso 2): MinIO comunitario ya no se distribuye (repo `minio/minio` archivado 2026-04-25, imágenes `minio/minio` y `minio/mc` en 404 en Docker Hub, CVE altos sin parche libre, p. ej. CVE-2026-41145, GHSA-hv4r-mvr4-25vw); se usa SeaweedFS. `04_infra.md` §8.1 guarda `manifest.json` junto al payload en el storage, así que Postgres no es requisito del manifest.
 
-### Siguiente paso — decide Henry (tras el hito dbt)
+### Siguiente paso — decide Henry (tras el hito Airflow)
+
+Sin elegir y sin iniciar. Opciones registradas, no decisiones: (a) Metabase sobre `marts.fct_fx_rate_daily` (el reader ya lo ve, D86), con su propia decisión de acceso antes de dar el reader a terceros (§7); (b) Fase 1b con RUNT `u3vn-bdcy` (sin orden decidido; pregunta abierta 2, DANE, §7); (c) D67, credenciales de mínimo privilegio para la ingesta del raw (hoy son admin, §7). Cualquiera requiere plan aprobado por Henry (D45). No se ha creado ninguna D nueva para elegir.
+
+### Siguiente paso — decide Henry (tras el hito dbt; superado por el hito Airflow, §3 y arriba)
 
 Sin elegir y sin iniciar. Opciones registradas, no decisiones: (a) Fase 4, Airflow (D40, D5) para orquestar la carga del loader y el `pits transform build`; (b) Metabase sobre `marts.fct_fx_rate_daily` (el reader ya lo ve, D86), con su propia decisión de acceso antes de dar el reader a terceros (§7). Cualquiera requiere plan aprobado por Henry (D45). No se ha creado ninguna D nueva para elegir.
 
@@ -443,7 +503,16 @@ Condición de entrada cumplida (D46, `08_market_research.md` Ficha 2). Entregabl
 - CERRADO (hito dbt, 2026-10-11; D86 y D85–D88): los schemas `staging`, `intermediate` y `marts` los crea el bootstrap, y dbt está implementado (§3). Texto original, conservado: Pendiente de dbt: `staging`, `intermediate` y `marts` (hito siguiente; `04` §8.3).
 - CERRADO (Henry, 2026-10-12, literal: "si"): tres ajustes de D85 y D88 confirmados (§3, hito dbt).
 - CERRADO (2026-10-12): pico de memoria de Postgres con carga dbt medido, `CRITERIO: OK` (§3, hito dbt). Sigue sin medir la memoria del proceso dbt en el host; se mide al orquestarlo en Fase 4.
-- Riesgo abierto (revisión 2026-10-12): el lock de `pits transform` no se coordina con `pits load fx-rate` ni `pits db migrate`; una carga durante `dbt build` puede hacer que tests y mart vean estados distintos de `landing`. Aceptable en local; resolver al orquestar en Airflow (Fase 4).
+- Riesgo abierto (revisión 2026-10-12): el lock de `pits transform` no se coordina con `pits load fx-rate` ni `pits db migrate`; una carga durante `dbt build` puede hacer que tests y mart vean estados distintos de `landing`. Aceptable en local; resolver al orquestar en Airflow (Fase 4). CERRADO (2026-10-12, D90; hito Airflow, §3): load y transform ya compartían la clave de advisory lock por accidente; lo que faltaba era `pits db migrate`. Ahora load toma un xact lock, transform un lock de sesión durante dbt y migrate un lock de sesión en el warehouse; lock ocupado = exit 3. El pool de Airflow (1 slot, `max_active_runs=1`) no sustituye al lock.
+- CERRADO (Henry, 2026-10-12, P1): 10:00 America/Bogota (15:00 UTC); la "tasa promedio" es la TRM de `32sa-8pi3` (D92). Cierra el pendiente de horario de Fase 4 ("10:00 AM CST").
+- Riesgo abierto (D89–D95, 2026-10-12): las tareas heredan el entorno del scheduler (metadata, Fernet, JWT). El subproceso de `pits` no lo hereda (allow-list, D92).
+- Riesgo abierto: credenciales S3 admin en Airflow (D67 pendiente; P6: aceptadas solo en local).
+- Riesgo abierto: si el proceso de la tarea muere por SIGKILL u OOM, dbt puede sobrevivir (fuera del grupo del supervisor).
+- Riesgo aceptado (P7, Henry, 2026-10-12): `pits-normalized` crece ~1,8 MB por corrida sin lifecycle (D74).
+- Riesgo abierto: SimpleAuthManager guarda la contraseña del admin en texto plano (solo loopback, 127.0.0.1:8080).
+- Riesgo abierto: la guarda de ±15 min de los tests `-m airflow` solo se evalúa al inicio, y la suite tarda ~23 min.
+- Riesgo abierto: los logs de Airflow (volumen `pits_airflow_logs`) crecen sin limpieza.
+- Riesgo abierto: el separador `:` de `COMPOSE_FILE` en Linux no se probó.
 
 ## 8. Regla para la siguiente conversación
 
