@@ -16,6 +16,7 @@ from botocore.client import BaseClient
 from botocore.exceptions import BotoCoreError
 
 from pits.ingestion.raw_store import RawStore, S3RawStore
+from pits.sources.runt.normalize import normalize_runt
 from pits.sources.trm.normalize import (
     NormalizePermanentError,
     NormalizeTransientError,
@@ -42,16 +43,8 @@ def _fail(message: str, code: int) -> NoReturn:
     raise typer.Exit(code=code)
 
 
-@normalize_app.command()
-def trm(
-    warn_range_days: int = typer.Option(
-        5,
-        "--warn-range-days",
-        min=1,
-        help="Warn on stderr if a source validity range is longer than this many days.",
-    ),
-) -> None:
-    """Replay the committed raw TRM batches into the fx_rate CSV + manifest (idempotent)."""
+def _connect() -> tuple[StorageSettings, RawStore, RawStore]:
+    """Load settings, build both stores and verify the normalized bucket (exit 1/3 on failure)."""
     try:
         settings = load_storage_settings(os.environ)
     except StorageConfigError as exc:
@@ -71,6 +64,20 @@ def trm(
         _fail(str(exc), 1)
     except BotoCoreError as exc:
         _fail(f"storage endpoint error ({type(exc).__name__})", 3)
+    return settings, raw_store, normalized_store
+
+
+@normalize_app.command()
+def trm(
+    warn_range_days: int = typer.Option(
+        5,
+        "--warn-range-days",
+        min=1,
+        help="Warn on stderr if a source validity range is longer than this many days.",
+    ),
+) -> None:
+    """Replay the committed raw TRM batches into the fx_rate CSV + manifest (idempotent)."""
+    settings, raw_store, normalized_store = _connect()
 
     try:
         result = normalize_trm(raw_store, normalized_store, raw_bucket=settings.raw_bucket)
@@ -92,3 +99,23 @@ def trm(
         f"coverage={result.coverage_from.isoformat()}..{result.coverage_to.isoformat()} "
         f"csv=s3://{bucket}/{result.csv_key} manifest=s3://{bucket}/{result.manifest_key}"
     )
+
+
+@normalize_app.command()
+def runt() -> None:
+    """Replay the committed raw RUNT batches into one vehicle_fleet_snapshot per publication."""
+    settings, raw_store, normalized_store = _connect()
+    bucket = settings.normalized_bucket
+    try:
+        # One line per publication, printed as soon as its artifact is committed.
+        for result in normalize_runt(raw_store, normalized_store, raw_bucket=settings.raw_bucket):
+            typer.echo(
+                f"outcome={result.outcome.value} publication={result.publication} "
+                f"fingerprint={result.fingerprint} inputs={result.inputs} "
+                f"batch={result.batch_id} rows={result.rows} parts={result.parts} "
+                f"manifest=s3://{bucket}/{result.manifest_key}"
+            )
+    except NormalizeTransientError as exc:
+        _fail(str(exc), 3)
+    except NormalizePermanentError as exc:
+        _fail(str(exc), 1)

@@ -18,15 +18,11 @@ from botocore.exceptions import BotoCoreError
 
 from pits import __version__
 from pits.ingestion.raw_store import RawStore, S3RawStore
+from pits.sources.extract_common import ExtractPermanentError, ExtractTransientError
 from pits.sources.runt.extract import extract_runt
 from pits.sources.soda.client import SodaClient
 from pits.sources.soda.settings import SodaConfigError, SodaSettings, load_soda_settings
-from pits.sources.trm.extract import (
-    ExtractPermanentError,
-    ExtractTransientError,
-    ExtractUsageError,
-    extract_trm,
-)
+from pits.sources.trm.extract import ExtractUsageError, extract_trm
 from pits.storage.client import build_s3_client
 from pits.storage.settings import StorageConfigError, StorageSettings, load_storage_settings
 

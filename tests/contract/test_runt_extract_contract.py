@@ -17,11 +17,11 @@ from s3_helpers import BucketFactory
 
 from pits.ingestion.manifest import Manifest, find_latest_committed, sha256_hex
 from pits.ingestion.raw_store import PutOutcome, S3RawStore
+from pits.sources.extract_common import ExtractTransientError
 from pits.sources.runt.contract import DATASET_ID, SOURCE_SYSTEM
 from pits.sources.runt.extract import RuntExtractResult, extract_runt
 from pits.sources.soda.client import SodaClient
 from pits.sources.soda.settings import SodaSettings
-from pits.sources.trm.extract import ExtractTransientError
 
 pytestmark = pytest.mark.contract
 

@@ -1,4 +1,4 @@
-"""Shared fake SODA for the TRM extractor tests (not a test module; no test_ prefix)."""
+"""Shared fake SODA for the TRM and RUNT extractor tests (not a test module; no test_ prefix)."""
 
 from __future__ import annotations
 
