@@ -18,6 +18,7 @@ from botocore.exceptions import BotoCoreError
 
 from pits import __version__
 from pits.ingestion.raw_store import RawStore, S3RawStore
+from pits.sources.runt.extract import extract_runt
 from pits.sources.soda.client import SodaClient
 from pits.sources.soda.settings import SodaConfigError, SodaSettings, load_soda_settings
 from pits.sources.trm.extract import (
@@ -122,5 +123,45 @@ def trm(
         f"batch_id={m.batch_id} mode={m.watermark.mode} rows={m.row_count} files={len(m.files)} "
         f"watermark_from={_date_or_none(m.watermark.from_exclusive)} "
         f"watermark_to={_date_or_none(m.watermark.to_observed)} "
+        f"manifest=s3://{storage_settings.raw_bucket}/{result.manifest_key}"
+    )
+
+
+@extract_app.command()
+def runt(
+    force: bool = typer.Option(
+        False, "--force", help="Create a new batch even if rowsUpdatedAt is unchanged."
+    ),
+) -> None:
+    """Extract the RUNT fleet snapshot (always the full dataset) into a new raw batch."""
+    try:
+        soda_settings = load_soda_settings(os.environ)
+        storage_settings = load_storage_settings(os.environ)
+    except (SodaConfigError, StorageConfigError) as exc:
+        _fail(str(exc), 1)
+
+    try:
+        store = store_factory(client_factory(storage_settings), storage_settings.raw_bucket)
+    except BotoCoreError as exc:
+        _fail(f"storage client error ({type(exc).__name__})", 1)
+    try:
+        with soda_factory(soda_settings) as soda:
+            result = extract_runt(
+                soda,
+                store,
+                force=force,
+                now=clock,
+                new_batch_id=batch_id_factory,
+                extractor_version=__version__,
+            )
+    except ExtractTransientError as exc:
+        _fail(str(exc), 3)
+    except ExtractPermanentError as exc:
+        _fail(str(exc), 1)
+
+    m = result.manifest
+    typer.echo(
+        f"outcome={result.outcome} batch_id={m.batch_id} publication={result.publication} "
+        f"rows={m.row_count} files={len(m.files)} "
         f"manifest=s3://{storage_settings.raw_bucket}/{result.manifest_key}"
     )

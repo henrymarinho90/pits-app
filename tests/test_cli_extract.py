@@ -294,3 +294,162 @@ def test_secrets_not_leaked_with_real_s3_client_and_invalid_region(
     assert result.exit_code == 1
     for secret in (S3_SECRET, TOKEN):
         assert secret not in result.stdout and secret not in result.stderr
+
+
+# --- pits extract runt -------------------------------------------------------------------------
+
+RUNT_COLUMNS = [
+    {"fieldName": name, "dataTypeName": kind}
+    for name, kind in (
+        ("nombre_departamento", "text"),
+        ("nombre_municipio", "text"),
+        ("nombre_servicio", "text"),
+        ("estado_del_vehiculo", "text"),
+        ("nombre_de_la_clase", "text"),
+        ("fecha_de_registro", "number"),
+        ("cantidad", "number"),
+        ("mes_de_publicacion", "text"),
+        ("a_o_de_publicacion", "number"),
+    )
+]
+RUNT_PREFIX = "mintransporte_runt_parque/extraction_date=2026-10-10"
+
+
+def runt_row(i: int) -> dict[str, str]:
+    return {
+        "nombre_departamento": "ANTIOQUIA",
+        "nombre_municipio": f"MUNI{i}",
+        "nombre_servicio": "PARTICULAR",
+        "estado_del_vehiculo": "ACTIVO",
+        "nombre_de_la_clase": "CAMPERO",
+        "fecha_de_registro": "1999",
+        "cantidad": "2",
+        "mes_de_publicacion": "OCTUBRE",
+        "a_o_de_publicacion": "2026",
+    }
+
+
+class RuntEnv(Env):
+    def __init__(self) -> None:
+        super().__init__()
+        self.runt_rows = [runt_row(i) for i in range(4)]
+        self.updated_at = 7
+        self.columns = RUNT_COLUMNS
+
+    def handler(self, request: httpx.Request) -> httpx.Response:
+        self.tokens_seen.append(request.headers.get("X-App-Token"))
+        if request.url.path.startswith("/api/views/"):
+            return httpx.Response(
+                200, json={"rowsUpdatedAt": self.updated_at, "columns": self.columns}
+            )
+        if self.status:
+            return httpx.Response(self.status)
+        params = request.url.params
+        if "$group" in params:
+            group = {
+                "a_o_de_publicacion": "2026",
+                "mes_de_publicacion": "OCTUBRE",
+                "count": str(len(self.runt_rows)),
+            }
+            return httpx.Response(200, json=[group])
+        offset, limit = int(params["$offset"]), int(params["$limit"])
+        return httpx.Response(
+            200, content=json.dumps(self.runt_rows[offset : offset + limit]).encode()
+        )
+
+
+@pytest.fixture
+def runt_world(monkeypatch: pytest.MonkeyPatch) -> RuntEnv:
+    env = RuntEnv()
+    for name, value in ENV.items():
+        monkeypatch.setenv(name, value)
+    monkeypatch.setenv("SODA_APP_TOKEN", TOKEN)
+    monkeypatch.delenv("SODA_BASE_URL", raising=False)
+    monkeypatch.delenv("S3_NORMALIZED_BUCKET", raising=False)
+    monkeypatch.setattr(extract_cli, "client_factory", lambda settings: object())
+    monkeypatch.setattr(extract_cli, "store_factory", lambda client, bucket: env.store)
+    monkeypatch.setattr(
+        extract_cli,
+        "soda_factory",
+        lambda settings: SodaClient(
+            SodaSettings(base_url="https://example.test", app_token=settings.app_token),
+            transport=httpx.MockTransport(env.handler),
+            sleep=lambda s: None,
+            jitter=lambda: 0.0,
+        ),
+    )
+    monkeypatch.setattr(extract_cli, "clock", lambda: datetime(2026, 10, 10, 12, tzinfo=UTC))
+    monkeypatch.setattr(extract_cli, "batch_id_factory", lambda: env.batch_ids.pop(0))
+    return env
+
+
+def runt_manifest(batch_id: str) -> str:
+    return f"{RUNT_PREFIX}/batch_id={batch_id}/manifest.json"
+
+
+def test_runt_commits_with_exact_output(runt_world: RuntEnv) -> None:
+    result = runner.invoke(app, ["extract", "runt"])
+    assert result.exit_code == 0, result.stderr
+    assert result.stdout == (
+        f"outcome=committed batch_id={BATCH_1} publication=2026-10 rows=4 files=1 "
+        f"manifest=s3://pits-raw/{runt_manifest(BATCH_1)}\n"
+    )
+    assert result.stderr == ""
+    manifest = Manifest.from_json(runt_world.store.get(runt_manifest(BATCH_1)))
+    assert manifest.app_token_used is True and manifest.source_rows_updated_at == 7
+
+
+def test_runt_second_run_is_unchanged_and_force_creates_batch(runt_world: RuntEnv) -> None:
+    assert runner.invoke(app, ["extract", "runt"]).exit_code == 0
+    before = set(runt_world.store.objects)
+    second = runner.invoke(app, ["extract", "runt"])
+    assert second.exit_code == 0, second.stderr
+    assert second.stdout == (
+        f"outcome=unchanged batch_id={BATCH_1} publication=2026-10 rows=4 files=1 "
+        f"manifest=s3://pits-raw/{runt_manifest(BATCH_1)}\n"
+    )
+    assert set(runt_world.store.objects) == before
+    forced = runner.invoke(app, ["extract", "runt", "--force"])
+    assert forced.exit_code == 0, forced.stderr
+    assert forced.stdout.startswith(f"outcome=committed batch_id={BATCH_2} ")
+
+
+def test_runt_schema_drift_exit_1(runt_world: RuntEnv) -> None:
+    runt_world.columns = RUNT_COLUMNS[:-1]
+    result = runner.invoke(app, ["extract", "runt"])
+    assert result.exit_code == 1
+    assert result.stdout == "" and result.stderr.startswith("error: ")
+    assert runt_world.store.objects == {}
+    assert TOKEN not in result.stdout + result.stderr
+
+
+def test_runt_truncation_exit_3(runt_world: RuntEnv, monkeypatch: pytest.MonkeyPatch) -> None:
+    original = runt_world.handler
+
+    def short(request: httpx.Request) -> httpx.Response:
+        response = original(request)
+        if "$group" in request.url.params:
+            return httpx.Response(200, json=[{**response.json()[0], "count": "9"}])
+        return response
+
+    monkeypatch.setattr(runt_world, "handler", short)
+    result = runner.invoke(app, ["extract", "runt"])
+    assert result.exit_code == 3
+    assert result.stderr.startswith("error: ") and "Truncated" in result.stderr
+    assert TOKEN not in result.stdout + result.stderr
+
+
+def test_runt_http_503_exit_3(runt_world: RuntEnv) -> None:
+    runt_world.status = 503
+    result = runner.invoke(app, ["extract", "runt"])
+    assert result.exit_code == 3 and result.stdout == ""
+    assert TOKEN not in result.stdout + result.stderr
+
+
+def test_runt_invalid_storage_config_exit_1(
+    runt_world: RuntEnv, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.delenv("S3_RAW_BUCKET", raising=False)
+    monkeypatch.setenv("S3_NORMALIZED_BUCKET", "pits-raw")
+    result = runner.invoke(app, ["extract", "runt"])
+    assert result.exit_code == 1 and result.stdout == ""
