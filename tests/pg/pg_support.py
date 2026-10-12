@@ -31,8 +31,10 @@ from pits.warehouse.settings import Profile, RoleNames, WarehouseSettings, load_
 REAL_DB = "pits_warehouse"
 _PG_TEST_HOSTS = frozenset({"127.0.0.1", "localhost", "::1"})
 # Only names that match these EXACTLY (uuid8 suffix) may ever be swept; real names never match.
-_ORPHAN_DB_RE = re.compile(r"pits_test_[0-9a-f]{8}")
-_ORPHAN_ROLE_RE = re.compile(r"pits_(?:owner|loader|reader|transformer)_t[0-9a-f]{8}")
+_ORPHAN_DB_RE = re.compile(r"pits_test_[0-9a-f]{8}|airflow_meta_t[0-9a-f]{8}")
+_ORPHAN_ROLE_RE = re.compile(
+    r"pits_(?:owner|loader|reader|transformer)_t[0-9a-f]{8}|airflow_meta_t[0-9a-f]{8}"
+)
 
 
 def _admin_base() -> WarehouseSettings:

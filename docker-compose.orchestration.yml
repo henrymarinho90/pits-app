@@ -1,0 +1,182 @@
+# Airflow (D89, D95): perfil "orchestration", en un archivo aparte para que docker-compose.yml
+# (perfil core) no exija ninguna variable AIRFLOW_* (compose interpola todo el archivo, tambien los
+# servicios de perfiles inactivos). Se usa SIEMPRE junto con docker-compose.yml (postgres vive alli):
+#
+#   docker compose -f docker-compose.yml -f docker-compose.orchestration.yml \
+#       --profile core --profile orchestration up -d
+#
+# o con COMPOSE_FILE en .env / el entorno. El separador es COMPOSE_PATH_SEPARATOR: por defecto ";" en
+# Windows y ":" en Linux/macOS (Coolify/VPS):
+#   Windows:     COMPOSE_FILE=docker-compose.yml;docker-compose.orchestration.yml
+#   Linux/macOS: COMPOSE_FILE=docker-compose.yml:docker-compose.orchestration.yml
+# y COMPOSE_PROFILES=core,orchestration. Con COMPOSE_FILE definido, basta `docker compose up -d`.
+# Antes del primer up: .env con las variables AIRFLOW_* (ver .env.example) y
+# `uv run pits db init-airflow-meta`.
+
+name: pits
+
+services:
+  # ---------------------------------------------------------------------------------------------
+  # Airflow 3.3.2 (D89, D93). LocalExecutor, SimpleAuthManager, sin triggerer. Imagen pits-airflow:dev
+  # (docker/airflow/Dockerfile). La metadata DB es la base `airflow_meta` de este mismo Postgres:
+  # el admin la crea una vez con `uv run pits db init-airflow-meta` ANTES de levantar el perfil.
+  # Los contenedores NUNCA reciben POSTGRES_PASSWORD (admin) ni PITS_PG_READER_PASSWORD.
+  # La metadata se conecta con SQL_ALCHEMY_CONN_CMD: la URL se arma dentro del contenedor y la
+  # contrasena se codifica (quote), asi que cualquier caracter es valido (interpolarla en una URL
+  # compose la romperia con @ : / # ? %).
+  # Airflow no recorta la salida del comando: se usa sys.stdout.write, nunca print (un salto de linea
+  # final acabaria en el nombre de la base). Verificado con repr() en el contenedor.
+  # ---------------------------------------------------------------------------------------------
+  airflow-init:
+    &airflow-base
+    image: pits-airflow:dev
+    build:
+      context: .
+      dockerfile: docker/airflow/Dockerfile
+    container_name: pits-airflow-init
+    profiles: ["orchestration"]
+    command: ["airflow", "db", "migrate"]
+    environment: &airflow-meta-env
+      AIRFLOW__CORE__EXECUTOR: LocalExecutor
+      AIRFLOW__CORE__AUTH_MANAGER: airflow.api_fastapi.auth.managers.simple.simple_auth_manager.SimpleAuthManager
+      AIRFLOW__CORE__DAGS_FOLDER: /opt/airflow/dags
+      AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: "True"
+      AIRFLOW__CORE__LOAD_EXAMPLES: "False"
+      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN_CMD: >-
+        python -c "import os, sys, urllib.parse as u; sys.stdout.write('postgresql+psycopg2://airflow_meta:' +
+        u.quote(os.environ['AIRFLOW_METADB_PASSWORD'], safe='') + '@postgres:5432/airflow_meta')"
+      AIRFLOW_METADB_PASSWORD: ${AIRFLOW_METADB_PASSWORD:?set AIRFLOW_METADB_PASSWORD in .env}
+      # Pool acotado (D93). Airflow 3 crea un motor sync y otro async, cada uno con su propio pool
+      # (2 + 3 conexiones cada uno): hasta ~10 por proceso, ~30 entre apiserver, scheduler y
+      # dag-processor (el init es de vida corta).
+      AIRFLOW__DATABASE__SQL_ALCHEMY_POOL_SIZE: "2"
+      AIRFLOW__DATABASE__SQL_ALCHEMY_MAX_OVERFLOW: "3"
+    mem_limit: 1g
+    memswap_limit: 1g
+    restart: "no"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  airflow-apiserver:
+    <<: *airflow-base
+    container_name: pits-airflow-apiserver
+    # SimpleAuthManager lee las contrasenas de un JSON en texto plano: se escribe al arrancar (umask
+    # 077, dentro del contenedor, no en un volumen) desde AIRFLOW_ADMIN_PASSWORD, para no depender de
+    # la contrasena aleatoria que Airflow imprime en el log.
+    command:
+      - bash
+      - -c
+      - |
+        set -euo pipefail
+        umask 077
+        python -c 'import json, os; print(json.dumps({"admin": os.environ["AIRFLOW_ADMIN_PASSWORD"]}))' > "$${AIRFLOW__CORE__SIMPLE_AUTH_MANAGER_PASSWORDS_FILE}"
+        exec airflow api-server
+    environment:
+      <<: *airflow-meta-env
+      AIRFLOW__API__WORKERS: "1"
+      AIRFLOW__CORE__SIMPLE_AUTH_MANAGER_USERS: admin:admin
+      AIRFLOW__CORE__SIMPLE_AUTH_MANAGER_PASSWORDS_FILE: /opt/airflow/simple_auth_manager_passwords.json
+      AIRFLOW_ADMIN_PASSWORD: ${AIRFLOW_ADMIN_PASSWORD:?set AIRFLOW_ADMIN_PASSWORD in .env}
+      AIRFLOW__CORE__FERNET_KEY: ${AIRFLOW_FERNET_KEY:?set AIRFLOW_FERNET_KEY in .env}
+      AIRFLOW__API__SECRET_KEY: ${AIRFLOW_API_SECRET_KEY:?set AIRFLOW_API_SECRET_KEY in .env}
+      AIRFLOW__API_AUTH__JWT_SECRET: ${AIRFLOW_API_JWT_SECRET:?set AIRFLOW_API_JWT_SECRET in .env}
+    mem_limit: 1g
+    memswap_limit: 1g
+    restart: unless-stopped
+    ports:
+      # Solo loopback: la UI/API no sale del host (acceso remoto por tunel SSH).
+      - "127.0.0.1:${AIRFLOW_HOST_PORT:-8080}:8080"
+    volumes:
+      - airflow_logs:/opt/airflow/logs
+    healthcheck:
+      # Endpoint de la doc de 3.3.2 (docker-compose.yaml oficial y check-health).
+      test: ["CMD", "curl", "--fail", "http://localhost:8080/api/v2/monitor/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+    depends_on:
+      postgres:
+        condition: service_healthy
+      airflow-init:
+        condition: service_completed_successfully
+
+  airflow-scheduler:
+    <<: *airflow-base
+    container_name: pits-airflow-scheduler
+    command: ["airflow", "scheduler"]
+    # Las tareas (LocalExecutor) y dbt corren dentro de este cgroup; por eso es el servicio con
+    # credenciales pits. Con parallelism 2 caben dos tareas a la vez en los 2g.
+    environment:
+      <<: *airflow-meta-env
+      AIRFLOW__CORE__PARALLELISM: "2"
+      AIRFLOW__CORE__FERNET_KEY: ${AIRFLOW_FERNET_KEY:?set AIRFLOW_FERNET_KEY in .env}
+      AIRFLOW__API__SECRET_KEY: ${AIRFLOW_API_SECRET_KEY:?set AIRFLOW_API_SECRET_KEY in .env}
+      AIRFLOW__API_AUTH__JWT_SECRET: ${AIRFLOW_API_JWT_SECRET:?set AIRFLOW_API_JWT_SECRET in .env}
+      AIRFLOW__CORE__EXECUTION_API_SERVER_URL: http://airflow-apiserver:8080/execution/
+      AIRFLOW__SCHEDULER__ENABLE_HEALTH_CHECK: "true"
+      # Las tareas alcanzan los servicios por la red interna de compose (D91).
+      PITS_PG_HOST: postgres
+      POSTGRES_HOST_PORT: "5432"
+      PITS_WAREHOUSE_DB: ${PITS_WAREHOUSE_DB:-pits_warehouse}
+      PITS_PG_LOADER_PASSWORD: ${PITS_PG_LOADER_PASSWORD:?set PITS_PG_LOADER_PASSWORD in .env}
+      PITS_PG_TRANSFORMER_PASSWORD: ${PITS_PG_TRANSFORMER_PASSWORD:?set PITS_PG_TRANSFORMER_PASSWORD in .env}
+      S3_ENDPOINT_URL: http://seaweedfs:8333
+      S3_ACCESS_KEY_ID: ${S3_ACCESS_KEY_ID:?set S3_ACCESS_KEY_ID in .env}
+      S3_SECRET_ACCESS_KEY: ${S3_SECRET_ACCESS_KEY:?set S3_SECRET_ACCESS_KEY in .env}
+      S3_REGION: ${S3_REGION:-us-east-1}
+      S3_RAW_BUCKET: ${S3_RAW_BUCKET:?set S3_RAW_BUCKET in .env}
+      S3_NORMALIZED_BUCKET: ${S3_NORMALIZED_BUCKET:-pits-normalized}
+      SODA_APP_TOKEN: ${SODA_APP_TOKEN:-}
+      SODA_BASE_URL: ${SODA_BASE_URL:-}
+    mem_limit: 2g
+    memswap_limit: 2g
+    restart: unless-stopped
+    volumes:
+      - airflow_logs:/opt/airflow/logs
+    healthcheck:
+      # Servidor de salud del scheduler (puerto 8974 por defecto, check-health de 3.3.2): evita
+      # lanzar un proceso `airflow` completo cada 30 s dentro de los 2g de las tareas.
+      test: ["CMD", "curl", "--fail", "http://localhost:8974/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+    depends_on:
+      postgres:
+        condition: service_healthy
+      airflow-init:
+        condition: service_completed_successfully
+
+  airflow-dag-processor:
+    <<: *airflow-base
+    container_name: pits-airflow-dag-processor
+    command: ["airflow", "dag-processor"]
+    environment:
+      <<: *airflow-meta-env
+      AIRFLOW__CORE__FERNET_KEY: ${AIRFLOW_FERNET_KEY:?set AIRFLOW_FERNET_KEY in .env}
+      AIRFLOW__API_AUTH__JWT_SECRET: ${AIRFLOW_API_JWT_SECRET:?set AIRFLOW_API_JWT_SECRET in .env}
+      AIRFLOW__CORE__EXECUTION_API_SERVER_URL: http://airflow-apiserver:8080/execution/
+    mem_limit: 768m
+    memswap_limit: 768m
+    restart: unless-stopped
+    volumes:
+      - airflow_logs:/opt/airflow/logs
+    healthcheck:
+      # El dag-processor no expone HTTP: `jobs check` (docker-compose.yaml oficial de 3.3.2), a 60 s
+      # porque cada ejecucion importa airflow (~120 MiB).
+      test: ["CMD-SHELL", 'airflow jobs check --job-type DagProcessorJob --hostname "$${HOSTNAME}"']
+      interval: 60s
+      timeout: 30s
+      retries: 5
+      start_period: 60s
+    depends_on:
+      postgres:
+        condition: service_healthy
+      airflow-init:
+        condition: service_completed_successfully
+
+volumes:
+  airflow_logs:
+    name: pits_airflow_logs

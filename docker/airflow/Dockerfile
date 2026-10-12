@@ -4,9 +4,9 @@
 # Base slim 3.3.2 / Python 3.12; digest = indice multi-arch (docker buildx imagetools inspect, 2026-10-12).
 FROM apache/airflow:slim-3.3.2-python3.12@sha256:a54e7bd6c4d7a17e55cd14b0ead257877b8f8111680d2692cbdba2ff32bd3ff3
 
-# Driver de la metadata DB (P3): la slim no trae psycopg2 ni el provider postgres. Solo
-# psycopg2-binary, fijado con hashes (--require-hashes, sin red a constraints remotos), en el
-# entorno de Airflow (~/.local) y NO en /opt/pits/.venv, para no mezclar dependencias con dbt.
+# Drivers de la metadata DB (P3): la slim no trae psycopg2 ni el provider postgres, y Airflow 3.3
+# tambien necesita asyncpg (motor async). Solo psycopg2-binary y asyncpg, fijados con hashes
+# (--require-hashes, sin red a constraints remotos), en el entorno de Airflow (~/.local) y NO en /opt/pits/.venv, para no mezclar dependencias con dbt.
 RUN --mount=type=bind,source=docker/airflow/requirements-airflow.txt,target=/tmp/requirements-airflow.txt \
     pip install --no-cache-dir --require-hashes -r /tmp/requirements-airflow.txt
 
