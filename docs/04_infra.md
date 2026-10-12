@@ -1,7 +1,7 @@
 # 04 — Infraestructura y operación
 
 Última actualización: 2026-10-12
-Estado: v9 — dbt sobre `landing.fx_rate` (D85–D88, hito dbt, 2026-10-11): rol `pits_transformer`, matriz de privilegios, schemas `staging`, `intermediate` y `marts`, `profiles.yml`, `sslmode`, dependencias y tamaño de `.venv` en §8.3 y §8.4; §9 y §11 actualizados. Antes: v8 — PostgreSQL del warehouse implementado en §8.3 (base `pits_warehouse`, schemas `landing` y `ops`, roles de mínimo privilegio, conexión solo loopback; D79–D82); medición de memoria de Postgres y cambios de `scripts/measure_storage_memory.sh` en §9; notas de roles, `sslmode` y log en §11 y §13 (2026-10-11). Antes: v7 — zona normalized `pits-normalized` en §8.2 (D74, D75, D76); sin cambios en `docker-compose.yml`. Antes: v6 — nota de separación OLTP/warehouse en §7 y §8.3 (D70); sin cambios en `docker-compose.yml`. Antes: v5 — perfil `core` implementado en `docker-compose.yml` (D60–D63); §8.1 con el contrato del batch raw de la ingesta (D65, paso 3 de Fase 1).
+Estado: v10 — orquestación con Airflow (D89–D95, hito Fase 4, 2026-10-12): medición de Airflow en §9, perfil `orchestration` y los dos archivos de compose en §10.1 (D95), secretos y riesgos en §11 y §13; nota de que dbt corre dentro del cgroup del scheduler. Versión anterior: v9 — dbt sobre `landing.fx_rate` (D85–D88, hito dbt, 2026-10-11): rol `pits_transformer`, matriz de privilegios, schemas `staging`, `intermediate` y `marts`, `profiles.yml`, `sslmode`, dependencias y tamaño de `.venv` en §8.3 y §8.4; §9 y §11 actualizados. Antes: v8 — PostgreSQL del warehouse implementado en §8.3 (base `pits_warehouse`, schemas `landing` y `ops`, roles de mínimo privilegio, conexión solo loopback; D79–D82); medición de memoria de Postgres y cambios de `scripts/measure_storage_memory.sh` en §9; notas de roles, `sslmode` y log en §11 y §13 (2026-10-11). Antes: v7 — zona normalized `pits-normalized` en §8.2 (D74, D75, D76); sin cambios en `docker-compose.yml`. Antes: v6 — nota de separación OLTP/warehouse en §7 y §8.3 (D70); sin cambios en `docker-compose.yml`. Antes: v5 — perfil `core` implementado en `docker-compose.yml` (D60–D63); §8.1 con el contrato del batch raw de la ingesta (D65, paso 3 de Fase 1).
 
 ## 1. Objetivo
 
@@ -252,7 +252,7 @@ Los rangos siguientes son **presupuesto de planificación**, no garantías de co
 
 | Componente | Rango inicial de planificación | Acción |
 |---|---:|---|
-| Airflow + metadata DB | 2.5–4 GB | Medir por proceso y ajustar |
+| Airflow + metadata DB (D89, D93) | Medido el 2026-10-12; reemplaza el estimado previo de 2,5–4 GB: scheduler 581,9 MiB (límite 2 GiB), apiserver 242,5 MiB (límite 1 GiB), dag-processor 254,6 MiB (límite 768 MiB). La metadata vive en `pits-postgres` (66,1 MiB, instancia compartida; ver medición abajo). Fuente: `06_status.md` §3 | Criterio análogo a D63 (max(`memory.peak`) < 85 % del límite): CRITERIO OK. Pendiente: medir una corrida con extract full (no medida) |
 | PostgreSQL warehouse | 0.5–1.5 GB | Ajustar conexiones/cache al VPS |
 | SeaweedFS 768m (D57; `GOMEMLIMIT` 500MiB, D63) | 0.75 GiB ≈ 0.8 GB (`mem_limit` 768 MiB; pico medido 513–538 MiB con GOMEMLIMIT 500MiB; con 600MiB, 620–661 MiB) | Criterio: max(`memory.peak`) < 85 % del límite; vigilar memoria y disco |
 | PostgreSQL local perfil `core` (D60) | 1 GiB (`mem_limit` = `memswap_limit` 1g; lectura puntual de `memory.current` = 130818048 B (~125 MiB) tras el primer up, 2026-10-10; sin log guardado) | Locale `C.UTF-8` builtin; puerto host 5433 por defecto |
@@ -267,6 +267,14 @@ Medición del pico de memoria de Postgres (hito loader fx_rate, 2026-10-11; `scr
 - Tamaño de datos no medido en esta corrida: se ejecutó sin `DATA_DIR` y el default `/data` no existe en Postgres (el log muestra `du: cannot access '/data'`). Para medirlo, `DATA_DIR=/var/lib/postgresql/data`; el script ya lo soporta (commit 9f523f8, según el coordinador).
 - Script `scripts/measure_storage_memory.sh` (código actual): `EXPECTED_GOMEMLIMIT` usa `${EXPECTED_GOMEMLIMIT-500MiB}`, así que vacío omite la validación de GOMEMLIMIT; `DATA_DIR` usa `${DATA_DIR-/data}`, así que vacío omite el tamaño de datos. Los defaults no cambian para SeaweedFS.
 
+Medición de Airflow (hito Fase 4, 2026-10-12; 3 corridas por contenedor, reportada por el orquestador; log no versionado, citado en `06_status.md` §3). Carga: `trm_daily` con extract incremental. Resultado: rc=0 en todas, sin OOM ni reinicios, `CRITERIO OK`.
+
+- `memory.peak` del scheduler: 603742208, 610160640 y 569274368 B (máximo 581,9 MiB, 28 % de 2 GiB).
+- `memory.peak` del apiserver: 254160896, 253865984 y 254291968 B (242,5 MiB, 24 % de 1 GiB).
+- `memory.peak` del dag-processor: 266727424, 266993664 y 266350592 B (254,6 MiB, 33 % de 768 MiB).
+- `memory.peak` de `pits-postgres`: 69353472, 61849600 y 59973632 B (66,1 MiB, 6,5 % de 1 GiB).
+- dbt corre dentro del cgroup del scheduler (subproceso de la tarea), así que su consumo entra en el pico de ese contenedor. No se midió el proceso dbt por separado ni una corrida con extract full.
+
 No desplegar Redpanda mientras el stack base no tenga margen medido suficiente.
 
 ## 10. Estrategia de despliegue
@@ -276,7 +284,7 @@ No desplegar Redpanda mientras el stack base no tenga margen medido suficiente.
 Docker Compose con perfiles cuando ayude:
 
 - `core`: Postgres + SeaweedFS (D57), definido en `docker-compose.yml` (D60–D63). SeaweedFS publica `127.0.0.1:8333`; Postgres publica `127.0.0.1:5433` por defecto (`POSTGRES_HOST_PORT`; 5432 suele estar ocupado en Windows). Bucket `pits-raw` creado con `pits storage init` (D61). `docker-compose.spike.yml` también usa 8333: no levantarlo a la vez que `core`;
-- `orchestration`: Airflow;
+- `orchestration`: Airflow 3.3.2 con LocalExecutor (D89, D95), en `docker-compose.orchestration.yml`: `airflow-init` (`db migrate` y `pools set`), `apiserver` (solo `127.0.0.1:8080`), `scheduler` (parallelism 2, con dbt dentro de su cgroup) y `dag-processor`; sin triggerer. `docker-compose.yml` conserva solo el perfil `core`, sin variables nuevas obligatorias (D95). Uso: `docker compose -f docker-compose.yml -f docker-compose.orchestration.yml --profile core --profile orchestration ...`; con `COMPOSE_FILE`, el separador es `;` en Windows y `:` en Linux (el de Linux no se probó). Metadata DB en la misma instancia Postgres, base y rol `airflow_meta` (D93). Imagen `pits-airflow` (D89; `pits-airflow:dev` de 1380040724 B, 1,38 GB; `docker image inspect`, build del 2026-10-12 a las 20:06:39 UTC);
 - `bi`: Metabase opcional local;
 - `streaming`: Redpanda solo fase futura.
 
@@ -307,6 +315,8 @@ Mínimos:
 
 Implementado en Fase 3 (D79): el loader usa `pits_loader` y las consultas usan `pits_reader`; el administrador solo se usa en `pits db migrate`. Ambos roles se crean sin superusuario, sin CREATEDB, sin CREATEROLE, sin herencia y sin BYPASSRLS. Postgres sigue publicado solo en `127.0.0.1` (D60). Las credenciales de ingesta del raw siguen con permisos admin hasta aplicar D67. dbt usa `pits_transformer` (D86): lee `landing` y escribe solo en sus schemas. CI no tiene credenciales de warehouse: ejecuta `pits transform parse`, que no conecta.
 
+Airflow (D89, D93, D95): el scheduler y el apiserver reciben sus secretos (`AIRFLOW_FERNET_KEY`, `AIRFLOW_API_JWT_SECRET`, `AIRFLOW_API_SECRET_KEY` y `AIRFLOW_METADB_PASSWORD` para la metadata); el dag-processor recibe `AIRFLOW_FERNET_KEY`, `AIRFLOW_API_JWT_SECRET` y `AIRFLOW_METADB_PASSWORD`; la contraseña del admin de la UI sale de `AIRFLOW_ADMIN_PASSWORD`, que se escribe en el archivo de contraseñas con umask 077 antes del exec. Ningún contenedor recibe `POSTGRES_PASSWORD` ni la contraseña del reader; solo el scheduler recibe las credenciales de pits. La metadata usa el rol `airflow_meta` (D93), sin CONNECT a `pits_warehouse`. La UI publica solo `127.0.0.1:8080` y usa SimpleAuthManager (contraseña en texto plano en su archivo; solo loopback). Riesgos abiertos: el proceso de la tarea hereda el entorno del scheduler (metadata, Fernet, JWT); el subproceso de `pits` no lo hereda (allow-list, D92). Credenciales S3 admin en Airflow hasta D67 (P6, aceptadas solo en local).
+
 ## 12. Persistencia y backups
 
 Datos que requieren volumen persistente:
@@ -328,6 +338,8 @@ Un backup que nunca se ha restaurado no se considera validado.
 ## 13. Logs y observabilidad mínima
 
 Notas del loader fx_rate (D82, 2026-10-11): `pits load fx-rate` y `pits db migrate` imprimen una línea de resultado (`outcome=…` o `database=… applied=… skipped=…`) y los errores con `str(exc)`; nunca imprimen conninfo ni contraseñas. Las excepciones no tipadas salen con traceback y exit 1. El traceback no muestra variables locales, pero no se verificó que el encadenamiento de excepciones (`__context__`) de una excepción no tipada nunca contenga el pgconn con la contraseña. Revisar antes de compartir un log de esas corridas. El riesgo del verificador SCRAM en el log del servidor está en §8.3.
+
+Notas de Airflow (D89 y D92, 2026-10-12): los logs de Airflow viven en el volumen `pits_airflow_logs` y crecen sin limpieza. Los secretos se enmascaran con `mask_secret` de `airflow.sdk.log`. Escaneo de secretos de los logs de la corrida medida: 0 apariciones de las variables (`SODA_APP_TOKEN` vacío). El escaneo se hizo desde el scheduler y no incluye `AIRFLOW_ADMIN_PASSWORD` (solo lo tiene el apiserver). Healthchecks: apiserver `/api/v2/monitor/health`; scheduler con HTTP en el puerto 8974; dag-processor con `airflow jobs check`. Exit codes del DAG: 0 éxito; 3 reintenta (retries=3, retry_delay 5 min, máximo 30 min); cualquier otro, incluidos -9 y las señales, falla sin reintento (D92).
 
 Cada pipeline debe registrar al menos:
 
