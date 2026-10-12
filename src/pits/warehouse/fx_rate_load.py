@@ -56,9 +56,10 @@ from pits.warehouse.errors import (
     WarehouseTransientError,
     to_warehouse_error,
 )
+from pits.warehouse.locks import LOAD_LOCK_KEY as LOAD_LOCK_KEY
+from pits.warehouse.locks import WAREHOUSE_LOCK_KEY
 from pits.warehouse.settings import Profile, WarehouseSettings
 
-LOAD_LOCK_KEY = 0x5049545303  # transaction advisory lock inside the warehouse database
 LOCK_TIMEOUT = "10s"
 STATEMENT_TIMEOUT = "5min"
 COPY_CHUNK_BYTES = 64 * 1024
@@ -390,7 +391,7 @@ class _PsycopgSession:
     def try_lock(self) -> bool:
         self._conn.execute(f"SET LOCAL lock_timeout = '{LOCK_TIMEOUT}'")
         self._conn.execute(f"SET LOCAL statement_timeout = '{STATEMENT_TIMEOUT}'")
-        row = self._conn.execute("SELECT pg_try_advisory_xact_lock(%s)", (LOAD_LOCK_KEY,))
+        row = self._conn.execute("SELECT pg_try_advisory_xact_lock(%s)", (WAREHOUSE_LOCK_KEY,))
         locked = row.fetchone()
         return bool(locked and locked[0])
 

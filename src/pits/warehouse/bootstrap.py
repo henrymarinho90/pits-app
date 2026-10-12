@@ -25,10 +25,11 @@ from pits.warehouse.errors import (
     WarehouseTransientError,
     to_warehouse_error,
 )
+from pits.warehouse.locks import RUN_LOCK_KEY as RUN_LOCK_KEY
+from pits.warehouse.locks import WAREHOUSE_LOCK_KEY
 from pits.warehouse.settings import Profile, WarehouseSettings
 
 MAINTENANCE_DB = "postgres"
-RUN_LOCK_KEY = 0x5049545301  # run-wide advisory lock key, held in the maintenance database
 LOCK_TIMEOUT = "10s"
 STATEMENT_TIMEOUT = "10min"
 SCHEMAS = ("ops", "landing")
@@ -193,25 +194,69 @@ def run_lock(settings: WarehouseSettings) -> Iterator[psycopg.Connection]:
         maintenance.close()
 
 
-def bootstrap_locked(maintenance: psycopg.Connection, settings: WarehouseSettings) -> None:
-    """Bootstrap steps; the caller must already hold `run_lock` on `maintenance`."""
+@contextmanager
+def warehouse_lock(settings: WarehouseSettings) -> Iterator[None]:
+    """Hold the warehouse write lock (D90) on a separate admin connection to the warehouse DB.
+
+    Session lock with `WAREHOUSE_LOCK_KEY`, the same key the load and the transform take, so
+    a migration never overlaps them. The database must already exist. Busy lock ->
+    WarehouseTransientError before anything is written.
+    """
+    conn = connect(settings, Profile.ADMIN, autocommit=True, application_name="pits-migrate-lock")
+    try:
+        try:
+            locked = conn.execute("SELECT pg_try_advisory_lock(%s)", (WAREHOUSE_LOCK_KEY,))
+            row = locked.fetchone()
+        except psycopg.Error as exc:
+            raise to_warehouse_error(exc, "warehouse lock") from None
+        if not row or not row[0]:
+            raise WarehouseTransientError("Another warehouse writer holds the lock")
+        try:
+            yield
+        finally:
+            try:
+                conn.execute("SELECT pg_advisory_unlock(%s)", (WAREHOUSE_LOCK_KEY,))
+            except psycopg.Error:
+                # Never mask the original error; closing the session releases the lock anyway.
+                pass
+    finally:
+        conn.close()
+
+
+@contextmanager
+def bootstrap_locked(
+    maintenance: psycopg.Connection, settings: WarehouseSettings
+) -> Iterator[None]:
+    """Bootstrap steps; the caller must already hold `run_lock` on `maintenance`.
+
+    Creates roles and the database, then takes `warehouse_lock` and writes the objects. The
+    warehouse lock stays held while the caller's `with` body runs (e.g. the migrations) and is
+    released on exit.
+    """
     try:
         _bootstrap_roles(maintenance, settings)
         _bootstrap_database(maintenance, settings)
-        target = connect(settings, Profile.ADMIN, autocommit=False)
-        try:
-            _set_timeouts(target)
-            _bootstrap_objects(target, settings)
-            target.commit()
-        finally:
-            target.close()
     except WarehouseError:
         raise
     except psycopg.Error as exc:
         raise to_warehouse_error(exc, "bootstrap") from None
+    with warehouse_lock(settings):
+        try:
+            target = connect(settings, Profile.ADMIN, autocommit=False)
+            try:
+                _set_timeouts(target)
+                _bootstrap_objects(target, settings)
+                target.commit()
+            finally:
+                target.close()
+        except WarehouseError:
+            raise
+        except psycopg.Error as exc:
+            raise to_warehouse_error(exc, "bootstrap") from None
+        yield
 
 
 def bootstrap(settings: WarehouseSettings) -> None:
     """Idempotent bootstrap under the run lock; raises typed warehouse errors."""
-    with run_lock(settings) as maintenance:
-        bootstrap_locked(maintenance, settings)
+    with run_lock(settings) as maintenance, bootstrap_locked(maintenance, settings):
+        pass

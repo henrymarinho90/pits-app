@@ -22,9 +22,9 @@ from pits.warehouse.errors import (
     WarehouseTransientError,
     to_warehouse_error,
 )
+from pits.warehouse.locks import TRANSFORM_LOCK_KEY as TRANSFORM_LOCK_KEY
+from pits.warehouse.locks import WAREHOUSE_LOCK_KEY
 from pits.warehouse.settings import Profile, WarehouseSettings
-
-TRANSFORM_LOCK_KEY = 0x5049545303  # session advisory lock in the warehouse DB (!= 01, 02)
 
 # Subprocess runner: (argv, env) -> dbt exit code. Replaceable in tests.
 Runner = Callable[[Sequence[str], Mapping[str, str]], int]
@@ -108,7 +108,7 @@ def open_session(settings: WarehouseSettings) -> Iterator[psycopg.Connection]:
         failure: WarehouseError | None = None
         locked = False
         try:
-            row = conn.execute("SELECT pg_try_advisory_lock(%s)", (TRANSFORM_LOCK_KEY,)).fetchone()
+            row = conn.execute("SELECT pg_try_advisory_lock(%s)", (WAREHOUSE_LOCK_KEY,)).fetchone()
             locked = bool(row and row[0])
         except psycopg.Error as exc:
             failure = to_warehouse_error(exc, "transform lock")
@@ -120,7 +120,7 @@ def open_session(settings: WarehouseSettings) -> Iterator[psycopg.Connection]:
             yield conn
         finally:
             try:
-                conn.execute("SELECT pg_advisory_unlock(%s)", (TRANSFORM_LOCK_KEY,))
+                conn.execute("SELECT pg_advisory_unlock(%s)", (WAREHOUSE_LOCK_KEY,))
             except psycopg.Error:
                 pass  # closing the session releases the lock anyway; never mask dbt's result
     finally:

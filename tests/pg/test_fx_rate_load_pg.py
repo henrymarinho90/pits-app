@@ -9,83 +9,30 @@ import dataclasses
 from contextlib import contextmanager
 from datetime import UTC, date, datetime
 
+import fx_load_support as fx
 import psycopg
 import pytest
-from trm_helpers import B1, B3, put_raw_batch, raw_row
-from typer.testing import CliRunner
+from fx_load_support import LAST_DAY, load
+from trm_helpers import B3
 
-from pits.cli import app
 from pits.ingestion.manifest import sha256_hex
-from pits.ingestion.raw_store import MemoryRawStore
 from pits.normalized.manifest import (
     Coverage,
     NormalizedManifest,
     Output,
     compute_input_fingerprint,
 )
-from pits.sources.trm.contract import BACKFILL_FROM
-from pits.sources.trm.normalize import normalize_trm
 from pits.warehouse import load_cli
 from pits.warehouse.connection import connect
 from pits.warehouse.fx_rate_load import LOAD_LOCK_KEY, open_warehouse
 from pits.warehouse.migrate import run_migrate
 from pits.warehouse.settings import Profile
 
-runner = CliRunner()
-RAW_BUCKET = "pits-raw"
-LAST_DAY = date(2026, 10, 13)
-
-
-@pytest.fixture(scope="module")
-def base_artifact():
-    """(objects, NormalizeResult) written by the real normalizer; copied per test."""
-    raw, norm = MemoryRawStore(), MemoryRawStore()
-    put_raw_batch(
-        raw,
-        B1,
-        date(2026, 10, 9),
-        "full",
-        [
-            raw_row(BACKFILL_FROM, date(2026, 10, 9), "3000.5"),
-            raw_row(date(2026, 10, 10), LAST_DAY, "3194.44"),
-        ],
-    )
-    result = normalize_trm(raw, norm, raw_bucket=RAW_BUCKET)
-    return dict(norm.objects), result
-
-
-@pytest.fixture
-def store(base_artifact):
-    memory = MemoryRawStore()
-    memory.objects = dict(base_artifact[0])
-    return memory
-
-
-@pytest.fixture
-def base(base_artifact):
-    return base_artifact[1]
-
-
-@pytest.fixture
-def warehouse(pg_settings, monkeypatch, store):
-    run_migrate(pg_settings)  # real packaged migrations
-    for key, value in {
-        "S3_ENDPOINT_URL": "http://127.0.0.1:1",
-        "S3_ACCESS_KEY_ID": "ak",
-        "S3_SECRET_ACCESS_KEY": "s3-secret-0123456789",
-        "S3_RAW_BUCKET": RAW_BUCKET,
-    }.items():
-        monkeypatch.setenv(key, value)
-    monkeypatch.setattr(load_cli, "client_factory", lambda s: object())
-    monkeypatch.setattr(load_cli, "store_factory", lambda c, b: store)
-    monkeypatch.setattr(load_cli, "settings_factory", lambda env: pg_settings)
-    admin = connect(pg_settings, Profile.ADMIN, autocommit=True)
-    yield admin
-    admin.close()
-
-
-def load(*args):
-    return runner.invoke(app, ["load", "fx-rate", *args])
+# Fixtures shared with test_warehouse_lock_pg.py, re-exposed by assignment (pytest uses the name).
+base_artifact = fx.base_artifact
+store = fx.store
+base = fx.base
+warehouse = fx.warehouse
 
 
 def fields(output: str) -> dict[str, str]:
