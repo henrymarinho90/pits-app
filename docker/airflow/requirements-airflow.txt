@@ -1,0 +1,6 @@
+# Driver de la metadata DB de Airflow (psycopg2-binary 2.9.13 = version del constraints oficial
+# constraints-3.3.2 / py3.12). Hashes de PyPI (https://pypi.org/pypi/psycopg2-binary/2.9.13/json,
+# 2026-10-12) solo para cp312 manylinux x86_64 y aarch64; sin dependencias transitivas.
+psycopg2-binary==2.9.13 \
+    --hash=sha256:e3861eba31f8ea8663fd876166b032fd89179e42aa63764d6feb281f13f9eb60 \
+    --hash=sha256:3dc3372b3731b3ef23407fe06b94f640ef87a2bda242fa386033d5589c87514a
