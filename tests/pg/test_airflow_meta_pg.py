@@ -150,7 +150,7 @@ def test_cli_against_real_server(pg_settings, names, monkeypatch):
     assert PASSWORD not in first.output + second.output
 
 
-def test_preexisting_database_owned_by_another_role_is_taken_over(pg_settings, names, other_role):
+def test_preexisting_database_owned_by_another_role_is_taken_over(pg_settings, other_role, names):
     """Pins the current behavior (review B2): a database with the airflow_meta name that already
     exists under another owner is NOT rejected; the run takes ownership (ALTER DATABASE OWNER TO)
     and revokes PUBLIC. The status only reflects creation, so here it is "created" because the
@@ -170,3 +170,23 @@ def test_preexisting_database_owned_by_another_role_is_taken_over(pg_settings, n
         ).fetchone()
     assert owner == (names,)
     assert _init(pg_settings, names).status == "unchanged"
+
+
+def test_preexisting_role_and_database_of_another_owner_reports_unchanged(
+    pg_settings, other_role, names
+):
+    """Same takeover, but the role already exists: the status stays "unchanged" although the
+    owner changed (the status only reflects creation; review B2)."""
+    with connect(pg_settings, Profile.ADMIN, dbname="postgres", autocommit=True) as admin:
+        admin.execute(sql.SQL("CREATE ROLE {} NOLOGIN").format(sql.Identifier(names)))
+        admin.execute(
+            sql.SQL("CREATE DATABASE {} OWNER {}").format(
+                sql.Identifier(names), sql.Identifier(other_role)
+            )
+        )
+    assert _init(pg_settings, names).status == "unchanged"
+    with connect(pg_settings, Profile.ADMIN, dbname="postgres", autocommit=True) as admin:
+        owner = admin.execute(
+            "SELECT pg_get_userbyid(datdba) FROM pg_database WHERE datname = %s", (names,)
+        ).fetchone()
+    assert owner == (names,)

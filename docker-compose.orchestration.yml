@@ -35,7 +35,15 @@ services:
       dockerfile: docker/airflow/Dockerfile
     container_name: pits-airflow-init
     profiles: ["orchestration"]
-    command: ["airflow", "db", "migrate"]
+    # Migra la metadata y crea el pool pits_warehouse (D92: 1 slot para load/build/freshness).
+    # `pools set` es upsert: idempotente en cada up. El pool no reemplaza al lock de D90.
+    command:
+      - bash
+      - -c
+      - |
+        set -euo pipefail
+        airflow db migrate
+        airflow pools set pits_warehouse 1 "pits warehouse writers (D92)"
     environment: &airflow-meta-env
       AIRFLOW__CORE__EXECUTOR: LocalExecutor
       AIRFLOW__CORE__AUTH_MANAGER: airflow.api_fastapi.auth.managers.simple.simple_auth_manager.SimpleAuthManager

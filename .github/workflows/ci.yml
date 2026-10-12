@@ -46,3 +46,24 @@ jobs:
 
       - name: CLI smoke
         run: uv run pits version
+
+  # Airflow tests (D94): proyecto uv aparte (Airflow fija su propio arbol de dependencias) y
+  # solo en Linux, el unico host que soporta Airflow.
+  orchestration:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - uses: astral-sh/setup-uv@v10.3.0
+        with:
+          enable-cache: true
+          cache-dependency-glob: orchestration/uv.lock
+
+      - name: Sync dependencies
+        run: uv sync --locked --project orchestration
+
+      - name: Tests
+        run: uv run --locked --project orchestration pytest orchestration/tests -q

@@ -42,6 +42,12 @@ RUN --mount=from=ghcr.io/astral-sh/uv:0.11.26@sha256:3d868e555f8f1dbc324afa00506
 RUN chgrp -R 0 /opt/pits/transform && chmod -R g+rwX /opt/pits/transform \
     && rm -f /opt/pits/.venv/.lock
 
-# Los DAGs se anaden en S5. Vuelve al usuario, WORKDIR y ENTRYPOINT de la imagen oficial.
+# DAGs (S5, D94): ultima capa de codigo para no invalidar la cache de las anteriores al editarlos.
+# De root y de solo lectura para airflow (el directorio de la imagen base es del usuario airflow:
+# se le quita la propiedad; los procesos de Airflow solo leen). Los tests no entran en la imagen.
+COPY --chown=root:root orchestration/dags/ /opt/airflow/dags/
+RUN chown root:root /opt/airflow/dags && find /opt/airflow/dags -type d -exec chmod 755 {} + -o -type f -exec chmod 644 {} +
+
+# Vuelve al usuario, WORKDIR y ENTRYPOINT de la imagen oficial.
 USER airflow
 WORKDIR /opt/airflow

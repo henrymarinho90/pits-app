@@ -37,7 +37,8 @@ module-name = "pits"
 [tool.ruff]
 target-version = "py312"
 line-length = 100
-src = ["src", "tests"]
+src = ["src", "tests", "orchestration/dags"]
+extend-exclude = ["orchestration/.venv"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B"]
