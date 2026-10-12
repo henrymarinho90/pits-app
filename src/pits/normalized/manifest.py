@@ -5,16 +5,19 @@ Deterministic by construction: no execution timestamp, no uuid, no package versi
 
 from __future__ import annotations
 
-import hashlib
 import json
 import re
-import uuid
-from collections.abc import Sequence
 from dataclasses import dataclass
-from datetime import date, datetime
+from datetime import date
 
 from pits.ingestion import strict_json as sj
 from pits.ingestion.manifest import WATERMARK_MODES
+from pits.normalized.fingerprint import (  # noqa: F401  (re-exported: legacy import path)
+    InputRef,
+    Transform,
+    compute_input_fingerprint,
+    is_canonical_uuid,
+)
 from pits.sources.trm.contract import DATASET_ID, SOURCE_SYSTEM
 
 NORMALIZED_MANIFEST_VERSION = 1
@@ -22,31 +25,8 @@ NORMALIZED_MANIFEST_NAME = "manifest.json"
 _SHA256_RE = re.compile(r"[0-9a-f]{64}")
 
 
-def _is_canonical_uuid(value: str) -> bool:
-    try:
-        return str(uuid.UUID(value)) == value
-    except ValueError:
-        return False
-
-
 class NormalizedManifestError(ValueError):
     """The normalized manifest is invalid or corrupt (permanent)."""
-
-
-@dataclass(frozen=True)
-class Transform:
-    name: str
-    rules_version: str
-
-
-@dataclass(frozen=True)
-class InputRef:
-    batch_id: str
-    extraction_date: date
-    finished_at: datetime
-    mode: str
-    manifest_key: str
-    manifest_sha256: str
 
 
 @dataclass(frozen=True)
@@ -61,26 +41,6 @@ class Output:
     sha256: str
     size_bytes: int
     content_type: str
-
-
-def compute_input_fingerprint(
-    transform: Transform, raw_bucket: str, inputs: Sequence[InputRef]
-) -> str:
-    """sha256 of the canonical JSON of what determines the output (inputs in commit order)."""
-    payload = {
-        "transform": {"name": transform.name, "rules_version": transform.rules_version},
-        "raw_bucket": raw_bucket,
-        "inputs": [
-            {
-                "batch_id": i.batch_id,
-                "manifest_key": i.manifest_key,
-                "manifest_sha256": i.manifest_sha256,
-            }
-            for i in inputs
-        ],
-    }
-    text = json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=True)
-    return hashlib.sha256(text.encode("utf-8")).hexdigest()
 
 
 @dataclass(frozen=True)
@@ -117,13 +77,13 @@ class NormalizedManifest:
         for i in self.inputs:
             if i.mode not in WATERMARK_MODES:
                 raise NormalizedManifestError(f"Invalid input mode: {i.mode!r}")
-            if not _is_canonical_uuid(i.batch_id):
+            if not is_canonical_uuid(i.batch_id):
                 raise NormalizedManifestError(f"Invalid input batch_id: {i.batch_id!r}")
             if not _SHA256_RE.fullmatch(i.manifest_sha256):
                 raise NormalizedManifestError(f"Invalid manifest_sha256 for {i.batch_id}")
             if i.finished_at.tzinfo is None or i.finished_at.utcoffset() is None:
                 raise NormalizedManifestError("inputs.finished_at must be timezone-aware")
-        if not _is_canonical_uuid(self.baseline_batch_id):
+        if not is_canonical_uuid(self.baseline_batch_id):
             raise NormalizedManifestError("Invalid baseline_batch_id")
         if not (
             self.output.key.startswith("fx_rate/")
