@@ -83,7 +83,7 @@ def test_retries_and_backoff(dag, task_id):
     task = dag.get_task(task_id)
     assert task.retries == 3
     assert task.retry_delay == timedelta(minutes=5)
-    assert task.retry_exponential_backoff
+    assert task.retry_exponential_backoff == 2.0
     assert task.max_retry_delay == timedelta(minutes=30)
 
 

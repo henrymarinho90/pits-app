@@ -48,10 +48,11 @@ line-ending = "lf"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-pythonpath = ["tests/contract", "tests/sources", "tests/pg"]
-addopts = "-ra --strict-markers --strict-config -m 'not contract and not pg'"
+pythonpath = ["tests/contract", "tests/sources", "tests/pg", "tests/orchestration_it"]
+addopts = "-ra --strict-markers --strict-config -m 'not contract and not pg and not airflow'"
 markers = [
     "contract: needs a live S3 endpoint (S3_ENDPOINT_URL); excluded by default",
     "pg: needs a local Postgres 17 (PITS_PG_*); excluded by default (D84)",
+    "airflow: needs the core + orchestration stack up (docker exec); excluded by default (D94)",
 ]
 xfail_strict = true

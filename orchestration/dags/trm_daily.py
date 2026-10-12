@@ -30,7 +30,7 @@ default_args = {
     "owner": "data-platform",
     "retries": 3,
     "retry_delay": timedelta(minutes=5),
-    "retry_exponential_backoff": True,
+    "retry_exponential_backoff": 2.0,
     "max_retry_delay": timedelta(minutes=30),
 }
 
