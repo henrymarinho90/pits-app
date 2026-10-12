@@ -11,7 +11,7 @@ from pits.warehouse.settings import Profile
 
 @pytest.fixture
 def warehouse(pg_settings):
-    run_migrate(pg_settings)  # real packaged migrations (0001..0003)
+    run_migrate(pg_settings)  # real packaged migrations (0001..0004)
     conns = {p: connect(pg_settings, p, autocommit=True) for p in Profile}
     yield pg_settings, conns
     for conn in conns.values():
@@ -131,21 +131,24 @@ def test_new_landing_tables_default_to_transformer_select(warehouse):
     )
 
 
-def test_database_already_at_0002_receives_only_0003(pg_settings, tmp_path):
+def test_database_already_at_0003_receives_only_0004(pg_settings, tmp_path):
     packaged = discover_migrations()
-    assert len(packaged) == 3
-    for m in packaged[:2]:
+    assert len(packaged) == 4
+    for m in packaged[:3]:
         (tmp_path / m.filename).write_bytes(m.sql.encode())
-    first = run_migrate(pg_settings, tmp_path)  # a database as the real one: only 0001 + 0002
-    assert (first.applied, first.skipped) == (2, 0)
+    first = run_migrate(pg_settings, tmp_path)  # a database as the real one: only 0001..0003
+    assert (first.applied, first.skipped) == (3, 0)
     second = run_migrate(pg_settings)  # packaged set
-    assert (second.applied, second.skipped) == (1, 2)
+    assert (second.applied, second.skipped) == (1, 3)
     conn = connect(pg_settings, Profile.TRANSFORMER, autocommit=True)
     try:
         assert conn.execute("SELECT count(*) FROM landing.fx_rate").fetchone() == (0,)
+        assert conn.execute("SELECT count(*) FROM landing.vehicle_fleet_snapshot").fetchone() == (
+            0,
+        )
     finally:
         conn.close()
-    assert run_migrate(pg_settings).skipped == 3
+    assert run_migrate(pg_settings).skipped == 4
 
 
 def test_bootstrap_is_idempotent_and_keeps_dbt_privileges(pg_settings):

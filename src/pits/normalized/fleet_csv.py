@@ -45,19 +45,33 @@ def part_name(index: int) -> str:
     return f"part-{index:05d}.csv"
 
 
-class _LineWriter:
-    """One csv.writer reused for every row; each call returns the encoded line."""
+class RowWriter:
+    """The only row serializer: one csv.writer reused; `line` returns the encoded CSV line.
 
-    def __init__(self, payload_keys: Sequence[str]) -> None:
-        self._payload_keys = payload_keys
+    Takes the 10 CSV fields in header order (QUOTE_MINIMAL, LF, UTF-8). The serializer of the
+    artifact and the loader's digest rebuild both use it, so their bytes cannot diverge.
+    """
+
+    def __init__(self) -> None:
         self._buffer = io.StringIO()
         self._writer = csv.writer(self._buffer, lineterminator="\n")
 
-    def line(self, record: Record) -> bytes:
+    def line(self, values: Sequence[object]) -> bytes:
         self._buffer.seek(0)
         self._buffer.truncate()
-        self._writer.writerow((*record[:9], source_reference(record, self._payload_keys)))
+        self._writer.writerow(values)
         return self._buffer.getvalue().encode("utf-8")
+
+
+class _LineWriter:
+    """Record -> encoded line, building the source reference from (payload, row index)."""
+
+    def __init__(self, payload_keys: Sequence[str]) -> None:
+        self._payload_keys = payload_keys
+        self._rows = RowWriter()
+
+    def line(self, record: Record) -> bytes:
+        return self._rows.line((*record[:9], source_reference(record, self._payload_keys)))
 
 
 def serialize_fleet(

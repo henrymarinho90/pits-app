@@ -82,6 +82,7 @@ def test_packaged_migrations_are_the_expected_ones():
         "0001_ops_load_run.sql",
         "0002_landing_fx_rate.sql",
         "0003_transformer_grants.sql",
+        "0004_landing_vehicle_fleet_snapshot.sql",
     ]
 
 

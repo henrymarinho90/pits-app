@@ -15,6 +15,7 @@ from pits.warehouse.errors import (
 )
 from pits.warehouse.fx_rate_load import LoadResult, Outcome
 from pits.warehouse.settings import WarehouseSettings
+from pits.warehouse.vehicle_fleet_load import FleetLoadResult
 
 runner = CliRunner()
 SENTINEL = "sentinel-load-pw-0123456789"
@@ -156,3 +157,105 @@ def test_default_settings_use_the_loader_profile_only(monkeypatch):
     settings = load_cli._default_settings({"PITS_PG_LOADER_PASSWORD": SENTINEL})
     assert isinstance(settings, WarehouseSettings)
     assert SENTINEL not in repr(settings)
+
+
+# --- pits load vehicle-fleet (D99) ------------------------------------------------------------
+
+
+def fleet_result(publication="2026-09", outcome=Outcome.LOADED, load_id=5):
+    return FleetLoadResult(
+        outcome, publication, load_id, FP, 100, 100, 0, 7, f"vehicle_fleet_snapshot/{publication}/m"
+    )
+
+
+@pytest.fixture
+def fleet_env(env, monkeypatch):
+    @contextmanager
+    def fake_fleet_warehouse(settings):
+        yield object()
+
+    monkeypatch.setattr(load_cli, "fleet_warehouse_factory", fake_fleet_warehouse)
+
+
+def patch_fleet(monkeypatch, fn):
+    monkeypatch.setattr(load_cli, "load_vehicle_fleet", fn)
+
+
+def test_help_lists_vehicle_fleet():
+    assert "vehicle-fleet" in runner.invoke(app, ["load", "--help"]).output
+
+
+def test_fleet_prints_one_line_per_publication_and_forwards_arguments(fleet_env, monkeypatch):
+    seen = {}
+
+    def fake(store, warehouse, raw_bucket, **kwargs):
+        seen.update(raw_bucket=raw_bucket, **kwargs)
+        yield fleet_result("2026-09", load_id=5)
+        yield fleet_result("2026-10", Outcome.ALREADY_LOADED, load_id=6)
+
+    patch_fleet(monkeypatch, fake)
+    out = runner.invoke(
+        app,
+        ["load", "vehicle-fleet", "--publication", "2026-09", "--fingerprint", FP, "--repair"],
+    )
+    assert out.exit_code == 0, out.output
+    assert out.output.strip().splitlines() == [
+        f"outcome=loaded publication=2026-09 load_id=5 fingerprint={FP} rows=100 inserted=100 "
+        "updated=0 deleted=7 manifest=s3://pits-normalized/vehicle_fleet_snapshot/2026-09/m",
+        f"outcome=already_loaded publication=2026-10 load_id=6 fingerprint={FP} rows=100 "
+        "inserted=100 updated=0 deleted=7 "
+        "manifest=s3://pits-normalized/vehicle_fleet_snapshot/2026-10/m",
+    ]
+    assert seen["raw_bucket"] == "pits-raw" and seen["repair"]
+    assert (seen["publication"], seen["fingerprint"]) == ("2026-09", FP)
+
+
+@pytest.mark.parametrize(
+    "args",
+    [
+        ["--publication", "2026-13"],
+        ["--publication", "2026-1"],
+        ["--publication", "abc"],
+        ["--fingerprint", "A" * 64],
+        ["--fingerprint", "a" * 63],
+        ["--nope"],
+    ],
+)
+def test_fleet_bad_arguments_are_usage_errors_before_anything_runs(monkeypatch, args):
+    patch_fleet(monkeypatch, lambda *a, **k: pytest.fail("must not run"))
+    assert runner.invoke(app, ["load", "vehicle-fleet", *args]).exit_code == 2
+
+
+@pytest.mark.parametrize(
+    ("exc", "code"),
+    [(WarehouseTransientError("lock busy"), 3), (WarehousePermanentError("drift"), 1)],
+)
+def test_fleet_error_exit_codes_keep_earlier_lines(fleet_env, monkeypatch, exc, code):
+    def partial(*a, **k):
+        yield fleet_result("2026-09")
+        raise exc
+
+    patch_fleet(monkeypatch, partial)
+    out = runner.invoke(app, ["load", "vehicle-fleet"])
+    assert out.exit_code == code and str(exc) in out.output
+    assert "outcome=loaded publication=2026-09" in out.output
+    assert SENTINEL not in out.output
+    assert out.exception is None or isinstance(out.exception, SystemExit)
+
+
+def test_fleet_connection_failure_is_transient(env, monkeypatch):
+    @contextmanager
+    def refused(settings):
+        raise WarehouseTransientError("connect as loader: OperationalError")
+        yield
+
+    monkeypatch.setattr(load_cli, "fleet_warehouse_factory", refused)
+    out = runner.invoke(app, ["load", "vehicle-fleet"])
+    assert out.exit_code == 3 and SENTINEL not in out.output
+
+
+def test_fleet_missing_configuration_exits_1(fleet_env, monkeypatch):
+    monkeypatch.delenv("PITS_PG_LOADER_PASSWORD")
+    monkeypatch.setattr(load_cli, "settings_factory", lambda e: load_cli._default_settings(e))
+    out = runner.invoke(app, ["load", "vehicle-fleet"])
+    assert out.exit_code == 1 and "PITS_PG_LOADER_PASSWORD" in out.output
