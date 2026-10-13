@@ -270,7 +270,7 @@ check "/healthz = 200" "$([ "$hz" = 200 ] && echo 1 || echo 0)"
 
 gs="$(grpc_status)"
 echo "-- gRPC 18333: $gs"
-check "grpc-status: 16" "$([[ "$gs" == *"16"* ]] && echo 1 || echo 0)"
+check "grpc-status: 16" "$([[ "$gs" =~ ^grpc-status:\ *16$ ]] && echo 1 || echo 0)"
 
 del="$(docker exec "$CNAME" curl -s -o /dev/null -m 5 -w '%{http_code}' -X DELETE http://127.0.0.1:8888/swprobe-nonexistent-path || true)"
 echo "-- DELETE 127.0.0.1:8888 dentro del contenedor: $del"

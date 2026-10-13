@@ -28,8 +28,9 @@ services:
     restart: unless-stopped
     ports:
       # Solo S3 y solo loopback en el host. Filer, master y volume solo escuchan en loopback dentro del
-      # contenedor (D117), Iceberg y Lance estan apagados (no se usan) y el gRPC de S3 (18333) exige JWT
-      # ([jwt.filer_signing] en security.toml, D118): ningun otro contenedor de pits_default los alcanza.
+      # contenedor (D117), Iceberg y Lance estan apagados (no se usan) y las RPC de IAM del gRPC de S3
+      # (18333) exigen JWT (D118). Filer, master, volume, Iceberg y Lance no son alcanzables desde otro
+      # contenedor de pits_default; 8333 y 18333 si.
       - "127.0.0.1:8333:8333"
     volumes:
       - seaweedfs_data:/data
@@ -106,7 +107,8 @@ configs:
         ]
       }
 
-  # JWT del filer (D118): el gRPC de S3 (18333) deja de aceptar llamadas sin firmar. Clave desde .env.
+  # JWT del filer (D118): las RPC de IAM del gRPC de S3 (18333) exigen token; LifecycleDelete queda
+  # sin auth (riesgo aceptado D120(a)). Clave desde .env.
   seaweedfs_security:
     content: |
       [jwt.filer_signing]
