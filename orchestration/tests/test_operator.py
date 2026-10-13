@@ -162,7 +162,8 @@ def _is_dead(pid):
     """Gone, or a zombie waiting for its (non-reaping) parent: no longer running."""
     try:
         state = Path(f"/proc/{pid}/stat").read_text().rsplit(")", 1)[1].split()[0]
-    except FileNotFoundError:
+    except (FileNotFoundError, ProcessLookupError):
+        # procfs returns ESRCH (ProcessLookupError) while the process is terminating.
         return True
     return state == "Z"
 
