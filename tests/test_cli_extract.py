@@ -27,11 +27,11 @@ from pits.storage.client import build_s3_client
 runner = CliRunner()
 
 TOKEN = "soda-test-token-value-xyz"
-S3_SECRET = "cli-extract-s3-secret-xyz"
+S3_SECRET = "cli-extract-s3-secret-xyz-0123456789"
 ENV = {
     "S3_ENDPOINT_URL": "http://127.0.0.1:9",
-    "S3_ACCESS_KEY_ID": "AKIDEXAMPLE0001",
-    "S3_SECRET_ACCESS_KEY": S3_SECRET,
+    "PITS_S3_WRITER_ACCESS_KEY_ID": "WRITERKEYEXAMPLE0001",
+    "PITS_S3_WRITER_SECRET_ACCESS_KEY": S3_SECRET,
     "S3_RAW_BUCKET": "pits-raw",
 }
 COLUMNS = [
@@ -483,3 +483,17 @@ def test_runt_invalid_storage_config_exit_1(
     monkeypatch.setenv("S3_NORMALIZED_BUCKET", "pits-raw")
     result = runner.invoke(app, ["extract", "runt"])
     assert result.exit_code == 1 and result.stdout == ""
+
+
+@pytest.mark.parametrize("command", ["trm", "runt"])
+def test_extract_does_not_fall_back_to_admin(
+    world: Env, monkeypatch: pytest.MonkeyPatch, command: str
+) -> None:
+    for name in ("PITS_S3_WRITER_ACCESS_KEY_ID", "PITS_S3_WRITER_SECRET_ACCESS_KEY"):
+        monkeypatch.delenv(name)
+    monkeypatch.setenv("S3_ACCESS_KEY_ID", "ADMINKEYEXAMPLE0001")
+    monkeypatch.setenv("S3_SECRET_ACCESS_KEY", S3_SECRET)
+    result = runner.invoke(app, ["extract", command])
+    assert result.exit_code == 1 and result.stdout == ""
+    assert "PITS_S3_WRITER_ACCESS_KEY_ID" in result.stderr
+    assert S3_SECRET not in result.stdout + result.stderr

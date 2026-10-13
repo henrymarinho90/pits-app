@@ -22,13 +22,19 @@ ENV = {
     "S3_RAW_BUCKET": "pits-raw",
 }
 BUCKET = {"Bucket": "pits-raw"}
+_IDENTITY_ENV_NAMES = (
+    "PITS_S3_WRITER_ACCESS_KEY_ID",
+    "PITS_S3_WRITER_SECRET_ACCESS_KEY",
+    "PITS_S3_READER_ACCESS_KEY_ID",
+    "PITS_S3_READER_SECRET_ACCESS_KEY",
+)
 NORM = {"Bucket": "pits-normalized"}  # default (D74)
 NORM_ENABLE = {"Bucket": "pits-normalized", "VersioningConfiguration": {"Status": "Enabled"}}
 
 
 @pytest.fixture(autouse=True)
 def _clean_env(monkeypatch: pytest.MonkeyPatch) -> None:
-    for name in [*ENV, "S3_REGION", "S3_NORMALIZED_BUCKET"]:
+    for name in [*ENV, "S3_REGION", "S3_NORMALIZED_BUCKET", *_IDENTITY_ENV_NAMES]:
         monkeypatch.delenv(name, raising=False)
 
 
@@ -185,3 +191,17 @@ def test_version_command_unchanged() -> None:
     result = runner.invoke(app, ["version"])
     assert result.exit_code == 0
     assert result.output.strip() == pits.__version__
+
+
+def test_init_uses_admin_identity_and_does_not_accept_writer_or_reader(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("S3_ENDPOINT_URL", ENV["S3_ENDPOINT_URL"])
+    monkeypatch.setenv("S3_RAW_BUCKET", "pits-raw")
+    monkeypatch.setenv("PITS_S3_WRITER_ACCESS_KEY_ID", "WRITERKEYEXAMPLE0001")
+    monkeypatch.setenv("PITS_S3_WRITER_SECRET_ACCESS_KEY", SECRET + "-0123456789")
+    monkeypatch.setenv("PITS_S3_READER_ACCESS_KEY_ID", "READERKEYEXAMPLE0001")
+    monkeypatch.setenv("PITS_S3_READER_SECRET_ACCESS_KEY", SECRET + "-0123456789")
+    result = runner.invoke(app, ["storage", "init"])
+    assert result.exit_code == 1 and "S3_ACCESS_KEY_ID" in result.stderr
+    assert SECRET not in result.stdout + result.stderr

@@ -5,6 +5,7 @@ from __future__ import annotations
 import re
 from collections.abc import Mapping
 from dataclasses import dataclass, field
+from typing import Literal
 from urllib.parse import urlparse
 
 DEFAULT_REGION = "us-east-1"
@@ -14,7 +15,19 @@ RESERVED_BUCKET_PREFIX = "pits-contract-"  # reserved for contract tests (D61)
 _BUCKET_RE = re.compile(r"^[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]$")
 _FORBIDDEN_PREFIXES = ("xn--", "sthree-", "amzn-s3-demo-")
 _FORBIDDEN_SUFFIXES = ("-s3alias", "--ol-s3", ".mrap", "--x-s3", "--table-s3")
+_ACCESS_KEY_RE = re.compile(r"^[A-Za-z0-9]{16,128}$")
+_SECRET_RE = re.compile(r"^[A-Za-z0-9_-]{32,128}$")
 _IPV4_RE = re.compile(r"^\d{1,3}(\.\d{1,3}){3}$")
+
+
+Identity = Literal["admin", "writer", "reader"]
+
+# D104(b): one S3 identity per role; each CLI asks for its own and never falls back to admin.
+_IDENTITY_VARS: dict[str, tuple[str, str]] = {
+    "admin": ("S3_ACCESS_KEY_ID", "S3_SECRET_ACCESS_KEY"),
+    "writer": ("PITS_S3_WRITER_ACCESS_KEY_ID", "PITS_S3_WRITER_SECRET_ACCESS_KEY"),
+    "reader": ("PITS_S3_READER_ACCESS_KEY_ID", "PITS_S3_READER_SECRET_ACCESS_KEY"),
+}
 
 
 class StorageConfigError(ValueError):
@@ -58,11 +71,31 @@ def _required(env: Mapping[str, str], name: str) -> str:
     return value
 
 
-def load_storage_settings(env: Mapping[str, str]) -> StorageSettings:
-    """Build StorageSettings from `env`; error messages never include values."""
+def _identity_credentials(env: Mapping[str, str], identity: str) -> tuple[str, str]:
+    """Return (access_key, secret) for `identity`; errors name variables, never values."""
+    if identity not in _IDENTITY_VARS:
+        raise StorageConfigError(f"Unknown storage identity: {identity!r}")
+    key_var, secret_var = _IDENTITY_VARS[identity]
+    access_key_id = _required(env, key_var)
+    secret_access_key = _required(env, secret_var)
+    if identity != "admin":
+        # The admin credential predates the format and is not validated (D104(b)).
+        if not _ACCESS_KEY_RE.match(access_key_id):
+            raise StorageConfigError(f"{key_var} must be 16-128 alphanumeric characters")
+        if not _SECRET_RE.match(secret_access_key):
+            raise StorageConfigError(f"{secret_var} must be 32-128 characters of A-Z a-z 0-9 _ -")
+        for other, (other_key_var, _) in _IDENTITY_VARS.items():
+            if other != identity and env.get(other_key_var, "").strip() == access_key_id:
+                raise StorageConfigError(
+                    f"{key_var} must differ from {other_key_var} (one access key per identity)"
+                )
+    return access_key_id, secret_access_key
+
+
+def load_storage_settings(env: Mapping[str, str], identity: Identity = "admin") -> StorageSettings:
+    """Build StorageSettings from `env` for one S3 identity; errors never include values."""
     endpoint_url = _required(env, "S3_ENDPOINT_URL")
-    access_key_id = _required(env, "S3_ACCESS_KEY_ID")
-    secret_access_key = _required(env, "S3_SECRET_ACCESS_KEY")
+    access_key_id, secret_access_key = _identity_credentials(env, identity)
     raw_bucket = _required(env, "S3_RAW_BUCKET")
     region = env.get("S3_REGION", "").strip() or DEFAULT_REGION
 

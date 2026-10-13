@@ -32,8 +32,8 @@ def result(outcome=Outcome.LOADED):
 def env(monkeypatch):
     values = {
         "S3_ENDPOINT_URL": "http://127.0.0.1:1",
-        "S3_ACCESS_KEY_ID": "ak",
-        "S3_SECRET_ACCESS_KEY": "s3-secret-sentinel-0123456789",
+        "PITS_S3_READER_ACCESS_KEY_ID": "READERKEYEXAMPLE0001",
+        "PITS_S3_READER_SECRET_ACCESS_KEY": "s3-secret-sentinel-0123456789-abcdef",
         "S3_RAW_BUCKET": "pits-raw",
         "PITS_PG_LOADER_PASSWORD": SENTINEL,
     }
@@ -259,3 +259,14 @@ def test_fleet_missing_configuration_exits_1(fleet_env, monkeypatch):
     monkeypatch.setattr(load_cli, "settings_factory", lambda e: load_cli._default_settings(e))
     out = runner.invoke(app, ["load", "vehicle-fleet"])
     assert out.exit_code == 1 and "PITS_PG_LOADER_PASSWORD" in out.output
+
+
+@pytest.mark.parametrize("command", ["fx-rate", "vehicle-fleet"])
+def test_load_does_not_fall_back_to_admin(env, monkeypatch, command):
+    for name in ("PITS_S3_READER_ACCESS_KEY_ID", "PITS_S3_READER_SECRET_ACCESS_KEY"):
+        monkeypatch.delenv(name)
+    monkeypatch.setenv("S3_ACCESS_KEY_ID", "ADMINKEYEXAMPLE0001")
+    monkeypatch.setenv("S3_SECRET_ACCESS_KEY", "s3-secret-sentinel-0123456789-abcdef")
+    out = runner.invoke(app, ["load", command])
+    assert out.exit_code == 1 and "PITS_S3_READER_ACCESS_KEY_ID" in out.output
+    assert "s3-secret-sentinel-0123456789-abcdef" not in out.output

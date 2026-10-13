@@ -43,7 +43,7 @@ def _fail(message: str, code: int) -> NoReturn:
 def _connect() -> tuple[StorageSettings, RawStore, RawStore]:
     """Load settings, build both stores and verify the normalized bucket (exit 1/3 on failure)."""
     try:
-        settings = load_storage_settings(os.environ)
+        settings = load_storage_settings(os.environ, "writer")
     except StorageConfigError as exc:
         _fail(str(exc), 1)
 

@@ -38,7 +38,7 @@ def _flag(value: bool) -> str:
 def init() -> None:
     """Create the raw and normalized buckets if missing; make sure versioning is Enabled."""
     try:
-        settings = load_storage_settings(os.environ)
+        settings = load_storage_settings(os.environ, "admin")
         client = client_factory(settings)
         for bucket in (settings.raw_bucket, settings.normalized_bucket):
             result = ensure_versioned_bucket(client, bucket)

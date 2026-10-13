@@ -22,11 +22,11 @@ from pits.storage.settings import StorageSettings
 
 runner = CliRunner()
 
-SECRET = "cli-normalize-secret-xyz"
+SECRET = "cli-normalize-secret-xyz-0123456789"
 ENV = {
     "S3_ENDPOINT_URL": "http://127.0.0.1:9",
-    "S3_ACCESS_KEY_ID": "AKIDEXAMPLE0001",
-    "S3_SECRET_ACCESS_KEY": SECRET,
+    "PITS_S3_WRITER_ACCESS_KEY_ID": "WRITERKEYEXAMPLE0001",
+    "PITS_S3_WRITER_SECRET_ACCESS_KEY": SECRET,
     "S3_RAW_BUCKET": "pits-raw",
     "S3_NORMALIZED_BUCKET": "pits-norm",
 }
@@ -60,7 +60,9 @@ class World:
 
 def _client() -> BaseClient:
     return build_s3_client(
-        StorageSettings(ENV["S3_ENDPOINT_URL"], ENV["S3_ACCESS_KEY_ID"], SECRET, "us-east-1", "x")
+        StorageSettings(
+            ENV["S3_ENDPOINT_URL"], ENV["PITS_S3_WRITER_ACCESS_KEY_ID"], SECRET, "us-east-1", "x"
+        )
     )
 
 
@@ -242,7 +244,7 @@ def test_invalid_region_with_real_factory_exits_1_without_secret(
 def test_secrets_never_printed_on_success(world: World) -> None:
     result = _run(world, "--warn-range-days", "3")
     assert SECRET not in result.stdout + result.stderr
-    assert ENV["S3_ACCESS_KEY_ID"] not in result.stdout + result.stderr
+    assert ENV["PITS_S3_WRITER_ACCESS_KEY_ID"] not in result.stdout + result.stderr
 
 
 def test_normalize_never_calls_soda_and_needs_no_soda_variables(
@@ -348,3 +350,17 @@ def test_runt_missing_variables_exit_1(world: World, monkeypatch: pytest.MonkeyP
     monkeypatch.delenv("S3_ENDPOINT_URL")
     result = runner.invoke(app, ["normalize", "runt"])
     assert result.exit_code == 1 and "S3_ENDPOINT_URL" in result.stderr
+
+
+@pytest.mark.parametrize("command", ["trm", "runt"])
+def test_normalize_does_not_fall_back_to_admin(
+    world: World, monkeypatch: pytest.MonkeyPatch, command: str
+) -> None:
+    for name in ("PITS_S3_WRITER_ACCESS_KEY_ID", "PITS_S3_WRITER_SECRET_ACCESS_KEY"):
+        monkeypatch.delenv(name)
+    monkeypatch.setenv("S3_ACCESS_KEY_ID", "ADMINKEYEXAMPLE0001")
+    monkeypatch.setenv("S3_SECRET_ACCESS_KEY", SECRET)
+    result = runner.invoke(app, ["normalize", command])
+    assert result.exit_code == 1 and result.stdout == ""
+    assert "PITS_S3_WRITER_ACCESS_KEY_ID" in result.stderr
+    assert SECRET not in result.stdout + result.stderr
