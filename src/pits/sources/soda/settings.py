@@ -38,4 +38,7 @@ def load_soda_settings(env: Mapping[str, str]) -> SodaSettings:
     if parsed.username is not None or parsed.password is not None:
         raise SodaConfigError("SODA_BASE_URL must not embed credentials")
 
+    if token is not None and parsed.scheme != "https":
+        raise SodaConfigError("SODA_APP_TOKEN requires an https SODA_BASE_URL")
+
     return SodaSettings(base_url=base_url.rstrip("/"), app_token=token)

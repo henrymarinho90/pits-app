@@ -8,6 +8,7 @@ Only one page is held in memory at a time.
 
 from __future__ import annotations
 
+import re
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, date, datetime, timedelta
@@ -61,6 +62,7 @@ from pits.sources.trm.contract import (
 
 Mode = Literal["incremental", "full", "since"]
 EXTRACTOR_NAME = "pits.sources.trm"
+_INT_RE = re.compile(r"[0-9]+")
 
 __all__ = [
     "ExtractError",
@@ -149,6 +151,8 @@ def _extract(
             )
         where = f"{WATERMARK_COLUMN} >= '{since.isoformat()}T00:00:00.000'"
 
+    total = _read_count(soda, where)
+
     files: list[FileEntry] = []
     last_date: date | None = None
     offset = 0
@@ -160,6 +164,11 @@ def _extract(
         if not page.rows:
             break  # an empty page is never written
         last_date = _validate_page(page, offset, last_date, from_exclusive)
+        if offset + len(page.rows) > total:
+            raise ExtractTransientError(
+                f"Truncated extraction: page at offset {offset} exceeds the expected {total} "
+                "rows (dataset changed mid-run)"
+            )
         key = f"{prefix}payload-{len(files):05d}.json"
         store.put_once(key, page.body, "application/json")
         files.append(
@@ -180,6 +189,8 @@ def _extract(
         raise ExtractTransientError(
             "Dataset was replaced during extraction (rowsUpdatedAt changed)"
         )
+    if offset != total:
+        raise ExtractTransientError(f"Truncated extraction: read {offset} rows, expected {total}")
 
     if last_date is not None:
         to_observed: date | None = last_date
@@ -217,6 +228,20 @@ def _extract(
 
 def _rows_updated_at(soda: SodaClient) -> int:
     return parse_rows_updated_at(soda.get_metadata(DATASET_ID))
+
+
+def _read_count(soda: SodaClient, where: str | None) -> int:
+    """Return the expected row count for the same $where the pages will use (D105)."""
+    params: dict[str, str | int] = {"$select": "count(*)"}
+    if where is not None:
+        params["$where"] = where
+    page = soda.get_page(DATASET_ID, params)
+    if len(page.rows) != 1 or set(page.rows[0]) != {"count"}:
+        raise ExtractPermanentError("Count query must return exactly one {'count': ...} row")
+    count = page.rows[0]["count"]
+    if not isinstance(count, str) or not _INT_RE.fullmatch(count):
+        raise ExtractPermanentError("Count is not a non-negative integer string")
+    return int(count)
 
 
 def _parse_date(value: Any, where: str) -> date:

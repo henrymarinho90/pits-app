@@ -64,6 +64,7 @@ class Env:
         self.store = MemoryRawStore()
         self.batch_ids = [BATCH_1, BATCH_2]
         self.tokens_seen: list[str | None] = []
+        self.count_override: str | None = None
 
     def handler(self, request: httpx.Request) -> httpx.Response:
         self.tokens_seen.append(request.headers.get("X-App-Token"))
@@ -83,6 +84,9 @@ class Env:
                 for r in rows
                 if (r["vigenciadesde"][:10] >= day if op == ">=" else r["vigenciadesde"][:10] > day)
             ]
+        if params.get("$select") == "count(*)":
+            count = str(len(rows)) if self.count_override is None else self.count_override
+            return httpx.Response(200, json=[{"count": count}])
         offset, limit = int(params["$offset"]), int(params["$limit"])
         return httpx.Response(200, content=json.dumps(rows[offset : offset + limit]).encode())
 
@@ -211,6 +215,32 @@ def test_transient_error_exits_3(world: Env) -> None:
     assert result.exit_code == 3
     assert result.stderr.startswith("error: ") and "503" in result.stderr
     assert result.stdout == "" and "Traceback" not in result.stderr
+
+
+def test_truncated_extraction_exits_3_without_manifest(world: Env) -> None:
+    world.count_override = "9"  # the source announces more rows than it serves
+    result = runner.invoke(app, ["extract", "trm"])
+    assert result.exit_code == 3
+    assert result.stderr.startswith("error: ") and "Truncated extraction" in result.stderr
+    assert result.stdout == ""
+    assert not any(k.endswith("manifest.json") for k in world.store.objects)
+
+
+def test_malformed_count_exits_1(world: Env) -> None:
+    world.count_override = "many"
+    result = runner.invoke(app, ["extract", "trm"])
+    assert result.exit_code == 1 and "Count" in result.stderr
+    assert result.stdout == "" and world.store.objects == {}
+
+
+def test_token_with_http_base_url_exits_1_without_printing_the_token(
+    world: Env, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("SODA_BASE_URL", "http://soda.example")
+    result = runner.invoke(app, ["extract", "trm"])
+    assert result.exit_code == 1 and "https" in result.stderr
+    assert TOKEN not in result.stdout + result.stderr
+    assert world.store.objects == {}
 
 
 def test_permanent_error_exits_1(world: Env) -> None:

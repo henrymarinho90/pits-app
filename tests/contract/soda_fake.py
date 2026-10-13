@@ -56,6 +56,8 @@ def soda_client(rows: list[dict[str, str]]) -> SodaClient:
         )
         if match:
             selected = [r for r in rows if r["vigenciadesde"][:10] > match.group(1)]
+        if params.get("$select") == "count(*)":
+            return httpx.Response(200, json=[{"count": str(len(selected))}])
         offset, limit = int(params["$offset"]), int(params["$limit"])
         return httpx.Response(200, content=json.dumps(selected[offset : offset + limit]).encode())
 

@@ -37,6 +37,7 @@ from pits.normalized.fleet_manifest import (
     Publication,
     artifact_prefix,
 )
+from pits.sources.normalize_common import NormalizePermanentError, NormalizeTransientError
 from pits.sources.runt.contract import (
     DATASET_ID,
     EXPECTED_SCHEMA,
@@ -50,7 +51,6 @@ from pits.sources.runt.parse import (
     parse_page,
     sort_and_check_unique,
 )
-from pits.sources.trm.normalize import NormalizePermanentError, NormalizeTransientError
 
 TRANSFORM_NAME = "runt_to_vehicle_fleet_snapshot"
 DEFAULT_RULES_VERSION = "runt-v1"

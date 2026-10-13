@@ -16,12 +16,9 @@ from botocore.client import BaseClient
 from botocore.exceptions import BotoCoreError
 
 from pits.ingestion.raw_store import RawStore, S3RawStore
+from pits.sources.normalize_common import NormalizePermanentError, NormalizeTransientError
 from pits.sources.runt.normalize import normalize_runt
-from pits.sources.trm.normalize import (
-    NormalizePermanentError,
-    NormalizeTransientError,
-    normalize_trm,
-)
+from pits.sources.trm.normalize import normalize_trm
 from pits.storage.client import build_s3_client
 from pits.storage.raw_bucket import RawBucketError, RawBucketTransientError, verify_versioned_bucket
 from pits.storage.settings import StorageConfigError, StorageSettings, load_storage_settings

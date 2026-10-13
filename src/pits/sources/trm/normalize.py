@@ -27,6 +27,11 @@ from pits.normalized.manifest import (
     NormalizedManifestError,
     Output,
 )
+from pits.sources.normalize_common import (
+    NormalizeError,
+    NormalizePermanentError,
+    NormalizeTransientError,
+)
 from pits.sources.trm.contract import BACKFILL_FROM, DATASET_ID, SOURCE_SYSTEM
 from pits.sources.trm.parse import TrmDataError, TrmRecord, parse_page
 from pits.sources.trm.replay import (
@@ -41,17 +46,16 @@ TRANSFORM_NAME = "trm_to_fx_rate"
 DEFAULT_RULES_VERSION = "trm-v1"
 _DATASET = "fx_rate"
 
-
-class NormalizeError(RuntimeError):
-    """Base class of normalize failures."""
-
-
-class NormalizePermanentError(NormalizeError):
-    """Retrying cannot help (bad data, conflict, too large, missing full batch)."""
-
-
-class NormalizeTransientError(NormalizeError):
-    """Network/store failure: the same command may succeed later."""
+# Re-exported from normalize_common so existing imports keep working.
+__all__ = [
+    "DEFAULT_RULES_VERSION",
+    "TRANSFORM_NAME",
+    "NormalizeError",
+    "NormalizePermanentError",
+    "NormalizeResult",
+    "NormalizeTransientError",
+    "normalize_trm",
+]
 
 
 @dataclass(frozen=True)
