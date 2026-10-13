@@ -13,6 +13,7 @@ import shutil
 import uuid
 
 import pytest
+from divipola_dbt_support import divipola_rows, load_divipola_landing
 from psycopg import errors as pgerr
 from typer.testing import CliRunner
 
@@ -86,6 +87,8 @@ def warehouse(pg_settings):
     load_id = loader.execute(_LOAD_RUN_SQL, (HASH, HASH, HASH, str(uuid.uuid4()))).fetchone()[0]
     for day, rate in zip(DAYS, RATES, strict=True):
         loader.execute(_FX_SQL, (day, rate, f"raw/{day}", load_id))
+    # An unselected `build` also builds the DIVIPOLA nodes, whose size guard needs a snapshot.
+    load_divipola_landing(loader, divipola_rows())
     yield pg_settings, loader, admin
     loader.close()
     admin.close()
@@ -222,6 +225,42 @@ def test_reader_sees_marts_but_not_staging(warehouse, transform):
 # --- vehicle fleet (D100, D101) ---------------------------------------------------------------
 
 
+# D125-D127: `build --select tag:vehicle_fleet` also builds the DANE map and mart, which read
+# marts.dim_municipality (built by the DIVIPOLA build, not by this one). These D100 tests stand in
+# for a warehouse where that dimension already exists: the codes of the exception seed plus the
+# normalized pairs of FLEET, so the coverage tests of D128 pass and the D100 behavior is what is
+# tested here. The DANE behavior itself is tested in test_transform_dane_map_pg.py.
+_SEED_CODES = (
+    "11001", "76001", "13001", "54001", "52835", "19548", "73443", "88001", "70742", "05042",
+    "25843", "13468", "05237",
+)  # fmt: skip
+_DIM_NAMES = {  # code -> normalized (department, municipality) of the FLEET pairs that match
+    "11001": ("BOGOTA, D.C.", "BOGOTA, D.C."),
+    "88001": ("ARCHIPIELAGO DE SAN ANDRES, PROVIDENCIA", "SAN ANDRES"),
+    "52001": ("NARINO", "PASTO"),
+}
+
+
+def _prebuilt_dimension(settings):
+    t = connect(settings, Profile.TRANSFORMER, autocommit=True)
+    try:
+        t.execute(
+            "CREATE TABLE marts.dim_municipality (dane_municipality_code text, "
+            "dane_department_code text, department_name text, municipality_name text, "
+            "department_name_norm text, municipality_name_norm text, municipality_type text, "
+            "longitude numeric, latitude numeric, load_id bigint)"
+        )
+        for code in sorted({*_SEED_CODES, *_DIM_NAMES}):
+            dep, mun = _DIM_NAMES.get(code, (f"DEPARTAMENTO {code}", f"MUNICIPIO {code}"))
+            t.execute(
+                "INSERT INTO marts.dim_municipality VALUES (%s, %s, %s, %s, %s, %s, 'Municipio', "
+                "0, 0, 1)",
+                (code, code[:2], dep, mun, dep, mun),
+            )
+    finally:
+        t.close()
+
+
 @pytest.fixture
 def fleet(warehouse):
     """The fx_rate warehouse plus one fleet publication (2026-10) with messy spellings."""
@@ -231,6 +270,7 @@ def fleet(warehouse):
     ).fetchone()[0]
     for i, row in enumerate(FLEET):
         loader.execute(_FLEET_SQL, (*row, f"raw/fleet#{i}", load_id))
+    _prebuilt_dimension(warehouse[0])
     return admin, load_id
 
 

@@ -1,0 +1,32 @@
+version: 2
+
+seeds:
+  - name: runt_municipality_dane_exception
+    description: "RUNT (department, municipality) pairs whose normalized names do not match DIVIPOLA, with the DANE code Henry approved (D126). Takes precedence over the automatic match. A pair that does not exist in DIVIPOLA goes here with an empty code and reason not_in_divipola (D128)."
+    config:
+      tags: [vehicle_fleet, divipola]
+    data_tests:
+      - unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [department_name_norm, municipality_name_norm]
+    columns:
+      - name: department_name_norm
+        description: "RUNT nombre_departamento normalized with the D100 macro (the join key)."
+        data_tests: [not_null]
+      - name: municipality_name_norm
+        description: "RUNT nombre_municipio normalized with the D100 macro (the join key)."
+        data_tests: [not_null]
+      - name: dane_municipality_code
+        description: "5-digit DANE municipality code; empty only when reason is not_in_divipola."
+      - name: dane_municipality_name
+        description: "DIVIPOLA name of that code, for the reviewer; checked against the dimension (warn)."
+      - name: reason
+        description: "Why the pair is an exception."
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ['official_name_differs', 'not_in_divipola']
+      - name: decision_id
+        description: "Decision that approved the row."
+        data_tests: [not_null]

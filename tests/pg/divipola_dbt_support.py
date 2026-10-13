@@ -132,3 +132,49 @@ def reader_rows(settings, sql, params=()):
         return reader.execute(sql, params).fetchall()
     finally:
         reader.close()
+
+
+# --- RUNT vehicle fleet (one publication, 2026-10) ----------------------------------------------
+
+FLEET_HASH = "e" * 64
+# (department, municipality, service, status, class, registration_year, count) as the RUNT writes
+# them (no accents, truncated department names). Pairs: auto match, curated exceptions, homonyms
+# (SANTA ROSA in two departments), a leading-zero code (DON MATIAS) and an unmatched small pair.
+FLEET = [
+    ("ANTIOQUIA", "MEDELLIN", "PARTICULAR", "ACTIVO", "AUTOMOVIL", 2020, 1000),
+    ("BOGOTA D.C.", "BOGOTA", "PARTICULAR", "ACTIVO", "AUTOMOVIL", 2020, 5000),
+    ("BOGOTA D.C.", "BOGOTA", "PÚBLICO", "INCONSISTENTE", "BUS", 2015, 40),
+    ("VALLE DEL CAUCA", "CALI", "PARTICULAR", "ACTIVO", "MOTOCICLETA", 2022, 3000),
+    ("BOLIVAR", "SANTA ROSA", "PARTICULAR", "ACTIVO", "CAMPERO", 2010, 100),
+    ("CAUCA", "SANTA ROSA", "PARTICULAR", "ACTIVO", "CAMPERO", 2010, 50),
+    ("ANTIOQUIA", "DON MATIAS", "PARTICULAR", "ACTIVO", "AUTOMOVIL", 2019, 20),
+    ("TOLIMA", "PUEBLITO", "PARTICULAR", "ACTIVO", "AUTOMOVIL", 2019, 5),
+]
+_FLEET_RUN_SQL = (
+    "INSERT INTO ops.load_run (dataset, source_system, input_fingerprint, transform_name, "
+    "rules_version, manifest_key, manifest_sha256, csv_key, csv_sha256, csv_size_bytes, "
+    "row_count, coverage_from, coverage_to, last_input_batch_id, last_input_extraction_date, "
+    "last_input_finished_at, normalized_manifest, loader_version) VALUES "
+    "('vehicle_fleet_snapshot', 'mintransporte_runt_parque', %s, 't', '1', 'k', %s, 'c', %s, 1, "
+    "%s, '2026-10-01', '2026-10-01', %s, '2026-10-12', now(), '{}'::jsonb, '0.1') RETURNING load_id"
+)
+_FLEET_SQL = (
+    "INSERT INTO landing.vehicle_fleet_snapshot VALUES (2026, 10, %s, %s, %s, %s, %s, %s, %s, "
+    "'mintransporte_runt_parque', %s, %s)"
+)
+
+
+def load_fleet_landing(loader, rows) -> int:
+    load_id = loader.execute(
+        _FLEET_RUN_SQL, (FLEET_HASH, FLEET_HASH, FLEET_HASH, len(rows), str(uuid.uuid4()))
+    ).fetchone()[0]
+    for i, row in enumerate(rows):
+        loader.execute(_FLEET_SQL, (*row, f"raw/fleet#{i}", load_id))
+    return load_id
+
+
+@pytest.fixture
+def fleet(warehouse):
+    """The DIVIPOLA warehouse plus one RUNT publication: (settings, loader, admin)."""
+    load_fleet_landing(warehouse[1], FLEET)
+    return warehouse

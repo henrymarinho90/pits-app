@@ -180,3 +180,104 @@ models:
               arguments:
                 to: source('ops', 'load_run_divipola')
                 field: load_id
+
+  - name: map_runt_municipality_dane
+    description: "RUNT (department, municipality) pair -> DANE municipality code (grain: one row per normalized pair seen in any publication). Curated exceptions (seed) first, then the automatic match on normalized names; no fuzzy rules (D126). A pair without a code keeps a NULL code and is policed by the coverage tests (D128)."
+    config:
+      tags: [vehicle_fleet, divipola]
+    data_tests:
+      - unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [department_name_norm, municipality_name_norm]
+    columns:
+      - name: department_name_norm
+        description: "RUNT nombre_departamento normalized with the D100 macro."
+        data_tests: [not_null]
+      - name: municipality_name_norm
+        description: "RUNT nombre_municipio normalized with the D100 macro."
+        data_tests: [not_null]
+      - name: dane_municipality_code
+        description: "5-digit DANE code, or NULL when neither the exception seed nor the automatic match found one."
+        data_tests:
+          - relationships:
+              arguments:
+                to: ref('dim_municipality')
+                field: dane_municipality_code
+      - name: dane_department_code
+        description: "2-digit DANE department code (first two digits of the municipality code)."
+      - name: match_method
+        description: "auto_norm (normalized names equal), curated (exception seed) or NULL (no code)."
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ['auto_norm', 'curated']
+              config:
+                severity: error
+      - name: exception_reason
+        description: "Reason of the exception row when the pair is in the seed, else NULL."
+
+  - name: fct_vehicle_fleet_snapshot_dane
+    description: "fct_vehicle_fleet_snapshot (same grain, same rows) plus the DANE municipality code; unmatched cells keep NULL dane_* columns (D127). The D100 fct is not modified."
+    config:
+      tags: [vehicle_fleet, divipola]
+    data_tests:
+      - unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [publication_year, publication_month, department_name, municipality_name, service_name, vehicle_status, vehicle_class, registration_year]
+    columns:
+      - name: publication_year
+        description: "Year of the publication (snapshot month)."
+        data_tests: [not_null]
+      - name: publication_month
+        description: "Month (1-12) of the publication."
+        data_tests: [not_null]
+      - name: department_name
+        description: "Department as published by the RUNT."
+        data_tests: [not_null]
+      - name: municipality_name
+        description: "Municipality (registration office seat, an inference) as published by the RUNT."
+        data_tests: [not_null]
+      - name: service_name
+        description: "Service type as published."
+        data_tests: [not_null]
+      - name: vehicle_status
+        description: "Vehicle status as published."
+        data_tests: [not_null]
+      - name: vehicle_class
+        description: "Vehicle class as published."
+        data_tests: [not_null]
+      - name: registration_year
+        description: "Registration year of the vehicles in the cell."
+        data_tests: [not_null]
+      - name: vehicle_count
+        description: "Vehicles in the cell at the publication date (stock, rule 5)."
+        data_tests: [not_null]
+      - name: source_system
+        description: "Source the snapshot came from."
+        data_tests: [not_null]
+      - name: source_reference
+        description: "Raw object path/row index (lineage to raw)."
+        data_tests: [not_null]
+      - name: load_id
+        description: "ops.load_run row that wrote this publication."
+        data_tests: [not_null]
+      - name: department_name_norm
+        description: "department_name normalized (D100)."
+        data_tests: [not_null]
+      - name: municipality_name_norm
+        description: "municipality_name normalized (D100)."
+        data_tests: [not_null]
+      - name: vehicle_class_norm
+        description: "vehicle_class normalized (D100)."
+        data_tests: [not_null]
+      - name: dane_municipality_code
+        description: "5-digit DANE municipality code, NULL when unmatched."
+        data_tests:
+          - relationships:
+              arguments:
+                to: ref('dim_municipality')
+                field: dane_municipality_code
+      - name: dane_department_code
+        description: "2-digit DANE department code, NULL when unmatched."
+      - name: dane_match_method
+        description: "auto_norm, curated, or NULL when unmatched."
