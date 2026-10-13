@@ -56,3 +56,30 @@ def test_ci_pg_job_docker_run_uses_env_vars():
         and '"$PG_IMAGE"' in r
         for r in runs
     ), 'no step runs `docker run` with -e POSTGRES_INITDB_ARGS="$PG_INITDB_ARGS" and "$PG_IMAGE"'
+
+
+def _run_text() -> str:
+    return next(s["run"] for s in _ci_pg_job()["steps"] if "docker run" in s.get("run", ""))
+
+
+def test_ci_docker_run_resources_and_port_match_compose():
+    pg = _load(COMPOSE)["services"]["postgres"]
+    run = _run_text()
+    assert pg["mem_limit"] == "1g" and pg["memswap_limit"] == "1g"
+    assert f"--memory {pg['mem_limit']}" in run
+    assert f"--memory-swap {pg['memswap_limit']}" in run
+    assert f"--shm-size {pg['shm_size']}" in run
+    # compose: "127.0.0.1:${POSTGRES_HOST_PORT:-5433}:5432"; CI pins 5433 (the default).
+    port = pg["ports"][0].replace("${POSTGRES_HOST_PORT:-5433}", "5433")
+    assert f"-p {port}" in run
+
+
+def test_upload_step_blanks_the_generated_passwords():
+    step = next(s for s in _ci_pg_job()["steps"] if s.get("name") == "Upload junit")
+    names = {
+        "POSTGRES_PASSWORD",
+        "PITS_PG_LOADER_PASSWORD",
+        "PITS_PG_READER_PASSWORD",
+        "PITS_PG_TRANSFORMER_PASSWORD",
+    }
+    assert {k: step["env"].get(k) for k in names} == dict.fromkeys(names, "")

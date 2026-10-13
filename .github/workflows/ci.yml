@@ -1,4 +1,5 @@
-# CI minimo como habilitador (D49). CI completo con dbt build en Fase 5.
+# CI completo (Fase 5, D112-D116): lint/format/tests, job pg con Postgres efimero, migrate, seed
+# sintetico, dbt build/freshness y verificacion de marts. Contract tests (SeaweedFS) fuera (D112).
 name: ci
 
 on:
@@ -153,8 +154,33 @@ jobs:
       - name: Tests pg
         run: uv run pytest -m "pg and not contract" -q --junitxml=pg-junit.xml
 
+      # D113: pipeline de datos sobre el Postgres efimero (seed sintetico, nunca datos reales).
+      - name: Migrate warehouse
+        run: uv run pits db migrate
+
+      - name: Seed synthetic landing data
+        run: uv run python scripts/ci_seed_warehouse.py seed
+
+      - name: dbt build
+        run: uv run pits transform build
+
+      - name: dbt source freshness
+        run: uv run pits transform freshness
+
+      - name: dbt build (idempotency)
+        run: uv run pits transform build
+
+      - name: Verify marts against the seed
+        run: uv run python scripts/ci_seed_warehouse.py verify
+
       - name: Upload junit
         if: always()
+        # Vacios a nivel de step: el post-step de la action no recibe las contrasenas de GITHUB_ENV.
+        env:
+          POSTGRES_PASSWORD: ""
+          PITS_PG_LOADER_PASSWORD: ""
+          PITS_PG_READER_PASSWORD: ""
+          PITS_PG_TRANSFORMER_PASSWORD: ""
         uses: actions/upload-artifact@v7
         with:
           name: pg-junit
