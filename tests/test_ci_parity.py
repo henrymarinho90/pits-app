@@ -11,6 +11,8 @@ Offline. Values are read with PyYAML (already in uv.lock, transitive of dbt; no 
 
 from __future__ import annotations
 
+import re
+import tomllib
 from pathlib import Path
 
 import yaml
@@ -104,7 +106,6 @@ def test_network_contract_image_matches_compose_seaweedfs():
 
 def test_ci_contract_job_uses_compose_and_default_probe_network():
     runs = _contract_runs()
-    assert "docker compose up -d --wait seaweedfs" in runs
     assert "uv run pits storage init" in runs
     assert "docker compose up -d --wait seaweedfs postgres" in runs
     # Each contract/pg test runs in exactly one job: contract takes all `contract` (incl.
@@ -122,19 +123,11 @@ def test_ci_contract_job_never_uses_env_file_and_blanks_secrets_on_upload():
     assert any(s.get("run") == "test ! -e .env" for s in job["steps"])
     step = next(s for s in job["steps"] if s.get("name") == "Upload junit")
     assert step["if"] == "always()"
-    secrets_ = {
-        "S3_ACCESS_KEY_ID",
-        "S3_SECRET_ACCESS_KEY",
-        "PITS_S3_WRITER_ACCESS_KEY_ID",
-        "PITS_S3_WRITER_SECRET_ACCESS_KEY",
-        "PITS_S3_READER_ACCESS_KEY_ID",
-        "PITS_S3_READER_SECRET_ACCESS_KEY",
-        "PITS_SEAWEEDFS_FILER_JWT_KEY",
-        "POSTGRES_PASSWORD",
-        "PITS_PG_LOADER_PASSWORD",
-        "PITS_PG_READER_PASSWORD",
-        "PITS_PG_TRANSFORMER_PASSWORD",
-    }
+    # Names come from the generator step itself (dict entries built with `secrets.*`), not a
+    # hand-written list: a new generated secret that the upload step forgets to blank fails here.
+    generator = _step(job, "Generate ephemeral credentials")["run"]
+    secrets_ = set(re.findall(r'"([A-Z][A-Z0-9_]+)":\s*secrets\.', generator))
+    assert len(secrets_) >= 11, secrets_
     assert {k: step["env"].get(k) for k in secrets_} == dict.fromkeys(secrets_, "")
 
 
@@ -149,3 +142,16 @@ def test_ci_contract_job_always_tears_down_compose():
 def test_ci_jobs_mask_generated_credentials():
     for job in (_ci_pg_job(), _ci_contract_job()):
         assert "::add-mask::" in _step(job, "Generate ephemeral credentials")["run"]
+
+
+def test_default_pytest_run_excludes_exactly_the_job_scoped_markers():
+    # The partition contract/pg/airflow depends on addopts excluding them from the plain run and on
+    # the `ci` job not overriding it with `-m`.
+    cfg = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))["tool"]["pytest"][
+        "ini_options"
+    ]
+    assert "-m 'not contract and not pg and not airflow'" in cfg["addopts"]
+    declared = {m.split(":", 1)[0].strip() for m in cfg["markers"]}
+    assert declared == {"contract", "pg", "airflow"}
+    tests_step = _step(_load(CI)["jobs"]["ci"], "Tests")
+    assert tests_step["run"].strip() == "uv run pytest -q"
