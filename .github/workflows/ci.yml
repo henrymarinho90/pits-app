@@ -251,6 +251,15 @@ jobs:
                   fh.write(f"{name}={value}\n")
           PY
 
+      # SeaweedFS calcula el maximo de volumenes (-volume.max=0) segun el espacio libre y los tests
+      # crean un bucket (coleccion) por caso: con el disco del runner casi lleno se agotan los volumenes
+      # ("failed to find writable volume"). Se libera espacio de toolchains que el job no usa.
+      - name: Free disk space
+        run: |
+          df -h / | tail -n 1
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
+          df -h / | tail -n 1
+
       # Solo seaweedfs: el servicio postgres queda sin crear. --wait espera el healthcheck.
       - name: Start SeaweedFS (compose)
         run: docker compose up -d --wait seaweedfs
@@ -267,6 +276,16 @@ jobs:
       # `pits` (name:), asi que la red es pits_default, el default del test.
       - name: Contract tests
         run: uv run pytest -m "contract and not pg" -q --junitxml=contract-junit.xml
+
+      - name: SeaweedFS volume status on failure
+        if: failure()
+        run: |
+          docker exec pits-seaweedfs curl -fsS http://127.0.0.1:9333/dir/status | python3 -c "
+          import json, sys
+          d = json.load(sys.stdin)['Topology']
+          print({k: d.get(k) for k in ('Max', 'Free', 'Volumes')})
+          " || true
+          df -h / | tail -n 1
 
       - name: Compose logs on failure
         if: failure()
