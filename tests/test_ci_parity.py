@@ -13,7 +13,6 @@ from __future__ import annotations
 
 from pathlib import Path
 
-import pytest
 import yaml
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -45,20 +44,10 @@ def test_compose_postgres_is_pinned_with_digest_and_initdb_args():
     assert "--locale-provider=builtin" in args
 
 
-@pytest.mark.xfail(
-    strict=True,
-    raises=KeyError,
-    reason="CI job `pg` does not exist yet (arrives in S2 of Fase 5, D112); remove then",
-)
 def test_ci_pg_job_matches_compose_postgres():
     assert _ci_values() == _compose_values()
 
 
-@pytest.mark.xfail(
-    strict=True,
-    raises=KeyError,
-    reason="CI job `pg` does not exist yet (arrives in S2 of Fase 5, D112); remove then",
-)
 def test_ci_pg_job_docker_run_uses_env_vars():
     runs = [step.get("run", "") for step in _ci_pg_job()["steps"]]
     assert any(
