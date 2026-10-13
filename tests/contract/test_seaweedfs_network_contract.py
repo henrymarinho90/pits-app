@@ -122,7 +122,7 @@ def _http_code(
     return int(parsed.group(2)), parsed.group(1)
 
 
-@pytest.mark.parametrize("port", [8888, 9333, 8080, 18888, 19333, 18080])
+@pytest.mark.parametrize("port", [8888, 9333, 8080, 18888, 19333, 18080, 8181, 9101])
 def test_internal_ports_refuse_connections(port: int) -> None:
     curl_exit, _ = _http_code(f"http://{HOST}:{port}/", control=True)
     assert curl_exit == CURL_CONNECTION_REFUSED, (

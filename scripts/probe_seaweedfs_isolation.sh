@@ -4,7 +4,7 @@
 # host 127.0.0.1:28333. Credenciales y clave JWT aleatorias en un directorio temporal; no lee .env
 # y no imprime secretos (no usar `bash -x`).
 # Fase 1 (linea base, command actual de compose): levanta con s3.json, escribe un objeto testigo
-#   (sha256) y mide desde un contenedor hermano los puertos 8888/9333/8080/18888/19333/18080 y el
+#   (sha256) y mide desde un contenedor hermano los puertos 8888/9333/8080/18888/19333/18080/8181/9101 y el
 #   gRPC de 18333 (RemoveIdentity vacio; se espera grpc-status 3).
 # Fase 2: recrea sobre el MISMO volumen con -ip/-ip.bind=127.0.0.1 -s3.ip.bind=0.0.0.0, -s3.port.iceberg=0
 #   -s3.port.lance=0 (deshabilitan Iceberg REST 8181 y Lance 9101; "0 to disable") y security.toml
@@ -30,7 +30,8 @@ RAW_BUCKET="pits-raw"
 NORM_BUCKET="pits-normalized"
 CMD_PHASE1='["server", "-s3", "-s3.config=/etc/seaweedfs/s3.json"]'
 CMD_PHASE2='["server", "-s3", "-s3.config=/etc/seaweedfs/s3.json", "-ip=127.0.0.1", "-ip.bind=127.0.0.1", "-s3.ip.bind=0.0.0.0", "-s3.port.iceberg=0", "-s3.port.lance=0"]'
-INTERNAL_PORTS="8888 9333 8080 18888 19333 18080"
+INTERNAL_PORTS="8888 9333 8080 18888 19333 18080 8181 9101"
+N_INTERNAL=8
 
 cd "$(dirname "$0")/.."
 
@@ -55,8 +56,8 @@ if docker volume inspect "$VOLUME" >/dev/null 2>&1; then
   trap - EXIT; rm -rf "$T"; exit 1
 fi
 
-rand_hex() { uv run python -c "import secrets; print(secrets.token_hex(16).upper())"; }
-rand_url() { uv run python -c "import secrets; print(secrets.token_urlsafe($1))"; }
+rand_hex() { uv run --no-sync python -c "import secrets; print(secrets.token_hex(16).upper())"; }
+rand_url() { uv run --no-sync python -c "import secrets; print(secrets.token_urlsafe($1))"; }
 
 ADMIN_KEY="$(rand_hex)";  ADMIN_SECRET="$(rand_url 32)"
 WRITER_KEY="$(rand_hex)"; WRITER_SECRET="$(rand_url 32)"
@@ -154,7 +155,7 @@ wait_healthy() {
   until [ "$(docker inspect -f '{{.State.Health.Status}}' "$CNAME" 2>/dev/null || true)" = healthy ]; do
     if [ "$SECONDS" -ge "$deadline" ]; then
       echo "FAIL: $CNAME no llego a healthy en ${HEALTH_TIMEOUT}s" >&2
-      docker logs --tail 30 "$CNAME" >&2 || true
+      docker logs --tail 30 "$CNAME" 2>&1 | grep -viE 'key|secret|token' >&2 || true
       return 1
     fi
     sleep 2
@@ -163,8 +164,8 @@ wait_healthy() {
 
 # sib <script>: contenedor hermano (misma imagen, con curl) en la red del probe. AK/SK por entorno.
 sib() {
-  AK="$ADMIN_KEY" SK="$ADMIN_SECRET" docker run --rm --network "$NET" -e AK -e SK \
-    --entrypoint sh "$IMAGE" -c "$1"
+  ( export AK="$ADMIN_KEY" SK="$ADMIN_SECRET"
+    docker run --rm --network "$NET" -e AK -e SK --entrypoint sh "$IMAGE" -c "$1" )
 }
 
 curl_codes() {
@@ -188,23 +189,23 @@ EMPTY_SHA="e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
 witness_put() {
   sib "head -c 1048576 /dev/urandom > /tmp/w.bin
 sha=\$(sha256sum /tmp/w.bin | cut -d' ' -f1)
-b=\$(curl -s -m 20 --aws-sigv4 $SIGV4 --user \"\$AK:\$SK\" -H 'x-amz-content-sha256: $EMPTY_SHA' -X PUT -o /dev/null -w '%{http_code}' $S3URL/$BUCKET)
-o=\$(curl -s -m 30 --aws-sigv4 $SIGV4 --user \"\$AK:\$SK\" -H \"x-amz-content-sha256: \$sha\" -T /tmp/w.bin -o /dev/null -w '%{http_code}' $S3URL/$BUCKET/witness.bin)
+b=\$(curl -s -m 20 --aws-sigv4 $SIGV4 --variable %AK --variable %SK --expand-user '{{AK}}:{{SK}}' -H 'x-amz-content-sha256: $EMPTY_SHA' -X PUT -o /dev/null -w '%{http_code}' $S3URL/$BUCKET)
+o=\$(curl -s -m 30 --aws-sigv4 $SIGV4 --variable %AK --variable %SK --expand-user '{{AK}}:{{SK}}' -H \"x-amz-content-sha256: \$sha\" -T /tmp/w.bin -o /dev/null -w '%{http_code}' $S3URL/$BUCKET/witness.bin)
 echo \"sha256=\$sha bucket_put=\$b object_put=\$o\""
 }
 
 witness_get() {
-  sib "curl -s -m 30 --aws-sigv4 $SIGV4 --user \"\$AK:\$SK\" -H 'x-amz-content-sha256: $EMPTY_SHA' -o /tmp/g.bin -w 'get=%{http_code} ' $S3URL/$BUCKET/witness.bin
+  sib "curl -s -m 30 --aws-sigv4 $SIGV4 --variable %AK --variable %SK --expand-user '{{AK}}:{{SK}}' -H 'x-amz-content-sha256: $EMPTY_SHA' -o /tmp/g.bin -w 'get=%{http_code} ' $S3URL/$BUCKET/witness.bin
 echo \"sha256=\$(sha256sum /tmp/g.bin | cut -d' ' -f1)\""
 }
 
 # Lista listeners TCP LISTEN del contenedor como "addr:port" (0.0.0.0, 127.0.0.1, ::, ::1 o crudo).
 listeners() {
-  local f line addr port a
+  local f port a laddr
   for f in /proc/net/tcp /proc/net/tcp6; do
-    docker exec "$CNAME" cat "$f" | tail -n +2 | while read -r _ local _ st _; do
+    docker exec "$CNAME" cat "$f" | tail -n +2 | while read -r _ laddr _ st _; do
       [ "$st" = "0A" ] || continue
-      a="${local%%:*}"; port=$((16#${local##*:}))
+      a="${laddr%%:*}"; port=$((16#${laddr##*:}))
       case "$a" in
         00000000) a="0.0.0.0" ;;
         ????????) a="$((16#${a:6:2})).$((16#${a:4:2})).$((16#${a:2:2})).$((16#${a:0:2}))" ;;
@@ -233,6 +234,7 @@ echo "healthy"
 put_out="$(witness_put)"
 echo "witness: ${put_out//sha256=/sha256 = }"
 SHA_BEFORE="$(sed -n 's/.*sha256=\([0-9a-f]*\).*/\1/p' <<<"$put_out")"
+[[ "$put_out" == *"bucket_put=200 object_put=200" ]] || { echo "FAIL: fase 1 bucket_put/object_put distintos de 200" >&2; exit 1; }
 [ -n "$SHA_BEFORE" ] || { echo "FAIL: no se obtuvo sha256 del testigo" >&2; exit 1; }
 echo "sha256 antes: $SHA_BEFORE"
 echo "listeners fase 1: $(listeners | tr '\n' ' ')"
@@ -260,7 +262,7 @@ check "resto solo en loopback" "$([ -z "$loop_bad" ] && echo 1 || echo 0)"
 echo "-- puertos internos desde contenedor hermano (esperado curl_exit=7)"
 out2="$(curl_codes)"
 echo "$out2" | sed 's/^/  /'
-check "6 puertos internos con curl exit 7" "$([ "$(grep -c 'curl_exit=7' <<<"$out2")" = 6 ] && echo 1 || echo 0)"
+check "$N_INTERNAL puertos internos con curl exit 7" "$([ "$(grep -c 'curl_exit=7' <<<"$out2")" = "$N_INTERNAL" ] && echo 1 || echo 0)"
 
 hz="$(sib "curl -s -m 5 -o /dev/null -w '%{http_code}' $S3URL/healthz" || true)"
 echo "-- /healthz 8333: $hz"
@@ -286,25 +288,25 @@ if [ "$fail" -ne 0 ]; then
   exit 1
 fi
 
-# Entorno inline para el CLI y los tests (sin imprimir valores).
+# Entorno exportado en subshell (fuera de argv) para el CLI y los tests (sin imprimir valores).
 run_pits() {
-  env S3_ENDPOINT_URL="http://127.0.0.1:$HOST_PORT" S3_REGION="$REGION" \
-    S3_ACCESS_KEY_ID="$ADMIN_KEY" S3_SECRET_ACCESS_KEY="$ADMIN_SECRET" \
-    PITS_S3_WRITER_ACCESS_KEY_ID="$WRITER_KEY" PITS_S3_WRITER_SECRET_ACCESS_KEY="$WRITER_SECRET" \
-    PITS_S3_READER_ACCESS_KEY_ID="$READER_KEY" PITS_S3_READER_SECRET_ACCESS_KEY="$READER_SECRET" \
-    S3_RAW_BUCKET="$RAW_BUCKET" S3_NORMALIZED_BUCKET="$NORM_BUCKET" S3_CONTRACT_LARGE_MB=128 \
-    PITS_SWNET_NETWORK="$NET" PITS_SWNET_HOST=seaweedfs \
-    "$@"
+  ( export S3_ENDPOINT_URL="http://127.0.0.1:$HOST_PORT" S3_REGION="$REGION" \
+      S3_ACCESS_KEY_ID="$ADMIN_KEY" S3_SECRET_ACCESS_KEY="$ADMIN_SECRET" \
+      PITS_S3_WRITER_ACCESS_KEY_ID="$WRITER_KEY" PITS_S3_WRITER_SECRET_ACCESS_KEY="$WRITER_SECRET" \
+      PITS_S3_READER_ACCESS_KEY_ID="$READER_KEY" PITS_S3_READER_SECRET_ACCESS_KEY="$READER_SECRET" \
+      S3_RAW_BUCKET="$RAW_BUCKET" S3_NORMALIZED_BUCKET="$NORM_BUCKET" S3_CONTRACT_LARGE_MB=128 \
+      PITS_SWNET_NETWORK="$NET" PITS_SWNET_HOST=seaweedfs
+    "$@" )
 }
 
 echo "-- uv run pits storage init"
-rc=0; init_out="$(run_pits uv run pits storage init 2>&1)" || rc=$?
+rc=0; init_out="$(run_pits uv run --no-sync pits storage init 2>&1)" || rc=$?
 echo "$init_out" | tail -8 | sed 's/^/  /'
 echo "  exit code: $rc"
 check "storage init exit 0 y policy=applied" "$([ "$rc" = 0 ] && grep -q 'policy=applied' <<<"$init_out" && echo 1 || echo 0)"
 
 echo "-- uv run pytest -m contract -q (contra el probe)"
-rc=0; py_out="$(run_pits uv run pytest -m contract -q --deselect tests/contract/test_fx_rate_load_e2e.py --deselect tests/contract/test_vehicle_fleet_load_e2e.py 2>&1)" || rc=$?
+rc=0; py_out="$(run_pits uv run --no-sync pytest -m contract -q --deselect tests/contract/test_fx_rate_load_e2e.py --deselect tests/contract/test_vehicle_fleet_load_e2e.py 2>&1)" || rc=$?
 echo "$py_out" | { if [ -n "${PROBE_VERBOSE:-}" ]; then tail -150; else tail -8; fi; } | sed 's/^/  /'
 echo "  exit code: $rc"
 check "pytest -m contract exit 0" "$([ "$rc" = 0 ] && echo 1 || echo 0)"

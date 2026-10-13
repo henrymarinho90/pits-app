@@ -12,18 +12,24 @@ services:
     # Identidades S3 (D104): desde el config s3.json de abajo. NO definir AWS_ACCESS_KEY_ID /
     # AWS_SECRET_ACCESS_KEY aqui: weed 4.48 las sigue aceptando como admin ADICIONAL aunque haya
     # s3.json (verificado en sonda), lo que anularia el aislamiento writer/reader.
-    command: ["server", "-s3", "-s3.config=/etc/seaweedfs/s3.json"]
+    # Aislamiento de listeners (D117, D118): -ip/-ip.bind=127.0.0.1 deja filer, master y volume (y sus gRPC)
+    # solo en loopback dentro del contenedor; -s3.ip.bind=0.0.0.0 mantiene S3 (8333) y su gRPC (18333)
+    # alcanzables en la red Docker. Iceberg REST (8181) y Lance (9101) no se usan: se apagan con puerto 0.
+    command: ["server", "-s3", "-s3.config=/etc/seaweedfs/s3.json", "-ip=127.0.0.1", "-ip.bind=127.0.0.1", "-s3.ip.bind=0.0.0.0", "-s3.port.iceberg=0", "-s3.port.lance=0"]
     configs:
       - source: seaweedfs_s3
         target: /etc/seaweedfs/s3.json
+      - source: seaweedfs_security
+        target: /etc/seaweedfs/security.toml
     environment:
       GOMEMLIMIT: 500MiB # (D63)
     mem_limit: 768m
     memswap_limit: 768m
     restart: unless-stopped
     ports:
-      # Solo S3 y solo loopback en el host. Master (9333) y filer (8888) NO se publican, pero responden sin
-      # autenticacion a cualquier contenedor de la red Docker pits_default (riesgo abierto, decide Henry).
+      # Solo S3 y solo loopback en el host. Filer, master y volume solo escuchan en loopback dentro del
+      # contenedor (D117), Iceberg y Lance estan apagados (no se usan) y el gRPC de S3 (18333) exige JWT
+      # ([jwt.filer_signing] en security.toml, D118): ningun otro contenedor de pits_default los alcanza.
       - "127.0.0.1:8333:8333"
     volumes:
       - seaweedfs_data:/data
@@ -99,6 +105,12 @@ configs:
           }
         ]
       }
+
+  # JWT del filer (D118): el gRPC de S3 (18333) deja de aceptar llamadas sin firmar. Clave desde .env.
+  seaweedfs_security:
+    content: |
+      [jwt.filer_signing]
+      key = "${PITS_SEAWEEDFS_FILER_JWT_KEY:?set PITS_SEAWEEDFS_FILER_JWT_KEY in .env}"
 
 volumes:
   seaweedfs_data:
