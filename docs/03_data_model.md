@@ -1,7 +1,7 @@
 # 03 — Modelo de datos
 
-Última actualización: 2026-10-12
-Estado: v14 — linaje de `vehicle_fleet_snapshot` (raw → normalized → `landing.vehicle_fleet_snapshot` → `staging.stg_vehicle_fleet_snapshot` → `marts.fct_vehicle_fleet_snapshot`) en §3 y nota de implementación en §27 (D96–D103, Fase 1b, 2026-10-12); el municipio es el de matrícula; D51 y D59 sin cambio. Versión anterior: v13 — linaje dbt de `landing.fx_rate` → `staging.stg_fx_rate` → `marts.fct_fx_rate_daily` en §3 y §26 (D85–D88, hito dbt, 2026-10-11); mismas 7 columnas en cada capa, sin derivadas; sin cambio de entidades ni de grano. Antes: v12 — notas de linaje de `landing.fx_rate` en §3 y de la tabla en §26 (D79–D82, hito loader fx_rate, 2026-10-11); sin cambio de entidades ni de grano. Antes: v11 — nota de implementación de `fx_rate` para la TRM (D77, D76): par USD→COP, `rate` = COP por 1 USD, `source_reference`, columnas del CSV normalizado; sin cambio de grano (D47). Antes: v10 — aclaración de §1 sobre modelo fuente/analítico frente a OLTP (D70, D72). Sin cambios de entidades. Antes: v9 — alineado con `02_domain_taxonomy.md` v12; nota de mapeo del manifest en §3 (paso 3 de Fase 1, D65 y D66).
+Última actualización: 2026-10-13
+Estado: v15 — geografía DANE en §27 (D121–D128, hito DANE/DIVIPOLA, 2026-10-13): `marts.dim_municipality`, mapa `marts.map_runt_municipality_dane` y `marts.fct_vehicle_fleet_snapshot_dane`; el municipio sigue siendo el de matrícula (D97) y el fct de D100 no cambia; §17 y pregunta 2 de §I marcadas como resueltas. Versión anterior: v14 — linaje de `vehicle_fleet_snapshot` (raw → normalized → `landing.vehicle_fleet_snapshot` → `staging.stg_vehicle_fleet_snapshot` → `marts.fct_vehicle_fleet_snapshot`) en §3 y nota de implementación en §27 (D96–D103, Fase 1b, 2026-10-12); el municipio es el de matrícula; D51 y D59 sin cambio. Versión anterior: v13 — linaje dbt de `landing.fx_rate` → `staging.stg_fx_rate` → `marts.fct_fx_rate_daily` en §3 y §26 (D85–D88, hito dbt, 2026-10-11); mismas 7 columnas en cada capa, sin derivadas; sin cambio de entidades ni de grano. Antes: v12 — notas de linaje de `landing.fx_rate` en §3 y de la tabla en §26 (D79–D82, hito loader fx_rate, 2026-10-11); sin cambio de entidades ni de grano. Antes: v11 — nota de implementación de `fx_rate` para la TRM (D77, D76): par USD→COP, `rate` = COP por 1 USD, `source_reference`, columnas del CSV normalizado; sin cambio de grano (D47). Antes: v10 — aclaración de §1 sobre modelo fuente/analítico frente a OLTP (D70, D72). Sin cambios de entidades. Antes: v9 — alineado con `02_domain_taxonomy.md` v12; nota de mapeo del manifest en §3 (paso 3 de Fase 1, D65 y D66).
 
 ## 1. Propósito
 
@@ -423,7 +423,7 @@ Diseño provisional:
 - `city_name`
 - `official_code` nullable
 
-La decisión de usar código DANE desde el MVP depende de la inspección de fuentes oficiales en Fase 0.5.
+La decisión de usar código DANE desde el MVP depende de la inspección de fuentes oficiales en Fase 0.5. RESUELTA por D121–D128 (hito DANE/DIVIPOLA): ver `marts.dim_municipality` en §27.
 
 ## 18. `catalog_source`
 
@@ -650,6 +650,14 @@ Entidad de parque (STOCK, no flujo; regla 5). Grano: un corte mensual (`a_o_de_p
 
 Los nombres de columna son los de origen; el nombre final de las columnas en el modelo (`snake_case` en inglés, §2) y los tipos físicos se deciden al implementar la Fase 1b. `08` declara los tipos de Socrata, pero el JSON los devuelve todos como string (`08`, Ficha 1; re-verificado el 2026-10-10: `cantidad` llega como `"1"`); se castean en el parser. `08` no define una llave única de fila ni ofrece historial: la fuente trae un único corte (agosto 2026), por lo que cada snapshot mensual debe guardarse en raw (`08`, Objetivo 4).
 
+**Geografía DANE (D121–D128, hito DANE/DIVIPOLA, 2026-10-13).** El municipio de matrícula de `vehicle_fleet_snapshot` se cruza con el código DANE de municipio sin cambiar la entidad ni el grano:
+
+- `marts.dim_municipality` (table): una fila por código DANE de DIVIPOLA (`gdxc-w37w`, DANE, CC BY-SA 4.0), con `_norm` de nombres y lat/lon tipadas (D121, D125).
+- `marts.map_runt_municipality_dane`: una fila por par RUNT normalizado (departamento y municipio). Primero aplica el seed versionado de excepciones `transform/seeds/runt_municipality_dane_exception.csv` y después el cruce exacto por `_norm`; no hay reglas difusas (D126). Un par sin código conserva su fila con código null (D128).
+- `marts.fct_vehicle_fleet_snapshot_dane`: mismo grano y mismas filas que `fct_vehicle_fleet_snapshot`, con las columnas `dane_municipality_code`, `dane_department_code` y `dane_match_method` (D127). El fct de D100 no cambia.
+
+Inferencia (D121): el municipio de matrícula es la sede del organismo de tránsito, no necesariamente donde circula el vehículo. Lat/lon no se usan para demanda.
+
 Re-verificado 2026-10-10: el corte vigente en `u3vn-bdcy` es OCTUBRE 2026 y el corte agosto 2026 citado arriba ya no existe en la fuente. Inferencia: la fuente conserva solo el corte vigente y se sobrescribe cada mes.
 
 **Segmentación por servicio.** `nombre_servicio` tiene 5 valores reales (RUNT `u3vn-bdcy`, corte OCTUBRE 2026; ver `research/parque_por_marca.md`, sección 3):
@@ -745,6 +753,6 @@ A definir por fuente:
 # I. Preguntas abiertas
 
 1. ¿Las unidades `piece`, `pair`, `set`, `liter` cubren los kits reales o se requieren más?
-2. ¿Se normaliza geografía con código DANE desde el MVP?
+2. ¿Se normaliza geografía con código DANE desde el MVP? RESUELTA por D121–D128 (§27; texto original conservado).
 3. ¿La reputación comercial será un único score o scores separados como comprador y vendedor? La decisión debe tomarse después de generar y analizar eventos fuente.
 4. ¿En qué fase se incorpora historial de inventario/precio: inmediatamente en Fase 3 o como extensión SCD2?
