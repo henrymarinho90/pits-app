@@ -6,7 +6,7 @@ on:
   pull_request:
     branches: [main]
   push:
-    branches: [main]
+    branches: [main, feat/ci-contract] # TEMP: iterar sin PR; quitar antes del PR
 
 permissions:
   contents: read
@@ -190,8 +190,9 @@ jobs:
           if-no-files-found: warn
 
   # Contract tests (D115): SeaweedFS levantado con el docker-compose.yml real (misma imagen@digest,
-  # s3.json y security.toml generados por compose). Secretos efimeros (D114), sin .env. Se excluyen los
-  # contract marcados pg (`*_load_e2e`): necesitan Postgres + warehouse y los cubre el job pg.
+  # s3.json y security.toml generados por compose) y Postgres del compose (necesario para los e2e
+  # marcados contract+pg: `*_load_e2e`). Secretos efimeros (D114), sin .env. Cada test corre en un
+  # solo job: aqui `-m contract` (incluye contract+pg); el job pg usa `pg and not contract`.
   contract:
     runs-on: ubuntu-latest
     timeout-minutes: 30
@@ -213,7 +214,8 @@ jobs:
 
       # D114/D104: formatos de .env.example. Access keys A-Za-z0-9 (hex mayuscula, distintas entre si),
       # secretos token_urlsafe (A-Za-z0-9_-, >=32). compose interpola TODO el archivo, asi que las
-      # variables `:?` de postgres tambien se definen (valores dummy; postgres no se levanta).
+      # variables `:?` de postgres se definen con credenciales reales efimeras (postgres se levanta;
+      # los e2e crean su propia base y roles por test desde el admin).
       - name: Generate ephemeral credentials
         run: |
           python3 - <<'PY'
@@ -232,9 +234,15 @@ jobs:
               "PITS_S3_READER_SECRET_ACCESS_KEY": secrets.token_urlsafe(32),
               "PITS_SEAWEEDFS_FILER_JWT_KEY": secrets.token_urlsafe(48),
               "POSTGRES_PASSWORD": secrets.token_urlsafe(24),
+              "PITS_PG_LOADER_PASSWORD": secrets.token_urlsafe(24),
+              "PITS_PG_READER_PASSWORD": secrets.token_urlsafe(24),
+              "PITS_PG_TRANSFORMER_PASSWORD": secrets.token_urlsafe(24),
           }
           plain_env = {
               "COMPOSE_PROFILES": "core",
+              "PITS_PG_HOST": "127.0.0.1",
+              "POSTGRES_HOST_PORT": "5433",
+              "PITS_WAREHOUSE_DB": "pits_warehouse",
               "S3_ENDPOINT_URL": "http://127.0.0.1:8333",
               "S3_REGION": "us-east-1",
               "S3_RAW_BUCKET": "pits-raw",
@@ -260,23 +268,24 @@ jobs:
           sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
           df -h / | tail -n 1
 
-      # Solo seaweedfs: el servicio postgres queda sin crear. --wait espera el healthcheck.
-      - name: Start SeaweedFS (compose)
-        run: docker compose up -d --wait seaweedfs
+      # --wait espera los healthchecks de ambos servicios (core: seaweedfs + postgres).
+      - name: Start SeaweedFS and Postgres (compose)
+        run: docker compose up -d --wait seaweedfs postgres
 
       # Solo NOMBRES de variables, nunca valores.
       - name: Diagnostics (variable names only)
         if: failure()
-        run: env | cut -d= -f1 | grep -E '^(S3_|PITS_S3_|PITS_SEAWEEDFS_|COMPOSE_)' || true
+        run: env | cut -d= -f1 | grep -E '^(S3_|PITS_S3_|PITS_SEAWEEDFS_|PITS_PG_|POSTGRES_|COMPOSE_)' || true
 
       # D104(c): policy write-once en raw y normalized.
       - name: Init storage buckets
         run: uv run pits storage init
 
-      # `-m` de la linea de comandos reemplaza el de addopts. Red del probe D119: el compose se llama
+      # `-m` de la linea de comandos reemplaza el de addopts: todos los contract, incluidos los e2e
+      # contract+pg. Red del probe D119: el compose se llama
       # `pits` (name:), asi que la red es pits_default, el default del test.
       - name: Contract tests
-        run: uv run pytest -m "contract and not pg" -q --junitxml=contract-junit.xml
+        run: uv run pytest -m contract -q --junitxml=contract-junit.xml
 
       - name: SeaweedFS volume status on failure
         if: failure()
@@ -304,6 +313,9 @@ jobs:
           PITS_S3_READER_SECRET_ACCESS_KEY: ""
           PITS_SEAWEEDFS_FILER_JWT_KEY: ""
           POSTGRES_PASSWORD: ""
+          PITS_PG_LOADER_PASSWORD: ""
+          PITS_PG_READER_PASSWORD: ""
+          PITS_PG_TRANSFORMER_PASSWORD: ""
         uses: actions/upload-artifact@v7
         with:
           name: contract-junit

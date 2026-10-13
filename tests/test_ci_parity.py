@@ -106,7 +106,13 @@ def test_ci_contract_job_uses_compose_and_default_probe_network():
     runs = _contract_runs()
     assert "docker compose up -d --wait seaweedfs" in runs
     assert "uv run pits storage init" in runs
-    assert 'pytest -m "contract and not pg"' in runs
+    assert "docker compose up -d --wait seaweedfs postgres" in runs
+    # Each contract/pg test runs in exactly one job: contract takes all `contract` (incl.
+    # contract+pg e2e); pg takes the rest of `pg`.
+    assert "pytest -m contract -q" in runs
+    pg_runs = "
+".join(s.get("run", "") for s in _ci_pg_job()["steps"])
+    assert 'pytest -m "pg and not contract"' in pg_runs
     assert "docker compose down -v" in runs
     # compose `name: pits` -> network pits_default, the probe default (no override needed).
     assert _load(COMPOSE)["name"] == "pits"
@@ -126,6 +132,9 @@ def test_ci_contract_job_never_uses_env_file_and_blanks_secrets_on_upload():
         "PITS_S3_READER_SECRET_ACCESS_KEY",
         "PITS_SEAWEEDFS_FILER_JWT_KEY",
         "POSTGRES_PASSWORD",
+        "PITS_PG_LOADER_PASSWORD",
+        "PITS_PG_READER_PASSWORD",
+        "PITS_PG_TRANSFORMER_PASSWORD",
     }
     assert {k: step["env"].get(k) for k in secrets_} == dict.fromkeys(secrets_, "")
 
