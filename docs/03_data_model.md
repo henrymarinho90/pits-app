@@ -1,7 +1,7 @@
 # 03 — Modelo de datos
 
-Última actualización: 2026-10-11
-Estado: v13 — linaje dbt de `landing.fx_rate` → `staging.stg_fx_rate` → `marts.fct_fx_rate_daily` en §3 y §26 (D85–D88, hito dbt, 2026-10-11); mismas 7 columnas en cada capa, sin derivadas; sin cambio de entidades ni de grano. Antes: v12 — notas de linaje de `landing.fx_rate` en §3 y de la tabla en §26 (D79–D82, hito loader fx_rate, 2026-10-11); sin cambio de entidades ni de grano. Antes: v11 — nota de implementación de `fx_rate` para la TRM (D77, D76): par USD→COP, `rate` = COP por 1 USD, `source_reference`, columnas del CSV normalizado; sin cambio de grano (D47). Antes: v10 — aclaración de §1 sobre modelo fuente/analítico frente a OLTP (D70, D72). Sin cambios de entidades. Antes: v9 — alineado con `02_domain_taxonomy.md` v12; nota de mapeo del manifest en §3 (paso 3 de Fase 1, D65 y D66).
+Última actualización: 2026-10-12
+Estado: v14 — linaje de `vehicle_fleet_snapshot` (raw → normalized → `landing.vehicle_fleet_snapshot` → `staging.stg_vehicle_fleet_snapshot` → `marts.fct_vehicle_fleet_snapshot`) en §3 y nota de implementación en §27 (D96–D103, Fase 1b, 2026-10-12); el municipio es el de matrícula; D51 y D59 sin cambio. Versión anterior: v13 — linaje dbt de `landing.fx_rate` → `staging.stg_fx_rate` → `marts.fct_fx_rate_daily` en §3 y §26 (D85–D88, hito dbt, 2026-10-11); mismas 7 columnas en cada capa, sin derivadas; sin cambio de entidades ni de grano. Antes: v12 — notas de linaje de `landing.fx_rate` en §3 y de la tabla en §26 (D79–D82, hito loader fx_rate, 2026-10-11); sin cambio de entidades ni de grano. Antes: v11 — nota de implementación de `fx_rate` para la TRM (D77, D76): par USD→COP, `rate` = COP por 1 USD, `source_reference`, columnas del CSV normalizado; sin cambio de grano (D47). Antes: v10 — aclaración de §1 sobre modelo fuente/analítico frente a OLTP (D70, D72). Sin cambios de entidades. Antes: v9 — alineado con `02_domain_taxonomy.md` v12; nota de mapeo del manifest en §3 (paso 3 de Fase 1, D65 y D66).
 
 ## 1. Propósito
 
@@ -90,6 +90,24 @@ Nota de implementación; el modelo no cambia y no hay columnas nuevas ni derivad
 | `marts` | `marts.fct_fx_rate_daily` | table | `select` sobre `stg_fx_rate` |
 
 `ops.load_run` no es una capa de datos del modelo: dbt la usa como fuente de freshness (`loaded_at`, filtro `dataset = 'fx_rate'`) y como destino de la prueba `relationships` de `load_id`. La metadata de este documento sigue saliendo de la unión con `ops.load_run`, como antes. El reader ve solo `marts` (D86).
+
+### Linaje de `vehicle_fleet_snapshot` (D96–D103, Fase 1b, 2026-10-12)
+
+Nota de implementación; la entidad de §27 no cambia de nombre ni de fuente (D51, D48). El municipio es el de matrícula (respuesta de Henry, 2026-10-12, D97). Linaje por capa:
+
+| Capa | Objeto | Origen | Decisión |
+|---|---|---|---|
+| raw | `pits-raw`, `source_system=mintransporte_runt_parque`, uno o más batches por publicación (`u3vn-bdcy`); gana el último committed (hoy hay 3 de 2026-10) | `pits extract runt` (SODA, `$order=:id ASC`, `$limit=5000`) | D96 |
+| normalized | `vehicle_fleet_snapshot/source_system=…/publication_month=YYYY-MM/fingerprint=…/part-NNNNN.csv` + `manifest.json` | `pits normalize runt` | D98, D103 |
+| landing | `landing.vehicle_fleet_snapshot` (migración `0004_landing_vehicle_fleet_snapshot.sql`) | `pits load vehicle-fleet` | D99 |
+| staging | `staging.stg_vehicle_fleet_snapshot` (view; `transform/models/staging/`) | `select` 1:1 sobre `landing.vehicle_fleet_snapshot`, más `department_name_norm`, `municipality_name_norm` y `vehicle_class_norm` | D100 |
+| marts | `marts.fct_vehicle_fleet_snapshot` (table; `transform/models/marts/`) | `select` sobre staging, con las versiones originales y `_norm`; sin filtro `ACTIVO` y sin DANE | D100 |
+
+Grano y PK de `landing.vehicle_fleet_snapshot` (D97, verificado en la migración 0004): `publication_year`, `publication_month`, `department_name`, `municipality_name`, `service_name`, `vehicle_status`, `vehicle_class` y `registration_year` (`fecha_de_registro`). La medida es `vehicle_count` (`cantidad`), con `vehicle_count > 0`. Además `source_system`, `source_reference` y `load_id` (FK a `ops.load_run`). Un año de registro entre 1900 y el año de publicación; se conservan 1900 y 1901 como centinela.
+
+Reglas de publicación: gana el último batch committed por publicación; una publicación nunca borra otra; no se inventa una fecha de corte; un mes faltante no es error. Se conservan todos los estados, servicios y clases. `INCONSISTENTE` se conserva en landing y marts, y la demanda filtra `ACTIVO` (D59). Abierto: la regla de publicación del RUNT y el significado de `INCONSISTENTE` no los conoce Henry (`06_status.md` §7).
+
+Dependencia del mart: `fct_vehicle_fleet_snapshot` declara `-- depends_on: source('ops','load_run_fleet')` para que el test de dos padres bloquee el mart (D100; lección 118). Las pruebas de `_norm` (charset) y de conciliación `EXCEPT ALL` con staging están en `transform/tests/`.
 
 ## 4. Diagrama entidad-relación conceptual
 
@@ -649,6 +667,8 @@ Re-verificado 2026-10-10: el corte vigente en `u3vn-bdcy` es OCTUBRE 2026 y el c
 El desglose sintético sigue el orden marca y luego línea (D53) y se calibra con Boyacá `em3d-hmim` y Risaralda `x9pp-pcn5`, con `AUTECO` reasignado a la marca real por línea (D52, D55). Hace falta un mapa de normalización entre fuentes: de clase (`CAMION` y `CAMIÓN` son la misma clase en RUNT; `MICRO BUS` en Boyacá frente a `MICROBUS` en RUNT; `TRACTO-CAMION` frente a `TRACTOCAMION`) y de servicio (`PÚBLICO` en RUNT frente a `PUBLICO` en Boyacá y Floridablanca; `OTRO` frente a `OTROS`). El filtro aplica a la `cantidad` RUNT que se desglosa; las proporciones de calibración siguen D55 (Risaralda no permite filtrar estado).
 
 El RUNT no trae marca ni modelo (D48). El desglose del parque por marca/modelo se genera sintético (generador, Fase 2), calibrado con investigación pública con fuente verificable, y debe marcarse como sintético en su procedencia (§28). Esta entidad contiene solo el dato real del RUNT. Dónde vive el desglose sintético (entidad aparte o columna de origen, según §28) se decide en Fase 2. El desglose sintético no es dato real ni métrica oficial de demanda.
+
+**Implementación Fase 1b (D96–D103, 2026-10-12).** La unidad de carga es la publicación (año y mes de `a_o_de_publicacion` y `mes_de_publicacion`), no un corte "vigente" único: cada publicación se acumula en landing y gana el último batch committed. El grano implementado es el de la PK de 8 columnas de §3 (publicación, departamento, municipio, servicio, estado, clase y `fecha_de_registro`), con `cantidad` como medida. La demanda (D59) sigue filtrando `ACTIVO`; el filtro no se aplica en landing ni en el mart, y el desglose sintético de §27 no se implementa en Fase 1b. La cifra de la fuente que se cita en esta sección sigue siendo la del corte OCTUBRE 2026 (`08_market_research.md`, Ficha 1, corregida el 2026-10-12).
 
 ---
 

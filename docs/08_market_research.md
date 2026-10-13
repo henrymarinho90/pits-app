@@ -1,5 +1,5 @@
 # 08 — Investigación de mercado y fuentes
-Última actualización: 2026-10-03 (hora Colombia). Fecha de consulta de todas las fuentes: 2026-10-03, salvo indicación.
+Última actualización: 2026-10-03 (hora Colombia). Fecha de consulta de todas las fuentes: 2026-10-03, salvo indicación. Corrección del 2026-10-12: el corte vigente de `u3vn-bdcy` es OCTUBRE 2026 (Ficha 1). Las citas del corte AGOSTO 2026 de este documento quedan marcadas como superadas; el texto original se conserva.
 
 Convenciones: **Hecho** = dato leído en la fuente primaria. **Dato de prensa** = no se usó prensa en este documento. **Inferencia** = deducción mía, marcada como tal. Las cifras de ANDI-FENALCO son matrículas nuevas (flujo), no parque (stock). Nunca se mezclan.
 
@@ -7,7 +7,7 @@ Método y límite de la sesión: la búsqueda web no estaba habilitada. Todo se 
 
 ## Resumen
 
-1. No existe en datos.gov.co un dataset nacional de parque automotor con marca. El dataset nacional RUNT `u3vn-bdcy` (191.640 filas) trae clase, servicio, estado, departamento y municipio, pero no `marca`. Participación de marca en el parque total: **No encontrado** (objetivo 1a no cumplido).
+1. No existe en datos.gov.co un dataset nacional de parque automotor con marca. El dataset nacional RUNT `u3vn-bdcy` (191.640 filas en el corte AGOSTO 2026, **superado**; corte vigente OCTUBRE 2026 con 191.922 filas, Ficha 1) trae clase, servicio, estado, departamento y municipio, pero no `marca`. Participación de marca en el parque total: **No encontrado** (objetivo 1a no cumplido).
 2. Participación de marca en matrículas nuevas sí está validada con ANDI-FENALCO (datos RUNT). Carros 2025 año completo: Kia 13,4 %, Renault 13,2 %, Toyota 9,3 %, Mazda 8,5 %, Chevrolet 8,3 %. Las 7 marcas de la hipótesis de carros están en el top 10; faltan en la hipótesis Suzuki, Volkswagen y BYD.
 3. Motos, agosto 2026 (solo ese mes): Bajaj 16,60 %, AKT 15,13 %, Suzuki 14,99 %, Honda 14,27 %, Yamaha 13,57 %. Faltan en la hipótesis Hero (7,38 %) y, si se cuentan aparte, TVS (8,23 %) y Victory (4,01 %), que son de Auteco.
 4. Auteco no incluye Bajaj. Portafolio en auteco.com.co: TVS, Victory, Kymco, Benelli, Kawasaki, Zontes, Ceronte, Eléctricos. ANDI atribuye Bajaj a Grupo UMA.
@@ -23,8 +23,8 @@ Método y límite de la sesión: la búsqueda web no estaba habilitada. Todo se 
 
 | Afirmación | Fuente (nombre + URL) | Fecha de consulta | Periodo/cobertura | Limitaciones | Impacto en el proyecto |
 |---|---|---|---|---|---|
-| Hecho: el dataset nacional RUNT `u3vn-bdcy` no tiene columna de marca. Columnas: `nombre_departamento`, `nombre_municipio`, `nombre_servicio`, `estado_del_vehiculo`, `nombre_de_la_clase`, `fecha_de_registro`, `cantidad`, `mes_de_publicacion`, `a_o_de_publicacion`. | datos.gov.co, MinTransporte. https://www.datos.gov.co/api/views/u3vn-bdcy.json | 2026-10-03 | Corte AGOSTO 2026 | Solo clase, no marca | No sirve para participación por marca. Sí sirve para demanda por clase y geografía. |
-| Hecho: parque `ACTIVO` en agosto 2026 = 22.455.403 vehículos (suma de `cantidad`); 14.391.640 son `MOTOCICLETA`, 4.037.760 `AUTOMOVIL`, 2.139.196 `CAMIONETA`, 774.479 `CAMPERO`. | Consulta SODA a `u3vn-bdcy` (`$select=nombre_de_la_clase,sum(cantidad)&$where=estado_del_vehiculo='ACTIVO'`). https://www.datos.gov.co/resource/u3vn-bdcy.json | 2026-10-03 | Parque total, corte agosto 2026 | Incluye todas las clases, también carga y maquinaria | Dimensiona mercado por clase. Motos son ~64 % del parque activo (Inferencia: 14.391.640 / 22.455.403). |
+| Hecho: el dataset nacional RUNT `u3vn-bdcy` no tiene columna de marca. Columnas: `nombre_departamento`, `nombre_municipio`, `nombre_servicio`, `estado_del_vehiculo`, `nombre_de_la_clase`, `fecha_de_registro`, `cantidad`, `mes_de_publicacion`, `a_o_de_publicacion`. | datos.gov.co, MinTransporte. https://www.datos.gov.co/api/views/u3vn-bdcy.json | 2026-10-03 | Corte AGOSTO 2026 (**superado** el 2026-10-12: el corte vigente es OCTUBRE 2026, Ficha 1) | Solo clase, no marca | No sirve para participación por marca. Sí sirve para demanda por clase y geografía. |
+| Hecho (**superado** el 2026-10-12; el corte vigente es OCTUBRE 2026, ACTIVO 22.613.691, ver Ficha 1): parque `ACTIVO` en agosto 2026 = 22.455.403 vehículos (suma de `cantidad`); 14.391.640 son `MOTOCICLETA`, 4.037.760 `AUTOMOVIL`, 2.139.196 `CAMIONETA`, 774.479 `CAMPERO`. | Consulta SODA a `u3vn-bdcy` (`$select=nombre_de_la_clase,sum(cantidad)&$where=estado_del_vehiculo='ACTIVO'`). https://www.datos.gov.co/resource/u3vn-bdcy.json | 2026-10-03 | Parque total, corte agosto 2026 | Incluye todas las clases, también carga y maquinaria | Dimensiona mercado por clase. Motos son ~64 % del parque activo (Inferencia: 14.391.640 / 22.455.403). |
 | Hecho: RUNT publica parque a 31-jul-2026: motos 14.309.240; vehículos 7.782.564; maquinaria, remolques y semirremolques 242.886; total 22.334.690. | RUNT, "RUNT en cifras". https://www.runt.gov.co/runt-en-cifras | 2026-10-03 | Parque total, 31-jul-2026 | La página no muestra marca; el dashboard por marca no se pudo leer | Cifra oficial de contraste. No comparable 1 a 1 con agosto (otro corte). |
 | Hecho: el dataset `n4ic-hiug` (Gobernación del Atlántico) tiene `anio`, `marca`, `clase`, `cantidad`; es regional, anual, última actualización 2022-11-03. | https://www.datos.gov.co/api/views/n4ic-hiug.json | 2026-10-03 | Solo Atlántico | Regional, desactualizado, no es el parque nacional | No usar como proxy nacional. Sirve para probar un parser con marca. |
 | Hecho: el dataset `bj7e-xc9g` (Alcaldía de Calarcá) trae `marca` por matrícula, pero solo un municipio, ene-2020 a may-2022. | https://www.datos.gov.co/api/views/bj7e-xc9g.json | 2026-10-03 | Calarcá, 2020-2022 | Municipal, cerrado | Descartado como fuente de participación. |
@@ -69,7 +69,7 @@ Método y límite de la sesión: la búsqueda web no estaba habilitada. Todo se 
 
 | Afirmación | Fuente (nombre + URL) | Fecha de consulta | Periodo/cobertura | Limitaciones | Impacto en el proyecto |
 |---|---|---|---|---|---|
-| Hecho: parque nacional RUNT = `u3vn-bdcy`; contiene un único corte (AGOSTO 2026): 182.978 filas `ACTIVO` y 8.662 `INCONSISTENTE` (suma 191.640); no hay otros meses. | Consulta SODA agrupada por año/mes/estado | 2026-10-03 | Agosto 2026 | El nombre dice "Crecimiento", pero no hay serie mensual | Si la fuente se sobrescribe cada mes, el historial solo existe si Fase 1 guarda cada snapshot en raw. |
+| Hecho: parque nacional RUNT = `u3vn-bdcy`; contiene un único corte (AGOSTO 2026; **superado** el 2026-10-12, hoy OCTUBRE 2026, Ficha 1): 182.978 filas `ACTIVO` y 8.662 `INCONSISTENTE` (suma 191.640); no hay otros meses. | Consulta SODA agrupada por año/mes/estado | 2026-10-03 | Agosto 2026 | El nombre dice "Crecimiento", pero no hay serie mensual | Si la fuente se sobrescribe cada mes, el historial solo existe si Fase 1 guarda cada snapshot en raw. |
 | Hecho: TRM oficial = `32sa-8pi3` (Superfinanciera): 8.360 filas, desde 1991-12-02 hasta 2026-10-03. Existen al menos 9 datasets TRM más en el catálogo (`mcec-87by`, `ceyp-9c7c`, `djvb-n8kv`, `dit9-nnvp`, otros). | Consulta SODA `count(*),min,max` | 2026-10-03 | 1991-12-02 a 2026-10-03 | Duplicados con distinto esquema | Fijar un solo ID y documentar por qué. |
 | Hecho: DIVIPOLA municipios = `gdxc-w37w`, 1.122 filas; departamentos = `vcjz-niiq`. | Consulta SODA | 2026-10-03 | Corte 30-dic-2024 | Lat/long usan coma decimal y son `text` | Requiere parseo y cast en staging. |
 | Hecho: trámites RUNT = `akpq-tuqi`, mensual, columnas con tildes inconsistentes (`TRAMITE CAMBIO PLACA` vs `TRÁMITE CAMBIO PLACA`, mismo `cod_tramite`). | Consulta SODA | 2026-10-03 | Desde al menos 1/10/2024 | Conteo de filas agotó el tiempo de espera; no se verificó que exista código de "matrícula inicial" de vehículos (solo `MATRICULA_INICIAL_REMOLQUE_SEMIREMOLQUE`, cód. 80, en los primeros 100 grupos) | Normalizar por `cod_tramite`, no por descripción. |
@@ -136,10 +136,12 @@ Todas las URLs de datos.gov.co: base `https://www.datos.gov.co`. Autenticación:
 - Filas: 191.640 por la metadata; `count(*)` de la consulta devolvió 191.293 (diferencia de 347 sin explicar; posible diferencia de momento de consulta).
 - Columnas (`fieldName`, tipo declarado): `nombre_departamento` text; `nombre_municipio` text; `nombre_servicio` text; `estado_del_vehiculo` text (`ACTIVO`, `INCONSISTENTE`); `nombre_de_la_clase` text; `fecha_de_registro` number (año; `1900` aparece como valor centinela); `cantidad` number; `mes_de_publicacion` text; `a_o_de_publicacion` number. Observación: el JSON devuelve todo como string.
 - Filas de ejemplo (JSON devuelto):
-  1. ANTIOQUIA, ANDES, PARTICULAR, ACTIVO, CAMPERO, 1900, 1, AGOSTO, 2026
-  2. ATLANTICO, BARANOA, PARTICULAR, ACTIVO, AUTOMOVIL, 1900, 1, AGOSTO, 2026
-  3. ATLANTICO, BARANOA, PÚBLICO, ACTIVO, CAMION, 1900, 1, AGOSTO, 2026
+  1. ANTIOQUIA, ANDES, PARTICULAR, ACTIVO, CAMPERO, 1900, 1, AGOSTO, 2026 (**superado**: muestra del corte AGOSTO 2026)
+  2. ATLANTICO, BARANOA, PARTICULAR, ACTIVO, AUTOMOVIL, 1900, 1, AGOSTO, 2026 (**superado**: muestra del corte AGOSTO 2026)
+  3. ATLANTICO, BARANOA, PÚBLICO, ACTIVO, CAMION, 1900, 1, AGOSTO, 2026 (**superado**: muestra del corte AGOSTO 2026)
 - Dato adicional: motos `ACTIVO` por año de registro: 2026 916.454; 2025 1.098.485; 2024 812.133; 2023 675.371; 2022 799.278. Es parque activo hoy por año de matrícula, no matrículas nuevas de cada año.
+
+- **Corrección del 2026-10-12 (corte vigente; reemplaza la cita de AGOSTO 2026 de esta ficha).** El corte vigente de `u3vn-bdcy` es OCTUBRE 2026: publicado el 2026-10-05 (`rowsUpdatedAt` 1791220968, es decir, 2026-10-05 17:22:48 UTC, convertido con Python), con 191.922 filas y 22.655.040 vehículos (suma de `cantidad`). Fuente: API SODA de datos.gov.co, `u3vn-bdcy`, consultada el 2026-10-12 (reportada por el orquestador en la sesión del hito Fase 1b; cifras de la consulta, no de un documento). Las cifras de "Filas" de esta ficha (191.640; 191.293 en `count(*)`) y el corte AGOSTO 2026 corresponden al corte anterior y quedan superados. ACTIVO de OCTUBRE 2026 = 22.613.691 (landing, consultado por el revisor el 2026-10-13). El ACTIVO de agosto 2026 (22.455.403) queda superado. Inferencia: la fuente conserva solo el corte vigente, como ya se había observado (`03_data_model.md`, §27).
 
 ### Ficha 2 — TRM, Superfinanciera (`32sa-8pi3`)
 
@@ -234,7 +236,7 @@ Por qué, contra los criterios:
 
 Contra las alternativas:
 
-- `u3vn-bdcy` (parque RUNT): relevante al dominio, pero 191k filas, sin historial (solo el corte de agosto 2026), sin marca y sin código DANE. Es mejor como segunda fuente (Fase 1b) cuando el patrón de snapshots mensuales ya funcione.
+- `u3vn-bdcy` (parque RUNT): relevante al dominio, pero 191k filas, sin historial (solo el corte de agosto 2026, **superado** el 2026-10-12: hoy OCTUBRE 2026, Ficha 1), sin marca y sin código DANE. Es mejor como segunda fuente (Fase 1b) cuando el patrón de snapshots mensuales ya funcione.
 - DIVIPOLA `gdxc-w37w`: dato estable pero casi estático (corte 2024, semestral): no ejercita incrementalidad. Es una dimensión de apoyo, no una fuente de ingesta.
 - NHTSA vPIC: cobertura de Colombia pobre y límites no publicados.
 - ANDI-FENALCO: PDF, requiere parsear tablas; frágil y fuera del criterio "sin scraping".

@@ -1,7 +1,7 @@
 # 04 — Infraestructura y operación
 
 Última actualización: 2026-10-12
-Estado: v10 — orquestación con Airflow (D89–D95, hito Fase 4, 2026-10-12): medición de Airflow en §9, perfil `orchestration` y los dos archivos de compose en §10.1 (D95), secretos y riesgos en §11 y §13; nota de que dbt corre dentro del cgroup del scheduler. Versión anterior: v9 — dbt sobre `landing.fx_rate` (D85–D88, hito dbt, 2026-10-11): rol `pits_transformer`, matriz de privilegios, schemas `staging`, `intermediate` y `marts`, `profiles.yml`, `sslmode`, dependencias y tamaño de `.venv` en §8.3 y §8.4; §9 y §11 actualizados. Antes: v8 — PostgreSQL del warehouse implementado en §8.3 (base `pits_warehouse`, schemas `landing` y `ops`, roles de mínimo privilegio, conexión solo loopback; D79–D82); medición de memoria de Postgres y cambios de `scripts/measure_storage_memory.sh` en §9; notas de roles, `sslmode` y log en §11 y §13 (2026-10-11). Antes: v7 — zona normalized `pits-normalized` en §8.2 (D74, D75, D76); sin cambios en `docker-compose.yml`. Antes: v6 — nota de separación OLTP/warehouse en §7 y §8.3 (D70); sin cambios en `docker-compose.yml`. Antes: v5 — perfil `core` implementado en `docker-compose.yml` (D60–D63); §8.1 con el contrato del batch raw de la ingesta (D65, paso 3 de Fase 1).
+Estado: v11 — Fase 1b, parque RUNT (D96–D103, 2026-10-12/13): medición de memoria de Postgres y del scheduler con `runt_fleet_snapshot` (unchanged y force) en §9; segundo DAG y ventanas en §10.1; volúmenes y disco en §14. Versión anterior: v10 — orquestación con Airflow (D89–D95, hito Fase 4, 2026-10-12): medición de Airflow en §9, perfil `orchestration` y los dos archivos de compose en §10.1 (D95), secretos y riesgos en §11 y §13; nota de que dbt corre dentro del cgroup del scheduler. Versión anterior: v9 — dbt sobre `landing.fx_rate` (D85–D88, hito dbt, 2026-10-11): rol `pits_transformer`, matriz de privilegios, schemas `staging`, `intermediate` y `marts`, `profiles.yml`, `sslmode`, dependencias y tamaño de `.venv` en §8.3 y §8.4; §9 y §11 actualizados. Antes: v8 — PostgreSQL del warehouse implementado en §8.3 (base `pits_warehouse`, schemas `landing` y `ops`, roles de mínimo privilegio, conexión solo loopback; D79–D82); medición de memoria de Postgres y cambios de `scripts/measure_storage_memory.sh` en §9; notas de roles, `sslmode` y log en §11 y §13 (2026-10-11). Antes: v7 — zona normalized `pits-normalized` en §8.2 (D74, D75, D76); sin cambios en `docker-compose.yml`. Antes: v6 — nota de separación OLTP/warehouse en §7 y §8.3 (D70); sin cambios en `docker-compose.yml`. Antes: v5 — perfil `core` implementado en `docker-compose.yml` (D60–D63); §8.1 con el contrato del batch raw de la ingesta (D65, paso 3 de Fase 1).
 
 ## 1. Objetivo
 
@@ -275,6 +275,14 @@ Medición de Airflow (hito Fase 4, 2026-10-12; 3 corridas por contenedor, report
 - `memory.peak` de `pits-postgres`: 69353472, 61849600 y 59973632 B (66,1 MiB, 6,5 % de 1 GiB).
 - dbt corre dentro del cgroup del scheduler (subproceso de la tarea), así que su consumo entra en el pico de ese contenedor. No se midió el proceso dbt por separado ni una corrida con extract full.
 
+Medición del hito Fase 1b (parque RUNT, D96–D103; 2026-10-12/13; criterio D63/D89: max(`memory.peak`) < 85 % del límite; cifras reportadas por el orquestador, logs no versionados, citadas en `06_status.md` §3):
+
+- `pits-postgres` con los tests `pg` del loader y el e2e: 3/3 corridas, picos 113709056, 115159040 y 114356224 B; máximo 109,8 MiB (10,7 % de 1 GiB). Sin OOM.
+- Scheduler (límite 2 GiB) con `runt_fleet_snapshot` en modo `unchanged`: 3/3 corridas, máximo 640401408 B (610,7 MiB, 30 %). Sin OOM.
+- Scheduler con `force` (ruta pesada, descargar y normalizar todo): 1 corrida, pico 642220032 B (612,5 MiB, 30 %). Una sola corrida, por decisión de Henry (2026-10-13, respuesta "2"); no es una distribución de tres corridas.
+- El proceso dbt sigue sin medirse por separado: corre dentro del cgroup del scheduler, como en la medición de Airflow.
+- Normalize del RUNT (cifras de la corrida real, 2026-10-12): RSS 154,8 MiB con tracemalloc de 75,6 MiB; load del cliente con RSS 87,4 MiB. Son mediciones del proceso `pits`, no del contenedor.
+
 No desplegar Redpanda mientras el stack base no tenga margen medido suficiente.
 
 ## 10. Estrategia de despliegue
@@ -285,6 +293,7 @@ Docker Compose con perfiles cuando ayude:
 
 - `core`: Postgres + SeaweedFS (D57), definido en `docker-compose.yml` (D60–D63). SeaweedFS publica `127.0.0.1:8333`; Postgres publica `127.0.0.1:5433` por defecto (`POSTGRES_HOST_PORT`; 5432 suele estar ocupado en Windows). Bucket `pits-raw` creado con `pits storage init` (D61). `docker-compose.spike.yml` también usa 8333: no levantarlo a la vez que `core`;
 - `orchestration`: Airflow 3.3.2 con LocalExecutor (D89, D95), en `docker-compose.orchestration.yml`: `airflow-init` (`db migrate` y `pools set`), `apiserver` (solo `127.0.0.1:8080`), `scheduler` (parallelism 2, con dbt dentro de su cgroup) y `dag-processor`; sin triggerer. `docker-compose.yml` conserva solo el perfil `core`, sin variables nuevas obligatorias (D95). Uso: `docker compose -f docker-compose.yml -f docker-compose.orchestration.yml --profile core --profile orchestration ...`; con `COMPOSE_FILE`, el separador es `;` en Windows y `:` en Linux (el de Linux no se probó). Metadata DB en la misma instancia Postgres, base y rol `airflow_meta` (D93). Imagen `pits-airflow` (D89; `pits-airflow:dev` de 1380040724 B, 1,38 GB; `docker image inspect`, build del 2026-10-12 a las 20:06:39 UTC);
+- DAGs (D92, D102): `trm_daily` a las 10:00 America/Bogota (15:00 UTC) y `runt_fleet_snapshot` a las 11:00 America/Bogota (16:00 UTC), diarios, `max_active_runs=1`. Ambos usan el pool `pits_warehouse` de 1 slot en load, build y freshness (D90), y `runt_fleet_snapshot` tiene `dagrun_timeout` de 120 min (D102). Las pruebas de integración `-m airflow` se corren lejos de las 15:00 y las 16:00 UTC. Su param `force` (solo bool) pasa `--force` al extractor; `--repair` y `--fingerprint` siguen solo por CLI manual;
 - `bi`: Metabase opcional local;
 - `streaming`: Redpanda solo fase futura.
 
@@ -373,6 +382,13 @@ docker system df
 ```
 
 Antes de borrar raw data para liberar espacio, documentar qué capacidad de replay se pierde.
+
+Medición del hito Fase 1b (2026-10-12/13; reportada por el orquestador):
+
+- Disco C: de 37 a 44 GB libres tras las corridas y las mediciones.
+- Volúmenes Docker: `pits_postgres_data` 459,5 MB; `pits_seaweedfs_data` 183,3 MB; `pits_airflow_logs` 4,4 MB.
+- Build cache de Docker: 2,8 GB, de los que 1,7 GB son recuperables. No se borró: requiere permiso de Henry. `PITS_IT_FORCE=1` (integración con `--force`) agrega unos 86 MB permanentes.
+- Crecimiento permanente del RUNT: hoy hay 3 batches en `pits-raw` (unos 151 MB) y 3 artefactos en `pits-normalized` (unos 108 MB). Cada publicación nueva y cada `--force` agregan ambos. No hay lifecycle (D61, D74); la purga es decisión pendiente de Henry. No forzar corridas sin motivo.
 
 ## 15. Checklist previo al primer deploy
 
