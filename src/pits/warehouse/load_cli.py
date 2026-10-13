@@ -1,5 +1,6 @@
-"""`pits load fx-rate` (D82) and `pits load vehicle-fleet` (D99): committed normalized artifacts
--> `landing.fx_rate` / `landing.vehicle_fleet_snapshot`.
+"""`pits load fx-rate` (D82), `pits load vehicle-fleet` (D99) and `pits load divipola` (D124):
+committed normalized artifacts -> `landing.fx_rate` / `landing.vehicle_fleet_snapshot` /
+`landing.divipola_municipality`.
 
 Exit codes: 0 loaded or already_loaded; 1 permanent (configuration, manifest/hash mismatch,
 constraint violation, verification failure, drift without --repair, artifact older than the
@@ -27,6 +28,12 @@ from pits.ingestion.raw_store import RawStore, S3RawStore
 from pits.normalized.fleet_reader import PUBLICATION_RE
 from pits.storage.client import build_s3_client
 from pits.storage.settings import StorageConfigError, StorageSettings, load_storage_settings
+from pits.warehouse.divipola_load import (
+    DivipolaLoadResult,
+    DivipolaWarehouse,
+    load_divipola,
+    open_divipola_warehouse,
+)
 from pits.warehouse.errors import WarehouseError, WarehouseTransientError
 from pits.warehouse.fx_rate_load import (
     FxRateWarehouse,
@@ -66,6 +73,9 @@ warehouse_factory: Callable[[WarehouseSettings], AbstractContextManager[FxRateWa
 fleet_warehouse_factory: Callable[[WarehouseSettings], AbstractContextManager[FleetWarehouse]] = (
     open_fleet_warehouse
 )
+divipola_warehouse_factory: Callable[
+    [WarehouseSettings], AbstractContextManager[DivipolaWarehouse]
+] = open_divipola_warehouse
 
 
 @load_app.callback()
@@ -93,6 +103,15 @@ def _check_publication(value: str | None) -> str | None:
 def _format_fleet(result: FleetLoadResult, normalized_bucket: str) -> str:
     return (
         f"outcome={result.outcome.value} publication={result.publication} "
+        f"load_id={result.load_id} fingerprint={result.fingerprint} rows={result.rows} "
+        f"inserted={result.inserted} updated={result.updated} deleted={result.deleted} "
+        f"manifest=s3://{normalized_bucket}/{result.manifest_key}"
+    )
+
+
+def _format_divipola(result: DivipolaLoadResult, normalized_bucket: str) -> str:
+    return (
+        f"outcome={result.outcome.value} rows_updated={result.rows_updated.isoformat()} "
         f"load_id={result.load_id} fingerprint={result.fingerprint} rows={result.rows} "
         f"inserted={result.inserted} updated={result.updated} deleted={result.deleted} "
         f"manifest=s3://{normalized_bucket}/{result.manifest_key}"
@@ -206,3 +225,47 @@ def vehicle_fleet(
         _fail(str(exc), 3)
     except WarehouseError as exc:
         _fail(str(exc), 1)
+
+
+@load_app.command("divipola")
+def divipola(
+    fingerprint: str | None = typer.Option(
+        None,
+        "--fingerprint",
+        callback=_check_fingerprint,
+        help="Force this normalized artifact (sha256 hex) instead of the latest one.",
+    ),
+    repair: bool = typer.Option(
+        False,
+        "--repair",
+        help="Re-apply the artifact when the warehouse drifted from the loaded one.",
+    ),
+) -> None:
+    """Load the latest committed divipola_municipality artifact (replaces the table, idempotent)."""
+    try:
+        storage = load_storage_settings(os.environ, identity="reader")
+        settings = settings_factory(os.environ)
+    except (StorageConfigError, WarehouseError) as exc:
+        _fail(str(exc), 1)
+
+    try:
+        client = client_factory(storage)
+        store = store_factory(client, storage.normalized_bucket)
+    except BotoCoreError as exc:
+        _fail(f"storage client error ({type(exc).__name__})", 1)
+
+    try:
+        with divipola_warehouse_factory(settings) as warehouse:
+            result = load_divipola(
+                store,
+                warehouse,
+                storage.raw_bucket,
+                loader_version=__version__,
+                fingerprint=fingerprint,
+                repair=repair,
+            )
+    except WarehouseTransientError as exc:
+        _fail(str(exc), 3)
+    except WarehouseError as exc:
+        _fail(str(exc), 1)
+    typer.echo(_format_divipola(result, storage.normalized_bucket))
