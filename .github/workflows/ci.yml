@@ -1,4 +1,5 @@
-# CI minimo como habilitador (D49). CI completo con dbt build en Fase 5.
+# CI completo (Fase 5, D112-D116): lint/format/tests, job pg con Postgres efimero, migrate, seed
+# sintetico, dbt build/freshness y verificacion de marts. Contract tests (SeaweedFS) fuera (D112).
 name: ci
 
 on:
@@ -67,3 +68,123 @@ jobs:
 
       - name: Tests
         run: uv run --locked --project orchestration pytest orchestration/tests -q
+
+  # Tests pg (D112): Postgres identico al de compose (misma imagen@digest y mismos initdb args,
+  # vigilado por tests/test_ci_parity.py). Se arranca con `docker run` en un step (no `services:`)
+  # porque las credenciales se generan en el job (D114) y un service container arrancaria antes.
+  # Los contract tests (SeaweedFS) siguen fuera de CI (D112).
+  pg:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      PG_IMAGE: "postgres:17.11-bookworm@sha256:3645570cccdfa447589da9f57dd740faa29b30938e861289a5574b6ca6b03826"
+      PG_INITDB_ARGS: "--encoding=UTF8 --locale=C.UTF-8 --locale-provider=builtin --builtin-locale=C.UTF-8"
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - uses: astral-sh/setup-uv@v10.3.0
+        with:
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+
+      - name: Sync dependencies
+        run: uv sync --locked
+
+      - name: Assert no .env
+        run: test ! -e .env
+
+      # D114: credenciales efimeras solo para este job (el Postgres vive y muere con el runner).
+      # `::add-mask::` antes de exportar; nada imprime valores. Formato D79: >=16 caracteres, sin
+      # espacios. Contrasenas con token_urlsafe (A-Za-z0-9_-).
+      - name: Generate ephemeral credentials
+        run: |
+          python3 - <<'PY'
+          import os
+          import secrets
+
+          secrets_env = {
+              "POSTGRES_PASSWORD": secrets.token_urlsafe(24),
+              "PITS_PG_LOADER_PASSWORD": secrets.token_urlsafe(24),
+              "PITS_PG_READER_PASSWORD": secrets.token_urlsafe(24),
+              "PITS_PG_TRANSFORMER_PASSWORD": secrets.token_urlsafe(24),
+          }
+          plain_env = {
+              "POSTGRES_USER": "pits_admin_ci",
+              "POSTGRES_DB": "pits_ci",
+              "PITS_PG_HOST": "127.0.0.1",
+              "POSTGRES_HOST_PORT": "5433",
+              "PITS_WAREHOUSE_DB": "pits_warehouse",
+          }
+          for name, value in secrets_env.items():
+              assert len(value) >= 16, name
+              print(f"::add-mask::{value}")
+          with open(os.environ["GITHUB_ENV"], "a", encoding="utf-8") as fh:
+              for name, value in {**plain_env, **secrets_env}.items():
+                  fh.write(f"{name}={value}\n")
+          PY
+
+      # `-e NAME` sin valor reenvia la variable del entorno: el secreto no va en la linea de comandos.
+      - name: Start Postgres (same image and initdb args as compose)
+        run: |
+          docker run -d --name pits-ci-postgres \
+            --memory 1g --memory-swap 1g --shm-size 256m \
+            -p 127.0.0.1:5433:5432 \
+            -e POSTGRES_USER -e POSTGRES_PASSWORD -e POSTGRES_DB \
+            -e POSTGRES_INITDB_ARGS="$PG_INITDB_ARGS" \
+            "$PG_IMAGE"
+
+      - name: Wait for Postgres
+        run: |
+          for i in $(seq 1 30); do
+            if docker exec pits-ci-postgres pg_isready -h 127.0.0.1 -U "$POSTGRES_USER" -d "$POSTGRES_DB"; then
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "Postgres did not become ready in 60s" >&2
+          docker logs pits-ci-postgres 2>&1 | tail -n 30 >&2
+          exit 1
+
+      # Solo NOMBRES de variables PG*, nunca valores.
+      - name: Diagnostics (PG variable names only)
+        run: env | cut -d= -f1 | grep '^PG' || true
+
+      - name: Tests pg
+        run: uv run pytest -m "pg and not contract" -q --junitxml=pg-junit.xml
+
+      # D113: pipeline de datos sobre el Postgres efimero (seed sintetico, nunca datos reales).
+      - name: Migrate warehouse
+        run: uv run pits db migrate
+
+      - name: Seed synthetic landing data
+        run: uv run python scripts/ci_seed_warehouse.py seed
+
+      - name: dbt build
+        run: uv run pits transform build
+
+      - name: dbt source freshness
+        run: uv run pits transform freshness
+
+      - name: dbt build (idempotency)
+        run: uv run pits transform build
+
+      - name: Verify marts against the seed
+        run: uv run python scripts/ci_seed_warehouse.py verify
+
+      - name: Upload junit
+        if: always()
+        # upload-artifact no tiene post-step; los vacios evitan que la action reciba las contrasenas
+        # de GITHUB_ENV. Los post-steps de checkout y setup-uv si heredan el env del job.
+        env:
+          POSTGRES_PASSWORD: ""
+          PITS_PG_LOADER_PASSWORD: ""
+          PITS_PG_READER_PASSWORD: ""
+          PITS_PG_TRANSFORMER_PASSWORD: ""
+        uses: actions/upload-artifact@v7
+        with:
+          name: pg-junit
+          path: pg-junit.xml
+          retention-days: 7
+          if-no-files-found: warn
