@@ -83,3 +83,48 @@ def test_upload_step_blanks_the_generated_passwords():
         "PITS_PG_TRANSFORMER_PASSWORD",
     }
     assert {k: step["env"].get(k) for k in names} == dict.fromkeys(names, "")
+
+
+def _ci_contract_job() -> dict:
+    return _load(CI)["jobs"]["contract"]
+
+
+def _contract_runs() -> str:
+    return "\n".join(s.get("run", "") for s in _ci_contract_job()["steps"])
+
+
+def test_network_contract_image_matches_compose_seaweedfs():
+    # The D119 probe runs a throwaway container of the compose image; the pins must not drift.
+    src = (ROOT / "tests" / "contract" / "test_seaweedfs_network_contract.py").read_text(
+        encoding="utf-8"
+    )
+    image = _load(COMPOSE)["services"]["seaweedfs"]["image"]
+    assert f'"{image}"' in src
+
+
+def test_ci_contract_job_uses_compose_and_default_probe_network():
+    runs = _contract_runs()
+    assert "docker compose up -d --wait seaweedfs" in runs
+    assert "uv run pits storage init" in runs
+    assert 'pytest -m "contract and not pg"' in runs
+    assert "docker compose down -v" in runs
+    # compose `name: pits` -> network pits_default, the probe default (no override needed).
+    assert _load(COMPOSE)["name"] == "pits"
+
+
+def test_ci_contract_job_never_uses_env_file_and_blanks_secrets_on_upload():
+    job = _ci_contract_job()
+    assert any(s.get("run") == "test ! -e .env" for s in job["steps"])
+    step = next(s for s in job["steps"] if s.get("name") == "Upload junit")
+    assert step["if"] == "always()"
+    secrets_ = {
+        "S3_ACCESS_KEY_ID",
+        "S3_SECRET_ACCESS_KEY",
+        "PITS_S3_WRITER_ACCESS_KEY_ID",
+        "PITS_S3_WRITER_SECRET_ACCESS_KEY",
+        "PITS_S3_READER_ACCESS_KEY_ID",
+        "PITS_S3_READER_SECRET_ACCESS_KEY",
+        "PITS_SEAWEEDFS_FILER_JWT_KEY",
+        "POSTGRES_PASSWORD",
+    }
+    assert {k: step["env"].get(k) for k in secrets_} == dict.fromkeys(secrets_, "")

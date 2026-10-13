@@ -1,5 +1,5 @@
 # CI completo (Fase 5, D112-D116): lint/format/tests, job pg con Postgres efimero, migrate, seed
-# sintetico, dbt build/freshness y verificacion de marts. Contract tests (SeaweedFS) fuera (D112).
+# sintetico, dbt build/freshness y verificacion de marts; job contract con SeaweedFS via compose (D115).
 name: ci
 
 on:
@@ -72,7 +72,7 @@ jobs:
   # Tests pg (D112): Postgres identico al de compose (misma imagen@digest y mismos initdb args,
   # vigilado por tests/test_ci_parity.py). Se arranca con `docker run` en un step (no `services:`)
   # porque las credenciales se generan en el job (D114) y un service container arrancaria antes.
-  # Los contract tests (SeaweedFS) siguen fuera de CI (D112).
+  # Los contract tests (SeaweedFS) corren en el job contract (D115).
   pg:
     runs-on: ubuntu-latest
     timeout-minutes: 30
@@ -188,3 +188,110 @@ jobs:
           path: pg-junit.xml
           retention-days: 7
           if-no-files-found: warn
+
+  # Contract tests (D115): SeaweedFS levantado con el docker-compose.yml real (misma imagen@digest,
+  # s3.json y security.toml generados por compose). Secretos efimeros (D114), sin .env. Se excluyen los
+  # contract marcados pg (`*_load_e2e`): necesitan Postgres + warehouse y los cubre el job pg.
+  contract:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - uses: astral-sh/setup-uv@v10.3.0
+        with:
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+
+      - name: Sync dependencies
+        run: uv sync --locked
+
+      - name: Assert no .env
+        run: test ! -e .env
+
+      # D114/D104: formatos de .env.example. Access keys A-Za-z0-9 (hex mayuscula, distintas entre si),
+      # secretos token_urlsafe (A-Za-z0-9_-, >=32). compose interpola TODO el archivo, asi que las
+      # variables `:?` de postgres tambien se definen (valores dummy; postgres no se levanta).
+      - name: Generate ephemeral credentials
+        run: |
+          python3 - <<'PY'
+          import os
+          import secrets
+
+          access_keys = {
+              "S3_ACCESS_KEY_ID": secrets.token_hex(16).upper(),
+              "PITS_S3_WRITER_ACCESS_KEY_ID": secrets.token_hex(16).upper(),
+              "PITS_S3_READER_ACCESS_KEY_ID": secrets.token_hex(16).upper(),
+          }
+          assert len(set(access_keys.values())) == 3
+          secret_values = {
+              "S3_SECRET_ACCESS_KEY": secrets.token_urlsafe(32),
+              "PITS_S3_WRITER_SECRET_ACCESS_KEY": secrets.token_urlsafe(32),
+              "PITS_S3_READER_SECRET_ACCESS_KEY": secrets.token_urlsafe(32),
+              "PITS_SEAWEEDFS_FILER_JWT_KEY": secrets.token_urlsafe(48),
+              "POSTGRES_PASSWORD": secrets.token_urlsafe(24),
+          }
+          plain_env = {
+              "COMPOSE_PROFILES": "core",
+              "S3_ENDPOINT_URL": "http://127.0.0.1:8333",
+              "S3_REGION": "us-east-1",
+              "S3_RAW_BUCKET": "pits-raw",
+              "S3_NORMALIZED_BUCKET": "pits-normalized",
+              "POSTGRES_USER": "pits_admin_ci",
+              "POSTGRES_DB": "pits_ci",
+          }
+          sensitive = {**access_keys, **secret_values}
+          for name, value in sensitive.items():
+              assert len(value) >= 16, name
+              print(f"::add-mask::{value}")
+          with open(os.environ["GITHUB_ENV"], "a", encoding="utf-8") as fh:
+              for name, value in {**plain_env, **sensitive}.items():
+                  fh.write(f"{name}={value}\n")
+          PY
+
+      # Solo seaweedfs: el servicio postgres queda sin crear. --wait espera el healthcheck.
+      - name: Start SeaweedFS (compose)
+        run: docker compose up -d --wait seaweedfs
+
+      # Solo NOMBRES de variables, nunca valores.
+      - name: Diagnostics (variable names only)
+        run: env | cut -d= -f1 | grep -E '^(S3_|PITS_S3_|PITS_SEAWEEDFS_|PITS_SWNET_|COMPOSE_)' || true
+
+      # D104(c): policy write-once en raw y normalized.
+      - name: Init storage buckets
+        run: uv run pits storage init
+
+      # `-m` de la linea de comandos reemplaza el de addopts. Red del probe D119: el compose se llama
+      # `pits` (name:), asi que la red es pits_default, el default del test.
+      - name: Contract tests
+        run: uv run pytest -m "contract and not pg" -q --junitxml=contract-junit.xml
+
+      - name: Compose logs on failure
+        if: failure()
+        run: docker compose logs --no-color --tail 40 seaweedfs 2>&1 | grep -viE 'secret|key' || true
+
+      - name: Upload junit
+        if: always()
+        # Ver job pg: los vacios evitan que la action reciba los secretos de GITHUB_ENV.
+        env:
+          S3_ACCESS_KEY_ID: ""
+          S3_SECRET_ACCESS_KEY: ""
+          PITS_S3_WRITER_ACCESS_KEY_ID: ""
+          PITS_S3_WRITER_SECRET_ACCESS_KEY: ""
+          PITS_S3_READER_ACCESS_KEY_ID: ""
+          PITS_S3_READER_SECRET_ACCESS_KEY: ""
+          PITS_SEAWEEDFS_FILER_JWT_KEY: ""
+          POSTGRES_PASSWORD: ""
+        uses: actions/upload-artifact@v7
+        with:
+          name: contract-junit
+          path: contract-junit.xml
+          retention-days: 7
+          if-no-files-found: warn
+
+      # Runner efimero: borrar contenedor y volumen es seguro aqui.
+      - name: Compose down
+        if: always()
+        run: docker compose down -v
