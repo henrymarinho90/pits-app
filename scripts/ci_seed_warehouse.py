@@ -18,10 +18,11 @@ from datetime import date, timedelta
 from decimal import Decimal
 from typing import NoReturn
 
+import psycopg
 import typer
 
 from pits.warehouse.connection import connect
-from pits.warehouse.errors import WarehouseError
+from pits.warehouse.errors import WarehouseError, to_warehouse_error
 from pits.warehouse.settings import Profile, WarehouseSettings, load_warehouse_settings
 
 app = typer.Typer(add_completion=False, no_args_is_help=True, pretty_exceptions_show_locals=False)
@@ -36,6 +37,13 @@ FLEET = [
     ("Nariño", "Pasto", "PÚBLICO", "ACTIVO", "camión  pesado", 2020, 11),
     ("NARIÑO", "PASTO", "PÚBLICO", "INCONSISTENTE", "CAMION PESADO", 2021, 13),
     ("BOGOTA, D.C.", "BOGOTA, D.C.", "OTROS", "ACTIVO", "ÑANDÚ ÜBER", 2018, 23),
+]
+# Distinct (department, municipality, class) _norm keys the dbt macro must produce from FLEET
+# (D100: accents removed, upper case, collapsed spaces). Written by hand, NOT derived from FLEET.
+FLEET_NORM_KEYS = [
+    ("BOGOTA, D.C.", "BOGOTA, D.C.", "NANDU UBER"),
+    ("NARINO", "PASTO", "CAMION"),
+    ("NARINO", "PASTO", "CAMION PESADO"),
 ]
 FX_HASH = "a" * 64
 FLEET_HASH = "b" * 64
@@ -73,7 +81,15 @@ def _fail(message: str) -> NoReturn:
     raise typer.Exit(code=1)
 
 
-def _load_run(conn, dataset, source, digest, rows, start, end) -> int:
+def _load_run(
+    conn: psycopg.Connection,
+    dataset: str,
+    source: str,
+    digest: str,
+    rows: int,
+    start: date,
+    end: date,
+) -> int:
     row = conn.execute(
         _LOAD_RUN_SQL,
         (dataset, source, digest, digest, digest, rows, start, end, str(uuid.uuid4()), end),
@@ -83,6 +99,15 @@ def _load_run(conn, dataset, source, digest, rows, start, end) -> int:
 
 def seed(settings: WarehouseSettings) -> bool:
     """Insert the seed in ONE transaction; False (nothing written) if landing is not empty."""
+    failure: WarehouseError | None = None
+    try:
+        return _seed(settings)
+    except psycopg.Error as exc:
+        failure = to_warehouse_error(exc, "seed")
+    raise failure  # outside the except block: no __context__ holding the connection
+
+
+def _seed(settings: WarehouseSettings) -> bool:
     conn = connect(settings, Profile.LOADER)
     try:
         for table in ("landing.fx_rate", "landing.vehicle_fleet_snapshot"):
@@ -113,23 +138,39 @@ def seed(settings: WarehouseSettings) -> bool:
 
 def verify(settings: WarehouseSettings) -> list[str]:
     """Return the mismatches between the marts and the seed (empty = ok)."""
+    failure: WarehouseError | None = None
+    try:
+        return _verify(settings)
+    except psycopg.Error as exc:
+        failure = to_warehouse_error(exc, "verify")
+    raise failure  # outside the except block: no __context__ holding the connection
+
+
+def _verify(settings: WarehouseSettings) -> list[str]:
     conn = connect(settings, Profile.READER, autocommit=True)
     try:
         fx = conn.execute("SELECT count(*), sum(rate) FROM marts.fct_fx_rate_daily").fetchone()
         fleet = conn.execute(
             "SELECT count(*), sum(vehicle_count) FROM marts.fct_vehicle_fleet_snapshot"
         ).fetchone()
+        keys = conn.execute(
+            "SELECT DISTINCT department_name_norm, municipality_name_norm, vehicle_class_norm "
+            "FROM marts.fct_vehicle_fleet_snapshot ORDER BY 1, 2, 3"
+        ).fetchall()
     finally:
         conn.close()
     expected = {
         "fct_fx_rate_daily": ((len(FX_DAYS), sum(FX_RATES)), fx),
         "fct_vehicle_fleet_snapshot": ((len(FLEET), sum(r[-1] for r in FLEET)), fleet),
     }
-    return [
+    problems = [
         f"{name}: expected (rows, total)={want}, got {tuple(got)}"
         for name, (want, got) in expected.items()
         if tuple(got) != want
     ]
+    if [tuple(k) for k in keys] != sorted(FLEET_NORM_KEYS):
+        problems.append(f"fct_vehicle_fleet_snapshot: normalized keys {keys} != {FLEET_NORM_KEYS}")
+    return problems
 
 
 @app.command("seed")

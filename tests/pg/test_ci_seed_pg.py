@@ -77,3 +77,42 @@ def test_verify_detects_a_mismatch(seeder, build, monkeypatch):
     result = _run(seeder, "verify")
     assert result.exit_code == 1
     assert "fct_fx_rate_daily" in result.output
+
+
+def test_failed_seed_rolls_everything_back(seeder, pg_settings, monkeypatch):
+    # The bad row fails AFTER the fx rows and both load_runs were inserted.
+    bad = ("BOGOTA, D.C.", "BOGOTA, D.C.", "OTROS", "ACTIVO", "MALA", 2018, 0)
+    monkeypatch.setattr(seeder, "FLEET", [*seeder.FLEET, bad])
+    result = _run(seeder, "seed")
+    assert result.exit_code != 0
+    assert result.output.startswith("error:") or "error:" in result.output
+    assert "Traceback" not in result.output
+    admin = connect(pg_settings, Profile.ADMIN, autocommit=True)
+    try:
+        counts = [
+            admin.execute(f"SELECT count(*) FROM {t}").fetchone()[0]
+            for t in ("ops.load_run", "landing.fx_rate", "landing.vehicle_fleet_snapshot")
+        ]
+    finally:
+        admin.close()
+    assert counts == [0, 0, 0]
+
+
+def test_verify_detects_a_fleet_mismatch(seeder, build, monkeypatch):
+    assert _run(seeder, "seed").exit_code == 0
+    assert build().exit_code == 0
+    monkeypatch.setattr(seeder, "FLEET", seeder.FLEET[:-1])
+    result = _run(seeder, "verify")
+    assert result.exit_code == 1
+    assert "fct_vehicle_fleet_snapshot" in result.output
+
+
+def test_verify_detects_a_normalization_regression(seeder, build, monkeypatch):
+    assert _run(seeder, "seed").exit_code == 0
+    assert build().exit_code == 0
+    monkeypatch.setattr(
+        seeder, "FLEET_NORM_KEYS", [("NARIÑO", "PASTO", "CAMION"), *seeder.FLEET_NORM_KEYS[:2]]
+    )
+    result = _run(seeder, "verify")
+    assert result.exit_code == 1
+    assert "normalized keys" in result.output

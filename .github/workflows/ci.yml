@@ -175,7 +175,8 @@ jobs:
 
       - name: Upload junit
         if: always()
-        # Vacios a nivel de step: el post-step de la action no recibe las contrasenas de GITHUB_ENV.
+        # upload-artifact no tiene post-step; los vacios evitan que la action reciba las contrasenas
+        # de GITHUB_ENV. Los post-steps de checkout y setup-uv si heredan el env del job.
         env:
           POSTGRES_PASSWORD: ""
           PITS_PG_LOADER_PASSWORD: ""
