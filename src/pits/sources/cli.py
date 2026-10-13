@@ -18,6 +18,7 @@ from botocore.exceptions import BotoCoreError
 
 from pits import __version__
 from pits.ingestion.raw_store import RawStore, S3RawStore
+from pits.sources.divipola.extract import extract_divipola
 from pits.sources.extract_common import ExtractPermanentError, ExtractTransientError
 from pits.sources.runt.extract import extract_runt
 from pits.sources.soda.client import SodaClient
@@ -158,6 +159,46 @@ def runt(
     m = result.manifest
     typer.echo(
         f"outcome={result.outcome} batch_id={m.batch_id} publication={result.publication} "
+        f"rows={m.row_count} files={len(m.files)} "
+        f"manifest=s3://{storage_settings.raw_bucket}/{result.manifest_key}"
+    )
+
+
+@extract_app.command()
+def divipola(
+    force: bool = typer.Option(
+        False, "--force", help="Create a new batch even if rowsUpdatedAt is unchanged."
+    ),
+) -> None:
+    """Extract the DANE DIVIPOLA municipality codes (always the full dataset) into a raw batch."""
+    try:
+        soda_settings = load_soda_settings(os.environ)
+        storage_settings = load_storage_settings(os.environ, identity="writer")
+    except (SodaConfigError, StorageConfigError) as exc:
+        _fail(str(exc), 1)
+
+    try:
+        store = store_factory(client_factory(storage_settings), storage_settings.raw_bucket)
+    except BotoCoreError as exc:
+        _fail(f"storage client error ({type(exc).__name__})", 1)
+    try:
+        with soda_factory(soda_settings) as soda:
+            result = extract_divipola(
+                soda,
+                store,
+                force=force,
+                now=clock,
+                new_batch_id=batch_id_factory,
+                extractor_version=__version__,
+            )
+    except ExtractTransientError as exc:
+        _fail(str(exc), 3)
+    except ExtractPermanentError as exc:
+        _fail(str(exc), 1)
+
+    m = result.manifest
+    typer.echo(
+        f"outcome={result.outcome} batch_id={m.batch_id} rows_updated={result.rows_updated} "
         f"rows={m.row_count} files={len(m.files)} "
         f"manifest=s3://{storage_settings.raw_bucket}/{result.manifest_key}"
     )
