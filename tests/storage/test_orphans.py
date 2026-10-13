@@ -357,3 +357,15 @@ def test_truncated_without_token_raises_orphans_error() -> None:
 
 def test_format_timestamp_naive_is_utc() -> None:
     assert format_timestamp(datetime(2026, 10, 1, 12, 0)) == "2026-10-01T12:00:00+00:00"
+
+
+def test_normalized_layout_recognizes_divipola_artifacts() -> None:
+    base = (
+        "divipola_municipality/source_system=dane_divipola/rows_updated=2025-01-24/"
+        f"fingerprint={FP1}/"
+    )
+    for rest in ("municipality.csv", "manifest.json"):
+        match = NORMALIZED_LAYOUT.fullmatch(base + rest)
+        assert match is not None and match.group(1) == base and match.group(2) == rest
+    other = base.replace("2025-01-24", "2025-1-24")
+    assert NORMALIZED_LAYOUT.fullmatch(other + "manifest.json") is None

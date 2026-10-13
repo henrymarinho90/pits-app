@@ -16,6 +16,7 @@ from botocore.client import BaseClient
 from botocore.exceptions import BotoCoreError
 
 from pits.ingestion.raw_store import RawStore, S3RawStore
+from pits.sources.divipola.normalize import normalize_divipola
 from pits.sources.normalize_common import NormalizePermanentError, NormalizeTransientError
 from pits.sources.runt.normalize import normalize_runt
 from pits.sources.trm.normalize import normalize_trm
@@ -116,3 +117,20 @@ def runt() -> None:
         _fail(str(exc), 3)
     except NormalizePermanentError as exc:
         _fail(str(exc), 1)
+
+
+@normalize_app.command()
+def divipola() -> None:
+    """Replay the latest committed raw DIVIPOLA batch into the divipola_municipality artifact."""
+    settings, raw_store, normalized_store = _connect()
+    try:
+        result = normalize_divipola(raw_store, normalized_store, raw_bucket=settings.raw_bucket)
+    except NormalizeTransientError as exc:
+        _fail(str(exc), 3)
+    except NormalizePermanentError as exc:
+        _fail(str(exc), 1)
+    typer.echo(
+        f"outcome={result.outcome.value} rows_updated={result.rows_updated.isoformat()} "
+        f"fingerprint={result.fingerprint} batch={result.batch_id} rows={result.rows} "
+        f"manifest=s3://{settings.normalized_bucket}/{result.manifest_key}"
+    )
