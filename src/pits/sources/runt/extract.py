@@ -41,7 +41,6 @@ from pits.sources.extract_common import (
 from pits.sources.runt.contract import (
     ATTRIBUTION,
     DATASET_ID,
-    EXPECTED_COLUMNS,
     EXPECTED_SCHEMA,
     LICENSE,
     MAX_PAGE_BYTES,
@@ -53,6 +52,8 @@ from pits.sources.runt.contract import (
     SOURCE_URL,
     WATERMARK_COLUMN,
     YEAR_COLUMN,
+    RowError,
+    validate_row,
 )
 from pits.sources.soda.client import (
     RawPage,
@@ -236,24 +237,7 @@ def _read_publication(soda: SodaClient) -> tuple[Publication, int]:
 
 def _validate_page(page: RawPage, offset: int, publication: Publication) -> None:
     for i, row in enumerate(page.rows):
-        where = f"row {offset + i}"
-        if set(row) != EXPECTED_COLUMNS:
-            raise ExtractPermanentError(
-                f"{where} has wrong keys (missing={sorted(EXPECTED_COLUMNS - set(row))}, "
-                f"unexpected={sorted(set(row) - EXPECTED_COLUMNS)})"
-            )
-        for name, value in row.items():
-            if not isinstance(value, str):
-                raise ExtractPermanentError(f"{where}.{name} must be a string")
-        cantidad = row["cantidad"]
-        if not _INT_RE.fullmatch(cantidad) or int(cantidad) < 1:
-            raise ExtractPermanentError(f"{where}.cantidad is not an integer >= 1")
-        registro = row["fecha_de_registro"]
-        if not _YEAR_RE.fullmatch(registro) or int(registro) > publication.year:
-            raise ExtractPermanentError(
-                f"{where}.fecha_de_registro is not a 4-digit year <= the publication year"
-            )
-        if _parse_publication(row[YEAR_COLUMN], row[MONTH_COLUMN], where) != publication:
-            raise ExtractPermanentError(
-                f"{where} belongs to another publication than {publication.label()}"
-            )
+        try:
+            validate_row(row, (publication.year, publication.month))
+        except RowError as exc:
+            raise ExtractPermanentError(exc.at(f"row {offset + i}")) from None

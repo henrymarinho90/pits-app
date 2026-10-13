@@ -1,10 +1,11 @@
 """Strict parsing of raw RUNT fleet pages into compact records (D97, D98).
 
 Pure functions: no I/O, no clock. Errors name the payload key and row index, never dump data.
-Rules are the ones the extractor enforced when it stored the page (contract.py): exact keys,
-string values, cantidad an integer >= 1, fecha_de_registro a 4-digit year <= the publication
-year, one publication per batch. On top of that, text values must be usable as-is (D98): no
-empty value, no leading/trailing whitespace, no CR/LF.
+Row rules are the ones the extractor enforces when it stores the page: one shared
+contract.validate_row (exact keys, string values without control characters, cantidad an integer
+>= 1, fecha_de_registro a 4-digit year in [1900, publication year], one publication per batch;
+D103). On top of that, text values must be usable as-is (D98): no empty value, no
+leading/trailing whitespace, no CR/LF.
 
 Memory (D98): a record is a flat tuple; repeated strings are interned and the source reference
 is rebuilt at serialization from (payload index, row index) instead of being stored.
@@ -12,15 +13,11 @@ is rebuilt at serialization from (payload index, row index) instead of being sto
 
 from __future__ import annotations
 
-import re
 import sys
 from collections.abc import Mapping, Sequence
 from typing import Any
 
-from pits.sources.runt.contract import EXPECTED_COLUMNS, MONTH_COLUMN, MONTHS, YEAR_COLUMN
-
-_INT_RE = re.compile(r"[0-9]+")
-_YEAR_RE = re.compile(r"[0-9]{4}")
+from pits.sources.runt.contract import RowError, validate_row
 
 # Record layout: the first PK_FIELDS items are the primary key (sort order of the artifact).
 #   0 publication_year, 1 publication_month, 2 department_name, 3 municipality_name,
@@ -56,31 +53,11 @@ def parse_page(
     records: list[Record] = []
     for i, row in enumerate(rows):
         ref = f"{page_key}#row={i}"
-        if set(row) != EXPECTED_COLUMNS:
-            raise RuntDataError(
-                f"{ref} has wrong keys (missing={sorted(EXPECTED_COLUMNS - set(row))}, "
-                f"unexpected_count={len(set(row) - EXPECTED_COLUMNS)})"
-            )
-        for name, value in row.items():
-            if not isinstance(value, str):
-                raise RuntDataError(f"{ref}.{name} must be a string")
-        year_text, month_text = row[YEAR_COLUMN], row[MONTH_COLUMN]
-        if not _YEAR_RE.fullmatch(year_text) or month_text not in MONTHS:
-            raise RuntDataError(f"{ref} has an invalid publication (year or month)")
-        pub_year, pub_month = int(year_text), MONTHS[month_text]
-        if (pub_year, pub_month) != publication:
-            raise RuntDataError(
-                f"{ref} belongs to publication {pub_year:04d}-{pub_month:02d}, "
-                f"not {publication[0]:04d}-{publication[1]:02d}"
-            )
-        count_text = row["cantidad"]
-        if not _INT_RE.fullmatch(count_text) or int(count_text) < 1:
-            raise RuntDataError(f"{ref}.cantidad is not an integer >= 1")
-        registration = row["fecha_de_registro"]
-        if not _YEAR_RE.fullmatch(registration) or int(registration) > pub_year:
-            raise RuntDataError(
-                f"{ref}.fecha_de_registro is not a 4-digit year <= the publication year"
-            )
+        try:
+            validate_row(row, publication)
+        except RowError as exc:
+            raise RuntDataError(exc.at(ref)) from None
+        registration, count_text = row["fecha_de_registro"], row["cantidad"]
         records.append(
             (
                 publication[0],

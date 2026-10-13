@@ -301,6 +301,9 @@ def bad_rows():
         "registro_future": row(0, fecha_de_registro="2027"),
         "registro_short": row(0, fecha_de_registro="99"),
         "registro_text": row(0, fecha_de_registro="abcd"),
+        "registro_before_1900": row(0, fecha_de_registro="1899"),
+        "control_nul": row(0, nombre_municipio="CA\x00LI"),
+        "control_c1": row(0, nombre_municipio="CA\x85LI"),
     }
 
 
@@ -430,3 +433,8 @@ def test_recovery_after_failure_with_orphan_payloads():
     latest = find_latest_committed(store, SOURCE_SYSTEM, DATASET_ID)
     assert latest is not None and latest.batch_id == B2
     assert orphans <= set(store.objects)  # orphans are left untouched (write-once)
+
+
+def test_registro_1900_is_valid_at_the_lower_edge():
+    result = run(FakeRunt([row(0, fecha_de_registro="1900")]), MemoryRawStore())
+    assert result.manifest.row_count == 1

@@ -59,6 +59,12 @@ def test_repeated_strings_are_interned():
         {"nombre_servicio": "\tX"},
         {"nombre_de_la_clase": "A\nB"},
         {"nombre_departamento": "A\rB"},
+        {"nombre_municipio": "CA\x00LI"},  # D103: NUL and any Cc inside a value
+        {"nombre_municipio": "CA\x1fLI"},
+        {"nombre_municipio": "CA\x7fLI"},
+        {"nombre_municipio": "CA\x85LI"},  # C1 control (NEL)
+        {"fecha_de_registro": "1899"},  # D103: below the landing CHECK
+        {"fecha_de_registro": "0000"},
         {"cantidad": "0"},
         {"cantidad": "-1"},
         {"cantidad": "1.5"},
@@ -74,6 +80,18 @@ def test_repeated_strings_are_interned():
 def test_invalid_row_is_rejected(bad):
     with pytest.raises(RuntDataError, match="payload-00000.json#row=0"):
         parse([raw_row(0, **bad)])
+
+
+@pytest.mark.parametrize("year", ["1900", "1901"])
+def test_registration_years_1900_and_1901_are_kept_as_is(year):
+    (record,) = parse([raw_row(0, fecha_de_registro=year)])
+    assert record[7] == int(year)
+
+
+def test_non_cc_unicode_is_kept():
+    # Format/space/other characters are not control characters (category Cc).
+    (record,) = parse([raw_row(0, nombre_municipio="A\u200bB\u00a0C\u00d1")])
+    assert record[3] == "A\u200bB\u00a0C\u00d1"
 
 
 def test_wrong_keys_and_non_string_values_are_rejected():

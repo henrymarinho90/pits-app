@@ -27,7 +27,7 @@ import os
 import signal
 import subprocess
 import threading
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from datetime import date
 from fnmatch import fnmatchcase
 from typing import Any
@@ -77,6 +77,33 @@ def extract_args(mode: str, since: str | None) -> list[str]:
     return ["--full"] if mode == "full" else []
 
 
+def force_args(force: object) -> list[str]:
+    """`--force` when the `force` DAG param is the boolean True; ValueError if it is not a bool.
+
+    Strict on purpose: the REST API and the CLI accept any JSON as conf, and a truthy string such
+    as "false" must never turn into --force (which stores a new 50 MB raw batch).
+    """
+    if not isinstance(force, bool):
+        raise ValueError(f"force must be a boolean; got {type(force).__name__}")
+    return ["--force"] if force else []
+
+
+def _trm_extract_args(params: Mapping[str, Any]) -> list[str]:
+    return extract_args(params.get("extract_mode", "incremental"), params.get("since"))
+
+
+def _runt_extract_args(params: Mapping[str, Any]) -> list[str]:
+    return force_args(params.get("force", False))
+
+
+# Name -> translator of DAG params into validated argv. A name (not a callable) so the task
+# arguments stay serializable and a DAG file cannot smuggle arbitrary code into argv building.
+PARAM_ARGS: dict[str, Callable[[Mapping[str, Any]], list[str]]] = {
+    "trm_extract": _trm_extract_args,
+    "runt_extract": _runt_extract_args,
+}
+
+
 def build_env(source: Mapping[str, str], allow: Sequence[str]) -> dict[str, str]:
     """Child environment: variables of `source` matching an allow pattern (fnmatch, case
     sensitive) or BASE_ENV. Anything starting with AIRFLOW is dropped even if a pattern matches."""
@@ -95,8 +122,9 @@ class PitsCliOperator(BaseOperator):
     :param command: pits subcommand, e.g. ["extract", "trm"].
     :param env_allow: fnmatch patterns of the environment variables the child may see.
     :param secret_env: exact names whose values are masked in the task log.
-    :param extract_params: if True, append the flags derived from the DAG params
-        extract_mode / since (see extract_args).
+    :param param_args: name in PARAM_ARGS; appends the argv derived from the DAG params
+        ("trm_extract": extract_mode / since, see extract_args; "runt_extract": force, see
+        force_args). Invalid params fail the task before the child starts (no retry).
     :param executable: path of the pits script (overridable only by tests).
     :param kill_timeout: seconds between SIGTERM and SIGKILL in on_kill.
     """
@@ -107,7 +135,7 @@ class PitsCliOperator(BaseOperator):
         command: Sequence[str],
         env_allow: Sequence[str],
         secret_env: Sequence[str] = (),
-        extract_params: bool = False,
+        param_args: str | None = None,
         executable: str = PITS_BIN,
         kill_timeout: float = DEFAULT_KILL_TIMEOUT,
         **kwargs: Any,
@@ -116,7 +144,9 @@ class PitsCliOperator(BaseOperator):
         self.command = list(command)
         self.env_allow = list(env_allow)
         self.secret_env = list(secret_env)
-        self.extract_params = extract_params
+        if param_args is not None and param_args not in PARAM_ARGS:
+            raise ValueError(f"param_args must be one of {sorted(PARAM_ARGS)}; got {param_args!r}")
+        self.param_args = param_args
         self.executable = executable
         self.kill_timeout = kill_timeout
         self._proc: subprocess.Popen[str] | None = None
@@ -126,10 +156,10 @@ class PitsCliOperator(BaseOperator):
 
     def _argv(self, context: Mapping[str, Any]) -> list[str]:
         argv = [self.executable, *self.command]
-        if self.extract_params:
+        if self.param_args is not None:
             params = context.get("params") or {}
             try:
-                argv += extract_args(params.get("extract_mode", "incremental"), params.get("since"))
+                argv += PARAM_ARGS[self.param_args](params)
             except ValueError as exc:
                 raise AirflowFailException(f"invalid DAG params: {exc}") from None
         return argv

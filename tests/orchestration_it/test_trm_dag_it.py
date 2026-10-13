@@ -116,7 +116,9 @@ def test_5_wrong_transformer_password_is_permanent_failure():
         timeout=300,
     )
     out = proc.stdout + proc.stderr
-    assert "pits transform build exited with code 1 (permanent, no retry)" in out
+    assert (
+        "pits transform build --select tag:fx_rate exited with code 1 (permanent, no retry)" in out
+    )
     assert "AirflowFailException" in out
     assert "will retry" not in out
     assert "new_state=failed" in out

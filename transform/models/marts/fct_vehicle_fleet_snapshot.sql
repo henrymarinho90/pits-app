@@ -1,5 +1,8 @@
 -- D100: all publications, statuses and services (no ACTIVO filter, no DANE, no service/status
 -- normalization). Reads staging on purpose: a failed staging test leaves the previous mart intact.
+-- depends_on: {{ source('ops', 'load_run_fleet') }}
+-- (hint: assert_vehicle_fleet_rows_match_load_run has two parents, staging and this source; dbt only
+-- skips what is downstream of ALL the parents of a failed test, so the mart must depend on both.)
 select
     publication_year,
     publication_month,

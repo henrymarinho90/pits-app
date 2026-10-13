@@ -39,8 +39,8 @@ _LOAD_RUN_SQL = (
 _FLEET_RUN_SQL = _LOAD_RUN_SQL.replace(
     "('fx_rate', 'superfinanciera_trm', %s, 't', '1', 'k', %s, 'c', %s, 1, 1, "
     "'2026-01-01', '2026-01-05',",
-    "('vehicle_fleet_snapshot', 'runt_vehicle_fleet', %s, 't', '1', 'k', %s, 'c', %s, 1, %s, "
-    "'2026-10-01', '2026-10-01',",
+    "('vehicle_fleet_snapshot', 'mintransporte_runt_parque', %s, 't', '1', 'k', %s, 'c', %s, 1, "
+    "%s, '2026-10-01', '2026-10-01',",
 )
 FLEET_HASH = "b" * 64
 # (department, municipality, service, status, class, registration_year, count): spellings that
@@ -64,7 +64,7 @@ FLEET = [
 ]
 _FLEET_SQL = (
     "INSERT INTO landing.vehicle_fleet_snapshot VALUES (2026, 10, %s, %s, %s, %s, %s, %s, %s, "
-    "'runt_vehicle_fleet', %s, %s)"
+    "'mintransporte_runt_parque', %s, %s)"
 )
 _FLEET_COLUMNS = (
     "publication_year, publication_month, department_name, municipality_name, service_name, "
@@ -284,14 +284,59 @@ def test_new_service_fails_staging_skips_mart_and_spares_fx_rate(warehouse, flee
     assert "fct_fx_rate_daily" in output and "vehicle_fleet" not in output
 
 
+# Every case also changes landing data the mart would copy if it were rebuilt, so "mart intact"
+# cannot pass by coincidence (an unchanged landing would rebuild an identical mart).
+_BUMP_COUNTS = "UPDATE landing.vehicle_fleet_snapshot SET vehicle_count = vehicle_count + 1"
+_OLDER_LOAD_RUN = (
+    "UPDATE landing.vehicle_fleet_snapshot SET load_id = ("
+    "SELECT min(load_id) FROM ops.load_run WHERE dataset = 'fx_rate') "
+    "WHERE municipality_name = 'SAN ANDRES'"
+)
+_NEWER_LOAD_RUN = (
+    "INSERT INTO ops.load_run (dataset, source_system, input_fingerprint, transform_name, "
+    "rules_version, manifest_key, manifest_sha256, csv_key, csv_sha256, csv_size_bytes, "
+    "row_count, coverage_from, coverage_to, last_input_batch_id, last_input_extraction_date, "
+    "last_input_finished_at, normalized_manifest, loader_version) VALUES "
+    "('vehicle_fleet_snapshot', 'mintransporte_runt_parque', repeat('c', 64), 't', '1', 'k', "
+    "repeat('c', 64), 'c', repeat('c', 64), 1, 7, '2026-10-01', '2026-10-01', "
+    "'00000000-0000-0000-0000-000000000000', '2026-10-01', now(), '{}'::jsonb, '0.1')"
+)
+
+
 @pytest.mark.parametrize(
-    ("statement", "failing_test"),
+    "statements",
     [
         (
             "UPDATE ops.load_run SET row_count = row_count + 1 "
             "WHERE dataset = 'vehicle_fleet_snapshot'",
-            "assert_vehicle_fleet_rows_match_load_run",
+            _BUMP_COUNTS,
         ),
+        # a row left behind by an older load: min(load_id) differs from the latest load_run
+        (_OLDER_LOAD_RUN,),
+        # a newer load_run than the rows' load_id: max(load_id) differs
+        (_NEWER_LOAD_RUN, _BUMP_COUNTS),
+    ],
+    ids=["row_count", "min_load_id", "newer_load_run"],
+)
+def test_fleet_rows_must_match_their_latest_load_run(warehouse, fleet, transform, statements):
+    """assert_vehicle_fleet_rows_match_load_run fails the build and, through the depends_on hint
+    of the mart (two-parent test, D87 pattern), leaves the previous mart intact (SKIP)."""
+    settings = warehouse[0]
+    admin, _ = fleet
+    assert transform("build", select="tag:vehicle_fleet")[0] == 0
+    before = _fleet_mart(settings)
+    for statement in statements:
+        admin.execute(statement)
+    code, output = transform("build", select="tag:vehicle_fleet")
+    assert code == 1
+    assert "assert_vehicle_fleet_rows_match_load_run" in output
+    assert re.search(r"SKIP.*fct_vehicle_fleet_snapshot", output)
+    assert _fleet_mart(settings) == before
+
+
+@pytest.mark.parametrize(
+    ("statement", "failing_test"),
+    [
         (
             "UPDATE landing.vehicle_fleet_snapshot SET department_name = 'NARIÑO @' "
             "WHERE municipality_name = 'SAN ANDRES'",
