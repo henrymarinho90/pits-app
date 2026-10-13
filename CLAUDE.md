@@ -33,6 +33,7 @@ Python (Typer, pytest, ruff), Docker Compose, SeaweedFS (S3, D57), PostgreSQL, d
 - docs/07_lessons_learned.md — bitácora
 - docs/08_market_research.md — mercado Colombia
 - docs/09_us_market_research.md — mercado EE. UU., tracks T1/T2/T3 y monetización
+- docs/10_next_project_playbook.md — playbook destilado de las lecciones para arrancar el próximo proyecto más rápido
 
 ## Agentes
 Usa `/orquestar <tarea>` para tareas medianas: arquitecto → (aprobación del plan) → implementador → revisor-senior → documentador → PR (aprobación del PR). Dentro de un plan aprobado los agentes commitean, hacen push de la rama y abren el PR sin pedir permiso (D45, D73(a)).
