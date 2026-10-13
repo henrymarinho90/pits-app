@@ -364,13 +364,30 @@ def test_operator_rejects_non_boolean_force_before_running(fake, bad):
     assert not (fake.parent / "dump.json").exists()
 
 
+@pytest.mark.parametrize(
+    ("params", "expected"),
+    [({}, ["dump"]), ({"force": False}, ["dump"]), ({"force": True}, ["dump", "--force"])],
+)
+def test_operator_divipola_param_args_builds_force(fake, params, expected):
+    make(fake, ["dump"], param_args="divipola_extract").execute({"params": params})
+    assert json.loads((fake.parent / "dump.json").read_text())["argv"] == expected
+
+
+@pytest.mark.parametrize("bad", ["yes", "false", 1, None])
+def test_operator_divipola_rejects_non_boolean_force_before_running(fake, bad):
+    operator = make(fake, ["dump"], param_args="divipola_extract")
+    with pytest.raises(AirflowFailException):
+        operator.execute({"params": {"force": bad}})
+    assert not (fake.parent / "dump.json").exists()
+
+
 def test_operator_without_param_args_ignores_params(fake):
     make(fake, ["dump"]).execute({"params": {"force": True, "extract_mode": "full"}})
     assert json.loads((fake.parent / "dump.json").read_text())["argv"] == ["dump"]
 
 
 def test_unknown_param_args_name_is_rejected_at_definition():
-    assert set(PARAM_ARGS) == {"trm_extract", "runt_extract"}
+    assert set(PARAM_ARGS) == {"trm_extract", "runt_extract", "divipola_extract"}
     with pytest.raises(ValueError, match="param_args"):
         PitsCliOperator(task_id="t", command=["x"], env_allow=[], param_args="bogus")
 
