@@ -110,8 +110,7 @@ def test_ci_contract_job_uses_compose_and_default_probe_network():
     # Each contract/pg test runs in exactly one job: contract takes all `contract` (incl.
     # contract+pg e2e); pg takes the rest of `pg`.
     assert "pytest -m contract -q" in runs
-    pg_runs = "
-".join(s.get("run", "") for s in _ci_pg_job()["steps"])
+    pg_runs = "\n".join(s.get("run", "") for s in _ci_pg_job()["steps"])
     assert 'pytest -m "pg and not contract"' in pg_runs
     assert "docker compose down -v" in runs
     # compose `name: pits` -> network pits_default, the probe default (no override needed).
