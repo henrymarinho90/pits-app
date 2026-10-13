@@ -266,7 +266,8 @@ jobs:
 
       # Solo NOMBRES de variables, nunca valores.
       - name: Diagnostics (variable names only)
-        run: env | cut -d= -f1 | grep -E '^(S3_|PITS_S3_|PITS_SEAWEEDFS_|PITS_SWNET_|COMPOSE_)' || true
+        if: failure()
+        run: env | cut -d= -f1 | grep -E '^(S3_|PITS_S3_|PITS_SEAWEEDFS_|COMPOSE_)' || true
 
       # D104(c): policy write-once en raw y normalized.
       - name: Init storage buckets

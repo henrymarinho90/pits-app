@@ -128,3 +128,16 @@ def test_ci_contract_job_never_uses_env_file_and_blanks_secrets_on_upload():
         "POSTGRES_PASSWORD",
     }
     assert {k: step["env"].get(k) for k in secrets_} == dict.fromkeys(secrets_, "")
+
+
+def _step(job: dict, name: str) -> dict:
+    return next(s for s in job["steps"] if s.get("name") == name)
+
+
+def test_ci_contract_job_always_tears_down_compose():
+    assert _step(_ci_contract_job(), "Compose down")["if"] == "always()"
+
+
+def test_ci_jobs_mask_generated_credentials():
+    for job in (_ci_pg_job(), _ci_contract_job()):
+        assert "::add-mask::" in _step(job, "Generate ephemeral credentials")["run"]
