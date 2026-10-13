@@ -131,15 +131,16 @@ def test_new_landing_tables_default_to_transformer_select(warehouse):
     )
 
 
-def test_database_already_at_0003_receives_only_0004(pg_settings, tmp_path):
+@pytest.mark.parametrize("prefix", [2, 3])
+def test_database_at_a_migration_prefix_receives_only_the_later_ones(pg_settings, tmp_path, prefix):
     packaged = discover_migrations()
     assert len(packaged) == 4
-    for m in packaged[:3]:
+    for m in packaged[:prefix]:
         (tmp_path / m.filename).write_bytes(m.sql.encode())
-    first = run_migrate(pg_settings, tmp_path)  # a database as the real one: only 0001..0003
-    assert (first.applied, first.skipped) == (3, 0)
+    first = run_migrate(pg_settings, tmp_path)  # a database as an older real one
+    assert (first.applied, first.skipped) == (prefix, 0)
     second = run_migrate(pg_settings)  # packaged set
-    assert (second.applied, second.skipped) == (1, 3)
+    assert (second.applied, second.skipped) == (4 - prefix, prefix)
     conn = connect(pg_settings, Profile.TRANSFORMER, autocommit=True)
     try:
         assert conn.execute("SELECT count(*) FROM landing.fx_rate").fetchone() == (0,)

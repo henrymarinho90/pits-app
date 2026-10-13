@@ -6,6 +6,8 @@ sources:
     tables:
       - name: fx_rate
         description: "Daily FX rates as normalized by the loader (D79, D81)."
+        config:
+          tags: [fx_rate]
         data_tests:
           - unique_combination_of_columns:
               arguments:
@@ -40,14 +42,78 @@ sources:
                     to: source('ops', 'load_run')
                     field: load_id
 
+      - name: vehicle_fleet_snapshot
+        description: "RUNT vehicle fleet stock per publication month as loaded (D99)."
+        config:
+          tags: [vehicle_fleet]
+        data_tests:
+          - unique_combination_of_columns:
+              arguments:
+                combination_of_columns: [publication_year, publication_month, department_name, municipality_name, service_name, vehicle_status, vehicle_class, registration_year]
+        columns:
+          - name: publication_year
+            data_tests: [not_null]
+          - name: publication_month
+            data_tests: [not_null]
+          - name: department_name
+            data_tests: [not_null]
+          - name: municipality_name
+            data_tests: [not_null]
+          - name: service_name
+            data_tests:
+              - not_null
+              - accepted_values:
+                  arguments:
+                    values: ['NO REGISTRA', 'OFICIAL', 'OTROS', 'PARTICULAR', 'PÚBLICO']
+                  config:
+                    severity: error
+          - name: vehicle_status
+            data_tests:
+              - not_null
+              - accepted_values:
+                  arguments:
+                    values: ['ACTIVO', 'INCONSISTENTE']
+                  config:
+                    severity: error
+          - name: vehicle_class
+            data_tests: [not_null]
+          - name: registration_year
+            data_tests: [not_null]
+          - name: vehicle_count
+            data_tests: [not_null]
+          - name: source_system
+            data_tests: [not_null]
+          - name: source_reference
+            data_tests: [not_null]
+          - name: load_id
+            data_tests:
+              - not_null
+              - relationships:
+                  arguments:
+                    to: source('ops', 'load_run_fleet')
+                    field: load_id
+
   - name: ops
     schema: ops
     tables:
       - name: load_run
-        description: "Audit of effective loads into landing (D81)."
+        description: "Audit of effective loads into landing (D81). FX rate view of it."
         config:
+          tags: [fx_rate]
           loaded_at_field: loaded_at
           freshness:
             warn_after: {count: 2, period: day}
             error_after: {count: 7, period: day}
             filter: "dataset = 'fx_rate'"
+      # Same physical table as load_run (identifier), declared apart so each dataset has its own
+      # freshness (D100) and its own tag: `--select tag:...` never mixes fx_rate and vehicle_fleet.
+      - name: load_run_fleet
+        identifier: load_run
+        description: "Audit of effective loads into landing (D81). Vehicle fleet view of it."
+        config:
+          tags: [vehicle_fleet]
+          loaded_at_field: loaded_at
+          freshness:
+            warn_after: {count: 35, period: day}
+            error_after: {count: 65, period: day}
+            filter: "dataset = 'vehicle_fleet_snapshot'"

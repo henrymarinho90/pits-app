@@ -36,7 +36,7 @@ results = fl.results
 warehouse = fl.warehouse
 
 TABLE = "landing.vehicle_fleet_snapshot"
-TEN_ROWS = 9  # len(TRICKY_NAMES)
+OCT_ROWS = 9  # len(TRICKY_NAMES)
 
 
 def snapshot(admin):
@@ -126,7 +126,7 @@ def test_first_load_loads_both_publications_in_order(warehouse, results):
     )
     assert nine["manifest"] == f"s3://pits-normalized/{results['2026-09'].manifest_key}"
     assert int(nine["load_id"]) < int(ten["load_id"])
-    assert count(warehouse, TABLE) == BIG_ROWS + TEN_ROWS
+    assert count(warehouse, TABLE) == BIG_ROWS + OCT_ROWS
     runs = warehouse.execute(
         "SELECT dataset, source_system, coverage_from::text, coverage_to::text, row_count, "
         "rows_inserted, rows_updated, rows_deleted, csv_key, input_fingerprint, "
@@ -138,7 +138,7 @@ def test_first_load_loads_both_publications_in_order(warehouse, results):
         ("vehicle_fleet_snapshot", "mintransporte_runt_parque", "2026-10-01", "2026-10-01"),
     ]
     assert runs[0][4:8] == (BIG_ROWS, BIG_ROWS, 0, 0)
-    assert runs[1][4:8] == (TEN_ROWS, TEN_ROWS, 0, 0)
+    assert runs[1][4:8] == (OCT_ROWS, OCT_ROWS, 0, 0)
     prefix = results["2026-10"].manifest_key.removesuffix("manifest.json")
     assert runs[1][8:] == (prefix, results["2026-10"].fingerprint) + (
         results["2026-10"].fingerprint,
@@ -169,7 +169,7 @@ def test_publication_filter_loads_only_that_publication(warehouse):
     result = load("--publication", "2026-10")
     assert result.exit_code == 0, result.output
     assert [o["publication"] for o in fields(result.output)] == ["2026-10"]
-    assert count(warehouse, TABLE) == TEN_ROWS and count(warehouse, "ops.load_run") == 1
+    assert count(warehouse, TABLE) == OCT_ROWS and count(warehouse, "ops.load_run") == 1
 
 
 def test_table_is_the_artifact_in_every_cell(warehouse, store, results):
@@ -227,7 +227,7 @@ def test_older_artifact_is_exit_1_unless_forced_by_fingerprint(
     assert forced.exit_code == 0, forced.output
     (out,) = fields(forced.output)
     assert (out["outcome"], out["inserted"], out["deleted"]) == ("loaded", "9", "4")
-    assert count(warehouse, f"{TABLE} WHERE publication_month = 10") == TEN_ROWS
+    assert count(warehouse, f"{TABLE} WHERE publication_month = 10") == OCT_ROWS
 
 
 # --- drift and repair -----------------------------------------------------------------------
@@ -384,7 +384,7 @@ def test_duplicate_primary_key_across_parts_is_exit_1(warehouse, store, results)
     assert count(warehouse, TABLE) == 0 and count(warehouse, "ops.load_run") == 0
 
 
-def test_corrupt_part_is_exit_1_before_anything_is_written(warehouse, store, results):
+def test_corrupt_part_is_exit_1_before_its_publication_is_written(warehouse, store, results):
     manifest = FleetManifest.from_json(store.get(results["2026-10"].manifest_key))
     data = bytearray(store.get(manifest.parts[0].key))
     data[-2] ^= 1
@@ -408,7 +408,7 @@ def conns(warehouse, pg_settings):
 
 def test_loader_can_select_insert_delete_but_not_update_or_truncate(conns):
     loader = conns[Profile.LOADER]
-    assert count(loader, TABLE) == BIG_ROWS + TEN_ROWS
+    assert count(loader, TABLE) == BIG_ROWS + OCT_ROWS
     for statement in (
         f"UPDATE {TABLE} SET vehicle_count = 1",
         f"UPDATE {TABLE} SET load_id = load_id",
@@ -423,7 +423,7 @@ def test_loader_can_select_insert_delete_but_not_update_or_truncate(conns):
 
 def test_reader_only_selects(conns):
     reader = conns[Profile.READER]
-    assert count(reader, TABLE) == BIG_ROWS + TEN_ROWS
+    assert count(reader, TABLE) == BIG_ROWS + OCT_ROWS
     for statement in (
         f"DELETE FROM {TABLE}",
         f"INSERT INTO {TABLE} SELECT * FROM {TABLE} LIMIT 1",
@@ -436,7 +436,7 @@ def test_reader_only_selects(conns):
 
 def test_transformer_only_selects(conns):
     transformer = conns[Profile.TRANSFORMER]
-    assert count(transformer, TABLE) == BIG_ROWS + TEN_ROWS
+    assert count(transformer, TABLE) == BIG_ROWS + OCT_ROWS
     for statement in (
         f"DELETE FROM {TABLE}",
         f"INSERT INTO {TABLE} SELECT * FROM {TABLE} LIMIT 1",
