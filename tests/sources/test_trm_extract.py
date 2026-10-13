@@ -249,7 +249,7 @@ def test_row_not_after_watermark_is_permanent():
 
     class Leaky(FakeSoda):
         def handler(self, request):
-            if request.url.path.startswith("/resource/"):
+            if request.url.path.startswith("/resource/") and "$select" not in request.url.params:
                 self.requests.append(request)
                 return httpx.Response(200, content=json.dumps(self.rows[:1]).encode())
             return super().handler(request)
@@ -456,3 +456,87 @@ def test_finished_at_never_before_started_at():
     times = iter([datetime(2026, 10, 10, 12, tzinfo=UTC), datetime(2026, 10, 10, 11, tzinfo=UTC)])
     result = run(FakeSoda(make_rows(2)), MemoryRawStore(), clock=lambda: next(times))
     assert result.manifest.finished_at == result.manifest.started_at
+
+
+def _no_manifest(store):
+    return not any(k.endswith("manifest.json") for k in store.objects)
+
+
+@pytest.mark.parametrize("mode", ["full", "incremental", "since"])
+def test_count_guard_runs_after_metadata_and_before_pages_with_same_where(mode):
+    store = MemoryRawStore()
+    kwargs = {}
+    if mode == "full":
+        fake = FakeSoda(make_rows(10))
+    else:
+        full_batch(store, make_rows(7))
+        fake = FakeSoda(make_rows(10))
+        kwargs = {"mode": mode, "batch_id": B2}
+        if mode == "since":
+            kwargs["since"] = START + timedelta(4)
+    result = run(fake, store, **kwargs)
+    paths = [(r.url.path, r.url.params.get("$select")) for r in fake.requests]
+    assert paths[0][0].startswith("/api/views/")
+    assert paths[1] == ("/resource/32sa-8pi3.json", "count(*)")
+    assert all(sel is None for _, sel in paths[2:-1])
+    (count,) = fake.count_params()
+    where = result.manifest.query.where
+    if mode == "full":
+        assert where is None and dict(count) == {"$select": "count(*)"}
+    else:
+        assert where.startswith("vigenciadesde >" + ("=" if mode == "since" else ""))
+        assert dict(count) == {"$select": "count(*)", "$where": where}
+
+
+def test_short_page_before_total_is_transient_truncated_without_manifest():
+    store = MemoryRawStore()
+    fake = FakeSoda(make_rows(7))
+    fake.count_override = "10"  # source announced 10 rows but pages end at 7
+    with pytest.raises(ExtractTransientError, match="Truncated extraction: read 7 .* expected 10"):
+        run(fake, store)
+    assert _no_manifest(store)
+
+
+def test_more_rows_than_count_is_transient_without_manifest():
+    store = MemoryRawStore()
+    fake = FakeSoda(make_rows(7))
+    fake.count_override = "5"
+    with pytest.raises(
+        ExtractTransientError, match="Truncated extraction: page at offset 3 exceeds the expected 5"
+    ):
+        run(fake, store)
+    assert _no_manifest(store)
+
+
+@pytest.mark.parametrize(
+    "response",
+    [
+        pytest.param([], id="no-rows"),
+        pytest.param([{"count": "1"}, {"count": "1"}], id="two-rows"),
+        pytest.param([{"count": "1", "extra": "x"}], id="extra-key"),
+        pytest.param([{"total": "1"}], id="wrong-key"),
+        pytest.param([{"count": 5}], id="int-not-string"),
+        pytest.param([{"count": "abc"}], id="not-numeric"),
+        pytest.param([{"count": "-1"}], id="negative"),
+        pytest.param([{"count": ""}], id="empty"),
+    ],
+)
+def test_malformed_count_is_permanent_with_zero_writes(response):
+    store = MemoryRawStore()
+    fake = FakeSoda(make_rows(3))
+    fake.count_response_rows = response
+    with pytest.raises(ExtractPermanentError, match="[Cc]ount"):
+        run(fake, store)
+    assert store.objects == {}
+    assert fake.resource_params() == []  # no page was requested
+
+
+def test_incremental_with_count_zero_commits_an_empty_batch():
+    store = MemoryRawStore()
+    first = full_batch(store, make_rows(7))
+    fake = FakeSoda(make_rows(7))
+    result = run(fake, store, mode="incremental", batch_id=B2)
+    assert fake.count_params()[0]["$select"] == "count(*)"
+    assert result.manifest.row_count == 0 and result.manifest.files == ()
+    assert result.manifest.watermark.to_observed == first.manifest.watermark.to_observed
+    assert store.get(result.manifest_key)

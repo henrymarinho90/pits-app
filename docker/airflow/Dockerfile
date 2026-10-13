@@ -21,9 +21,10 @@ WORKDIR /opt/pits
 # Venv aislado /opt/pits/.venv sobre el Python del sistema (sin descargar otro); --no-dev quita
 # pytest/ruff y el grupo transform (dbt) se mantiene.
 COPY pyproject.toml uv.lock .python-version ./
+# UV_COMPILE_BYTECODE=1 (D111): .pyc precompilados como root; el venv es de solo lectura y Python no puede cachearlos en runtime (arranque en frío −47 %).
 RUN --mount=from=ghcr.io/astral-sh/uv:0.11.26@sha256:3d868e555f8f1dbc324afa005066cd11e1053fc4743b9808ca8025283e65efa5,source=/uv,target=/usr/local/bin/uv \
     UV_PYTHON=/usr/python/bin/python3.12 UV_PYTHON_DOWNLOADS=never \
-    UV_PROJECT_ENVIRONMENT=/opt/pits/.venv UV_NO_CACHE=1 \
+    UV_PROJECT_ENVIRONMENT=/opt/pits/.venv UV_NO_CACHE=1 UV_COMPILE_BYTECODE=1 \
     /usr/local/bin/uv sync --locked --no-dev --no-install-project
 
 # Codigo: instalacion editable (default de uv sync). pits.transform.runner resuelve el proyecto dbt
@@ -31,9 +32,10 @@ RUN --mount=from=ghcr.io/astral-sh/uv:0.11.26@sha256:3d868e555f8f1dbc324afa00506
 # (/opt/pits/.venv/bin/dbt); una instalacion no editable los resolveria dentro de site-packages.
 COPY src/ ./src/
 COPY transform/ ./transform/
+# UV_COMPILE_BYTECODE=1 (D111): .pyc precompilados como root; el venv es de solo lectura y Python no puede cachearlos en runtime (arranque en frío −47 %).
 RUN --mount=from=ghcr.io/astral-sh/uv:0.11.26@sha256:3d868e555f8f1dbc324afa005066cd11e1053fc4743b9808ca8025283e65efa5,source=/uv,target=/usr/local/bin/uv \
     UV_PYTHON=/usr/python/bin/python3.12 UV_PYTHON_DOWNLOADS=never \
-    UV_PROJECT_ENVIRONMENT=/opt/pits/.venv UV_NO_CACHE=1 \
+    UV_PROJECT_ENVIRONMENT=/opt/pits/.venv UV_NO_CACHE=1 UV_COMPILE_BYTECODE=1 \
     /usr/local/bin/uv sync --locked --no-dev
 
 # transform/ escribible por GID 0 (convencion de la imagen oficial): dbt funciona con cualquier UID

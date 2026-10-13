@@ -186,6 +186,15 @@ def test_settings_token_with_invalid_characters():
     assert "invalid characters" in str(err.value)
 
 
+def test_settings_token_with_http_base_url_is_rejected_without_leaking_it():
+    with pytest.raises(SodaConfigError) as err:
+        load_soda_settings({"SODA_BASE_URL": "http://soda.example", "SODA_APP_TOKEN": TOKEN})
+    assert "https" in str(err.value) and TOKEN not in str(err.value)
+    # https + token, and http without token, stay valid.
+    assert load_soda_settings({"SODA_BASE_URL": "https://x.test", "SODA_APP_TOKEN": TOKEN})
+    assert load_soda_settings({"SODA_BASE_URL": "http://localhost:1"}).app_token is None
+
+
 def _retry_after_case(make_client, status, header, jitter=lambda: 0.0):
     calls = []
 

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import re
 from datetime import timedelta
+from fnmatch import fnmatchcase
 from importlib.metadata import version
 from pathlib import Path
 
@@ -28,7 +29,7 @@ def dag(dagbag):
 
 def test_no_import_errors(dagbag):
     assert dagbag.import_errors == {}
-    assert sorted(dagbag.dags) == ["runt_fleet_snapshot", "trm_daily"]
+    assert sorted(dagbag.dags) == ["airflow_log_retention", "runt_fleet_snapshot", "trm_daily"]
 
 
 def test_linear_chain_of_five_tasks(dag):
@@ -111,12 +112,30 @@ def test_pools(dag, task_id, pool):
     assert task.pool_slots == 1
 
 
+S3_PLAIN = {"S3_ENDPOINT_URL", "S3_REGION", "S3_RAW_BUCKET", "S3_NORMALIZED_BUCKET"}
+S3_WRITER = {"PITS_S3_WRITER_ACCESS_KEY_ID", "PITS_S3_WRITER_SECRET_ACCESS_KEY"}
+S3_READER = {"PITS_S3_READER_ACCESS_KEY_ID", "PITS_S3_READER_SECRET_ACCESS_KEY"}
+S3_ADMIN = {"S3_ACCESS_KEY_ID", "S3_SECRET_ACCESS_KEY"}
+
+
+def assert_no_admin_s3(tasks):
+    """D104(d): no task receives the admin S3 credential, by name or through a glob."""
+    for task in tasks:
+        for pattern in task.env_allow:
+            assert not any(fnmatchcase(name, pattern) for name in S3_ADMIN), (task.task_id, pattern)
+        assert not S3_ADMIN & set(task.secret_env)
+
+
 def test_env_allow_lists_match_d92(dag):
     allow = {t: set(dag.get_task(t).env_allow) for t in CHAIN}
     warehouse = {"PITS_PG_HOST", "POSTGRES_HOST_PORT", "PITS_WAREHOUSE_DB"}
-    assert allow["extract"] == {"S3_*", "SODA_*"}
-    assert allow["normalize"] == {"S3_*"}
-    assert allow["load"] == {"S3_*", "PITS_PG_LOADER_PASSWORD"} | warehouse
+    assert allow["extract"] == S3_PLAIN | S3_WRITER | {"SODA_*"}
+    assert allow["normalize"] == S3_PLAIN | S3_WRITER
+    assert allow["load"] == S3_PLAIN | S3_READER | {"PITS_PG_LOADER_PASSWORD"} | warehouse
+    assert_no_admin_s3(dag.get_task(t) for t in CHAIN)
+    assert set(dag.get_task("extract").secret_env) == S3_WRITER | {"SODA_APP_TOKEN"}
+    assert set(dag.get_task("normalize").secret_env) == S3_WRITER
+    assert set(dag.get_task("load").secret_env) == S3_READER | {"PITS_PG_LOADER_PASSWORD"}
     assert allow["build"] == {"PITS_PG_TRANSFORMER_PASSWORD"} | warehouse
     assert allow["freshness"] == allow["build"]
     for task_id in CHAIN:
@@ -215,9 +234,13 @@ def test_runt_pools(runt, task_id, pool):
 def test_runt_env_allow_lists(runt):
     allow = {t: set(runt.get_task(t).env_allow) for t in CHAIN}
     warehouse = {"PITS_PG_HOST", "POSTGRES_HOST_PORT", "PITS_WAREHOUSE_DB"}
-    assert allow["extract"] == {"S3_*", "SODA_*"}
-    assert allow["normalize"] == {"S3_*"}
-    assert allow["load"] == {"S3_*", "PITS_PG_LOADER_PASSWORD"} | warehouse
+    assert allow["extract"] == S3_PLAIN | S3_WRITER | {"SODA_*"}
+    assert allow["normalize"] == S3_PLAIN | S3_WRITER
+    assert allow["load"] == S3_PLAIN | S3_READER | {"PITS_PG_LOADER_PASSWORD"} | warehouse
+    assert_no_admin_s3(runt.get_task(t) for t in CHAIN)
+    assert set(runt.get_task("extract").secret_env) == S3_WRITER | {"SODA_APP_TOKEN"}
+    assert set(runt.get_task("normalize").secret_env) == S3_WRITER
+    assert set(runt.get_task("load").secret_env) == S3_READER | {"PITS_PG_LOADER_PASSWORD"}
     assert allow["build"] == {"PITS_PG_TRANSFORMER_PASSWORD"} | warehouse
     assert allow["freshness"] == allow["build"]
     for task_id in CHAIN:
@@ -263,6 +286,25 @@ open({str(argv_file)!r}, "w").write(json.dumps(sys.argv[1:]))
             assert json.loads(argv_file.read_text()) == expected
     finally:
         task.executable = original
+
+
+# --- airflow_log_retention (D109) -------------------------------------------------------------
+
+
+def test_log_retention_dag(dagbag):
+    retention = dagbag.dags["airflow_log_retention"]
+    timetable = retention.timetable
+    assert type(timetable).__name__ == "CronTriggerTimetable"
+    assert "0 3 * * *" in repr(timetable)
+    assert "America/Bogota" in repr(timetable)
+    assert str(retention.timezone) == "America/Bogota"
+    assert retention.catchup is False
+    assert retention.max_active_runs == 1
+    assert list(retention.task_ids) == ["purge_logs"]
+    task = retention.get_task("purge_logs")
+    assert task.pool == "default_pool"
+    assert task.execution_timeout == timedelta(minutes=10)
+    assert task.retries == 0
 
 
 def test_airflow_version_matches_dockerfile_and_pin():

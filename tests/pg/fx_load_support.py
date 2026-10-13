@@ -62,8 +62,8 @@ def warehouse(pg_settings, monkeypatch, store):
     run_migrate(pg_settings)  # real packaged migrations
     for key, value in {
         "S3_ENDPOINT_URL": "http://127.0.0.1:1",
-        "S3_ACCESS_KEY_ID": "ak",
-        "S3_SECRET_ACCESS_KEY": "s3-secret-0123456789",
+        "PITS_S3_READER_ACCESS_KEY_ID": "READERKEYEXAMPLE0001",
+        "PITS_S3_READER_SECRET_ACCESS_KEY": "s3-secret-0123456789-abcdefghijklmnop",
         "S3_RAW_BUCKET": RAW_BUCKET,
     }.items():
         monkeypatch.setenv(key, value)

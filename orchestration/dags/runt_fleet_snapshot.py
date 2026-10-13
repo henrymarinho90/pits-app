@@ -24,10 +24,13 @@ SCHEDULE_CRON = "0 11 * * *"
 POOL = "pits_warehouse"
 SELECT = ["--select", "tag:vehicle_fleet"]
 
-S3_ENV = ["S3_*"]
+# D104(d): explicit non-secret S3 names (what load_storage_settings reads). NEVER a glob: `S3_*`
+# would hand over S3_ACCESS_KEY_ID / S3_SECRET_ACCESS_KEY (admin) if they were ever present.
+S3_ENV = ["S3_ENDPOINT_URL", "S3_REGION", "S3_RAW_BUCKET", "S3_NORMALIZED_BUCKET"]
+S3_WRITER_ENV = ["PITS_S3_WRITER_ACCESS_KEY_ID", "PITS_S3_WRITER_SECRET_ACCESS_KEY"]
+S3_READER_ENV = ["PITS_S3_READER_ACCESS_KEY_ID", "PITS_S3_READER_SECRET_ACCESS_KEY"]
 SODA_ENV = ["SODA_*"]
 WAREHOUSE_ENV = ["PITS_PG_HOST", "POSTGRES_HOST_PORT", "PITS_WAREHOUSE_DB"]
-S3_SECRETS = ["S3_ACCESS_KEY_ID", "S3_SECRET_ACCESS_KEY"]
 SODA_SECRETS = ["SODA_APP_TOKEN"]
 
 default_args = {
@@ -59,23 +62,23 @@ with DAG(
     extract = PitsCliOperator(
         task_id="extract",
         command=["extract", "runt"],
-        env_allow=[*S3_ENV, *SODA_ENV],
-        secret_env=[*S3_SECRETS, *SODA_SECRETS],
+        env_allow=[*S3_ENV, *S3_WRITER_ENV, *SODA_ENV],
+        secret_env=[*S3_WRITER_ENV, *SODA_SECRETS],
         param_args="runt_extract",
         execution_timeout=timedelta(minutes=30),
     )
     normalize = PitsCliOperator(
         task_id="normalize",
         command=["normalize", "runt"],
-        env_allow=S3_ENV,
-        secret_env=S3_SECRETS,
+        env_allow=[*S3_ENV, *S3_WRITER_ENV],
+        secret_env=S3_WRITER_ENV,
         execution_timeout=timedelta(minutes=15),
     )
     load = PitsCliOperator(
         task_id="load",
         command=["load", "vehicle-fleet"],
-        env_allow=[*S3_ENV, *WAREHOUSE_ENV, "PITS_PG_LOADER_PASSWORD"],
-        secret_env=[*S3_SECRETS, "PITS_PG_LOADER_PASSWORD"],
+        env_allow=[*S3_ENV, *S3_READER_ENV, *WAREHOUSE_ENV, "PITS_PG_LOADER_PASSWORD"],
+        secret_env=[*S3_READER_ENV, "PITS_PG_LOADER_PASSWORD"],
         pool=POOL,
         execution_timeout=timedelta(minutes=15),
     )

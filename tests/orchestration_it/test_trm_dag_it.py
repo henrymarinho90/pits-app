@@ -151,6 +151,8 @@ def test_6_clear_load_reruns_idempotently():
 SCAN_VARS = (
     "PITS_PG_LOADER_PASSWORD",
     "PITS_PG_TRANSFORMER_PASSWORD",
+    "PITS_S3_WRITER_SECRET_ACCESS_KEY",
+    "PITS_S3_READER_SECRET_ACCESS_KEY",
     "S3_SECRET_ACCESS_KEY",
     "S3_ACCESS_KEY_ID",
     "SODA_APP_TOKEN",
@@ -159,7 +161,9 @@ SCAN_VARS = (
     "AIRFLOW__API__SECRET_KEY",
     "AIRFLOW__CORE__FERNET_KEY",
 )
-REQUIRED_SCAN_VARS = SCAN_VARS[:3]
+# D104(d): the scheduler holds writer and reader, never the admin S3 credential.
+REQUIRED_SCAN_VARS = SCAN_VARS[:4]
+MUST_BE_UNSET = ("S3_SECRET_ACCESS_KEY", "S3_ACCESS_KEY_ID")
 SCAN = (
     f"for v in {' '.join(SCAN_VARS)}; do "
     'if [ -z "${!v+x}" ]; then echo "$v unset"; '
@@ -179,3 +183,5 @@ def test_7_no_secret_in_logs():
         assert rows[name] == "0", f"{name}: {rows[name]}"
     for name, result in rows.items():
         assert result in {"0", "unset", "empty"}, f"{name}: {result}"
+    for name in MUST_BE_UNSET:
+        assert rows[name] == "unset", f"{name} must not reach the scheduler: {rows[name]}"

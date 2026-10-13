@@ -41,6 +41,8 @@ class FakeSoda:
         self.resource_status: int | None = None
         self.meta_override: dict | None = None
         self.token: str | None = None
+        self.count_override: object | None = None  # replaces the count(*) payload when set
+        self.count_response_rows: list | None = None  # replaces the whole count response
         self._resource_calls = 0
 
     def handler(self, request: httpx.Request) -> httpx.Response:
@@ -50,7 +52,9 @@ class FakeSoda:
             if self.meta_override is not None:
                 meta = self.meta_override
             return httpx.Response(200, json=meta)
-        self._resource_calls += 1
+        is_count = request.url.params.get("$select") == "count(*)"
+        if not is_count:
+            self._resource_calls += 1
         if self.resource_status:
             return httpx.Response(self.resource_status)
         params = request.url.params
@@ -65,6 +69,11 @@ class FakeSoda:
                 for r in rows
                 if (r["vigenciadesde"][:10] >= day if op == ">=" else r["vigenciadesde"][:10] > day)
             ]
+        if is_count:
+            if self.count_response_rows is not None:
+                return httpx.Response(200, json=self.count_response_rows)
+            count = str(len(rows)) if self.count_override is None else self.count_override
+            return httpx.Response(200, json=[{"count": count}])
         offset, limit = int(params["$offset"]), int(params["$limit"])
         body = json.dumps(rows[offset : offset + limit]).encode()
         if self.bump_after_resource_calls == self._resource_calls:
@@ -80,4 +89,12 @@ class FakeSoda:
         )
 
     def resource_params(self) -> list[httpx.QueryParams]:
-        return [r.url.params for r in self.requests if r.url.path.startswith("/resource/")]
+        """Params of the page requests (the count(*) guard query is excluded)."""
+        return [
+            r.url.params
+            for r in self.requests
+            if r.url.path.startswith("/resource/") and "$offset" in r.url.params
+        ]
+
+    def count_params(self) -> list[httpx.QueryParams]:
+        return [r.url.params for r in self.requests if r.url.params.get("$select") == "count(*)"]

@@ -88,7 +88,7 @@ def trm(
 
     try:
         soda_settings = load_soda_settings(os.environ)
-        storage_settings = load_storage_settings(os.environ)
+        storage_settings = load_storage_settings(os.environ, identity="writer")
     except (SodaConfigError, StorageConfigError) as exc:
         _fail(str(exc), 1)
 
@@ -132,7 +132,7 @@ def runt(
     """Extract the RUNT fleet snapshot (always the full dataset) into a new raw batch."""
     try:
         soda_settings = load_soda_settings(os.environ)
-        storage_settings = load_storage_settings(os.environ)
+        storage_settings = load_storage_settings(os.environ, identity="writer")
     except (SodaConfigError, StorageConfigError) as exc:
         _fail(str(exc), 1)
 

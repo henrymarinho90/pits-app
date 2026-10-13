@@ -125,7 +125,7 @@ def fx_rate(
 ) -> None:
     """Load the latest committed fx_rate artifact into landing.fx_rate (idempotent)."""
     try:
-        storage = load_storage_settings(os.environ)
+        storage = load_storage_settings(os.environ, identity="reader")
         settings = settings_factory(os.environ)
     except (StorageConfigError, WarehouseError) as exc:
         _fail(str(exc), 1)
@@ -178,7 +178,7 @@ def vehicle_fleet(
     One transaction per publication, ascending; a failure leaves the earlier ones loaded.
     """
     try:
-        storage = load_storage_settings(os.environ)
+        storage = load_storage_settings(os.environ, identity="reader")
         settings = settings_factory(os.environ)
     except (StorageConfigError, WarehouseError) as exc:
         _fail(str(exc), 1)

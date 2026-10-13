@@ -1,5 +1,7 @@
 """Offline tests for `pits storage` using CliRunner and a Stubber-backed client."""
 
+import json
+
 import pytest
 from botocore.client import BaseClient
 from botocore.exceptions import EndpointConnectionError
@@ -10,6 +12,7 @@ import pits
 from pits.cli import app
 from pits.storage import cli as storage_cli
 from pits.storage.client import build_s3_client
+from pits.storage.raw_bucket import write_once_policy
 from pits.storage.settings import StorageSettings
 
 runner = CliRunner()
@@ -22,13 +25,39 @@ ENV = {
     "S3_RAW_BUCKET": "pits-raw",
 }
 BUCKET = {"Bucket": "pits-raw"}
+_IDENTITY_ENV_NAMES = (
+    "PITS_S3_WRITER_ACCESS_KEY_ID",
+    "PITS_S3_WRITER_SECRET_ACCESS_KEY",
+    "PITS_S3_READER_ACCESS_KEY_ID",
+    "PITS_S3_READER_SECRET_ACCESS_KEY",
+)
 NORM = {"Bucket": "pits-normalized"}  # default (D74)
 NORM_ENABLE = {"Bucket": "pits-normalized", "VersioningConfiguration": {"Status": "Enabled"}}
 
 
+def _policy_json(bucket: str) -> str:
+    return json.dumps(write_once_policy(bucket), sort_keys=True, separators=(",", ":"))
+
+
+def _policy_missing_then_applied(stubber: Stubber, bucket: str) -> None:
+    """get (none) -> put -> get (read-back)."""
+    params = {"Bucket": bucket}
+    stubber.add_client_error(
+        "get_bucket_policy", "NoSuchBucketPolicy", http_status_code=404, expected_params=params
+    )
+    stubber.add_response(
+        "put_bucket_policy", {}, {"Bucket": bucket, "Policy": _policy_json(bucket)}
+    )
+    stubber.add_response("get_bucket_policy", {"Policy": _policy_json(bucket)}, params)
+
+
+def _policy_already_applied(stubber: Stubber, bucket: str) -> None:
+    stubber.add_response("get_bucket_policy", {"Policy": _policy_json(bucket)}, {"Bucket": bucket})
+
+
 @pytest.fixture(autouse=True)
 def _clean_env(monkeypatch: pytest.MonkeyPatch) -> None:
-    for name in [*ENV, "S3_REGION", "S3_NORMALIZED_BUCKET"]:
+    for name in [*ENV, "S3_REGION", "S3_NORMALIZED_BUCKET", *_IDENTITY_ENV_NAMES]:
         monkeypatch.delenv(name, raising=False)
 
 
@@ -67,17 +96,19 @@ def test_init_creates_bucket(monkeypatch: pytest.MonkeyPatch) -> None:
             {"Bucket": "pits-raw", "VersioningConfiguration": {"Status": "Enabled"}},
         )
         stubber.add_response("get_bucket_versioning", {"Status": "Enabled"}, BUCKET)
+        _policy_missing_then_applied(stubber, "pits-raw")
         stubber.add_client_error("head_bucket", "404", http_status_code=404, expected_params=NORM)
         stubber.add_response("create_bucket", {}, NORM)
         stubber.add_response("get_bucket_versioning", {}, NORM)
         stubber.add_response("put_bucket_versioning", {}, NORM_ENABLE)
         stubber.add_response("get_bucket_versioning", {"Status": "Enabled"}, NORM)
+        _policy_missing_then_applied(stubber, "pits-normalized")
         result = runner.invoke(app, ["storage", "init"])
         stubber.assert_no_pending_responses()
     assert result.exit_code == 0
     assert result.stdout == (
-        "bucket=pits-raw created=true versioning=Enabled changed=true\n"
-        "bucket=pits-normalized created=true versioning=Enabled changed=true\n"
+        "bucket=pits-raw created=true versioning=Enabled changed=true policy=applied\n"
+        "bucket=pits-normalized created=true versioning=Enabled changed=true policy=applied\n"
     )
     assert result.stderr == ""
 
@@ -89,14 +120,20 @@ def test_init_is_idempotent_output(monkeypatch: pytest.MonkeyPatch) -> None:
     with Stubber(client) as stubber:
         stubber.add_response("head_bucket", {}, BUCKET)
         stubber.add_response("get_bucket_versioning", {"Status": "Enabled"}, BUCKET)
+        _policy_already_applied(stubber, "pits-raw")
         stubber.add_response("head_bucket", {}, NORM)
         stubber.add_response("get_bucket_versioning", {"Status": "Enabled"}, NORM)
+        _policy_already_applied(stubber, "pits-normalized")
         result = runner.invoke(app, ["storage", "init"])
-        stubber.assert_no_pending_responses()
+        stubber.assert_no_pending_responses()  # no put_bucket_versioning / put_bucket_policy
     assert result.exit_code == 0
     first, second = result.stdout.splitlines(keepends=True)
-    assert first == "bucket=pits-raw created=false versioning=Enabled changed=false\n"  # unchanged
-    assert second == "bucket=pits-normalized created=false versioning=Enabled changed=false\n"
+    assert (
+        first == "bucket=pits-raw created=false versioning=Enabled changed=false policy=applied\n"
+    )
+    assert second == (
+        "bucket=pits-normalized created=false versioning=Enabled changed=false policy=applied\n"
+    )
     assert result.stderr == ""
 
 
@@ -109,8 +146,10 @@ def test_init_uses_s3_normalized_bucket_from_env(monkeypatch: pytest.MonkeyPatch
     with Stubber(client) as stubber:
         stubber.add_response("head_bucket", {}, BUCKET)
         stubber.add_response("get_bucket_versioning", {"Status": "Enabled"}, BUCKET)
+        _policy_already_applied(stubber, "pits-raw")
         stubber.add_response("head_bucket", {}, custom)
         stubber.add_response("get_bucket_versioning", {"Status": "Enabled"}, custom)
+        _policy_already_applied(stubber, "my-norm")
         result = runner.invoke(app, ["storage", "init"])
         stubber.assert_no_pending_responses()
     assert result.exit_code == 0
@@ -124,12 +163,15 @@ def test_init_normalized_suspended_fails_after_raw_line(monkeypatch: pytest.Monk
     with Stubber(client) as stubber:
         stubber.add_response("head_bucket", {}, BUCKET)
         stubber.add_response("get_bucket_versioning", {"Status": "Enabled"}, BUCKET)
+        _policy_already_applied(stubber, "pits-raw")
         stubber.add_response("head_bucket", {}, NORM)
         stubber.add_response("get_bucket_versioning", {"Status": "Suspended"}, NORM)
         result = runner.invoke(app, ["storage", "init"])
         stubber.assert_no_pending_responses()
     assert result.exit_code == 1
-    assert result.stdout == "bucket=pits-raw created=false versioning=Enabled changed=false\n"
+    assert result.stdout == (
+        "bucket=pits-raw created=false versioning=Enabled changed=false policy=applied\n"
+    )
     assert "Suspended" in result.stderr and "pits-normalized" in result.stderr
     assert SECRET not in result.stdout + result.stderr
 
@@ -175,13 +217,52 @@ def test_init_connection_error_exits_1_without_secret(monkeypatch: pytest.Monkey
     assert "Traceback" not in result.stderr
 
 
-def test_storage_help_lists_init() -> None:
+def test_storage_help_lists_init_and_orphans() -> None:
     result = runner.invoke(app, ["storage", "--help"])
     assert result.exit_code == 0
     assert "init" in result.output
+    assert "orphans" in result.output
 
 
 def test_version_command_unchanged() -> None:
     result = runner.invoke(app, ["version"])
     assert result.exit_code == 0
     assert result.output.strip() == pits.__version__
+
+
+def test_init_uses_admin_identity_and_does_not_accept_writer_or_reader(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("S3_ENDPOINT_URL", ENV["S3_ENDPOINT_URL"])
+    monkeypatch.setenv("S3_RAW_BUCKET", "pits-raw")
+    monkeypatch.setenv("PITS_S3_WRITER_ACCESS_KEY_ID", "WRITERKEYEXAMPLE0001")
+    monkeypatch.setenv("PITS_S3_WRITER_SECRET_ACCESS_KEY", SECRET + "-0123456789")
+    monkeypatch.setenv("PITS_S3_READER_ACCESS_KEY_ID", "READERKEYEXAMPLE0001")
+    monkeypatch.setenv("PITS_S3_READER_SECRET_ACCESS_KEY", SECRET + "-0123456789")
+    result = runner.invoke(app, ["storage", "init"])
+    assert result.exit_code == 1 and "S3_ACCESS_KEY_ID" in result.stderr
+    assert SECRET not in result.stdout + result.stderr
+
+
+def test_init_policy_denied_exits_1_without_secret(monkeypatch: pytest.MonkeyPatch) -> None:
+    _set_env(monkeypatch)
+    client = _real_client()
+    _use_client(monkeypatch, client)
+    with Stubber(client) as stubber:
+        stubber.add_response("head_bucket", {}, BUCKET)
+        stubber.add_response("get_bucket_versioning", {"Status": "Enabled"}, BUCKET)
+        stubber.add_client_error(
+            "get_bucket_policy", "NoSuchBucketPolicy", http_status_code=404, expected_params=BUCKET
+        )
+        stubber.add_client_error(
+            "put_bucket_policy",
+            "AccessDenied",
+            http_status_code=403,
+            expected_params={"Bucket": "pits-raw", "Policy": _policy_json("pits-raw")},
+        )
+        result = runner.invoke(app, ["storage", "init"])
+        stubber.assert_no_pending_responses()
+    assert result.exit_code == 1
+    assert result.stdout == ""
+    assert "put_bucket_policy failed" in result.stderr and "AccessDenied" in result.stderr
+    assert SECRET not in result.stdout + result.stderr
