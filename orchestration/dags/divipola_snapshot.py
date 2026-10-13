@@ -4,8 +4,8 @@ Same shape as runt_fleet_snapshot (D102): a linear chain, every step idempotent,
 steps serialized through the pool `pits_warehouse` (1 slot; the D90 advisory lock stays the safety
 net). DANE rarely changes the table (its rows are from 2025-01-24 although the declared frequency
 is semestral), so almost every weekly run ends `unchanged` (extract), `already_present` (normalize)
-and `already_loaded` (load): about three cheap SODA requests. There is no freshness task on
-purpose (D124): any threshold would warn forever.
+and `already_loaded` (load): two cheap SODA requests (metadata and count).
+There is no freshness task on purpose (D124): any threshold would warn forever.
 build is limited to `tag:divipola` (D101): the dimension, the exception seed, the RUNT map and the
 enriched fleet mart. The RUNT DAG is not touched: its `tag:vehicle_fleet` build already includes
 the seed, the map and the enriched mart. This DAG needs `staging.stg_vehicle_fleet_snapshot` and

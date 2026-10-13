@@ -73,7 +73,7 @@ def test_build_maps_every_pair_and_keeps_every_cell(fleet, transform):
     assert reader_rows(settings, _ENRICHED) == enriched  # idempotent
 
 
-def test_the_rut_build_reuses_the_existing_dimension(fleet, transform):
+def test_the_runt_build_reuses_the_existing_dimension(fleet, transform):
     settings = fleet[0]
     assert build_divipola(transform)[0] == 0
     before = reader_rows(settings, _ENRICHED)
