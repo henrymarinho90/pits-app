@@ -6,22 +6,21 @@ two publications: 2026-09 (25.000 rows, two parts) and 2026-10 (tricky text valu
 
 from __future__ import annotations
 
+import csv
 import dataclasses
 import hashlib
+import io
 from collections.abc import Callable
 from contextlib import contextmanager
 
 import fleet_load_support as fl
 import pytest
-from fleet_artifact_support import DAY, RAW_BUCKET, add_newer_batch, drop_artifact, tricky_rows
+from fleet_artifact_support import add_newer_batch, drop_artifact, tricky_rows
 from fleet_load_support import BIG_ROWS, fields, load
 from psycopg import errors as pgerr
-from runt_support import B1, put_runt_batch, raw_row
 
-from pits.ingestion.raw_store import MemoryRawStore
 from pits.normalized.fleet_csv import HEADER_BYTES, FleetPart, logical_content
 from pits.normalized.fleet_manifest import FleetManifest, PartEntry
-from pits.sources.runt.normalize import normalize_runt
 from pits.warehouse import load_cli
 from pits.warehouse.connection import connect
 from pits.warehouse.locks import WAREHOUSE_LOCK_KEY
@@ -337,15 +336,21 @@ def test_busy_warehouse_lock_is_exit_3(warehouse, pg_settings):
 # --- data the table must reject: exit 1 and nothing written ---------------------------------
 
 
-def test_nul_byte_in_a_value_is_a_clean_exit_1(warehouse, store):
-    """The normalizer accepts NUL inside a text value; PostgreSQL text cannot hold it."""
-    raw, norm = MemoryRawStore(), MemoryRawStore()
-    put_runt_batch(raw, B1, DAY, [raw_row(0, nombre_municipio="MU\x00NI")])
-    assert [r.rows for r in normalize_runt(raw, norm, raw_bucket=RAW_BUCKET)] == [1]
-    store.objects.clear()
-    store.objects.update(norm.objects)
-    result = load()
+def test_nul_byte_in_a_value_is_a_clean_exit_1(warehouse, store, results):
+    """Defense in depth: the normalizer no longer accepts NUL (D103), but a manipulated artifact
+    can still carry it, and PostgreSQL text cannot hold it. The loader must fail cleanly."""
+
+    def inject_nul(line: str) -> str:
+        fields_ = next(csv.reader([line]))
+        fields_[3] = "MU\x00NI"  # municipality_name
+        out = io.StringIO()
+        csv.writer(out, lineterminator="").writerow(fields_)
+        return out.getvalue()
+
+    craft(store, results, "2026-10", first_line_edit(inject_nul))
+    result = load("--publication", "2026-10")
     assert result.exit_code == 1, result.output
+    assert "22021" in result.output
     assert result.exception is None or isinstance(result.exception, SystemExit)  # no traceback
     assert "Traceback" not in result.output
     assert count(warehouse, TABLE) == 0 and count(warehouse, "ops.load_run") == 0
