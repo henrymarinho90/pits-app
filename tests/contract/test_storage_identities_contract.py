@@ -140,6 +140,7 @@ def test_policy_denies_admin_delete_and_versioning_change(
 
 @pytest.mark.xfail(
     strict=True,
+    raises=AssertionError,
     reason=(
         "SeaweedFS 4.48: the admin identity bypasses the bucket policy in DeleteObjects "
         "(multi-delete). Known limitation of D104(c); strict xfail: remove the mark when fixed."
