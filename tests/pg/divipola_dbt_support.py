@@ -178,3 +178,12 @@ def fleet(warehouse):
     """The DIVIPOLA warehouse plus one RUNT publication: (settings, loader, admin)."""
     load_fleet_landing(warehouse[1], FLEET)
     return warehouse
+
+
+def build_divipola(transform):
+    """The documented bootstrap order: the RUNT build first (its fct does not need DIVIPOLA; the
+    DANE nodes fail without the dimension), then the DIVIPOLA build that creates the dimension and
+    everything that depends on it. Returns the result of the second one."""
+    code, output = transform("build", select="tag:vehicle_fleet")
+    assert code == 1 and "fct_vehicle_fleet_snapshot" in output, output
+    return transform("build", select="tag:divipola")

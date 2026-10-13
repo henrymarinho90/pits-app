@@ -17,6 +17,7 @@ from divipola_dbt_support import reader_rows
 warehouse = ds.warehouse
 transform = ds.transform
 fleet = ds.fleet
+build_divipola = ds.build_divipola
 
 _MAP = (
     "SELECT department_name_norm, municipality_name_norm, dane_municipality_code, "
@@ -34,15 +35,6 @@ SEED_HEADER = (
     "department_name_norm,municipality_name_norm,dane_municipality_code,dane_municipality_name,"
     "reason,decision_id\n"
 )
-
-
-def build_divipola(transform):
-    """The documented bootstrap order: the RUNT build first (its fct does not need DIVIPOLA; the
-    DANE nodes fail without the dimension), then the DIVIPOLA build that creates the dimension and
-    everything that depends on it. Returns the result of the second one."""
-    code, output = transform("build", select="tag:vehicle_fleet")
-    assert code == 1 and "fct_vehicle_fleet_snapshot" in output, output
-    return transform("build", select="tag:divipola")
 
 
 def append_seed(transform, *lines: str) -> None:

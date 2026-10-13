@@ -14,7 +14,9 @@ from divipola_dbt_support import reader_rows
 
 # Fixtures re-exposed by assignment (pytest finds them by attribute name).
 warehouse = ds.warehouse
+fleet = ds.fleet
 transform = ds.transform
+build_divipola = ds.build_divipola
 
 _DIM = (
     "SELECT dane_municipality_code, dane_department_code, department_name, municipality_name, "
@@ -24,9 +26,9 @@ _DIM = (
 N_ROWS = len(ds.divipola_rows())
 
 
-def test_build_creates_the_dimension_with_numeric_coordinates_and_norm_keys(warehouse, transform):
-    settings = warehouse[0]
-    code, output = transform("build", select="tag:divipola")
+def test_build_creates_the_dimension_with_numeric_coordinates_and_norm_keys(fleet, transform):
+    settings = fleet[0]
+    code, output = build_divipola(transform)
     assert code == 0, output
     rows = reader_rows(settings, _DIM)
     assert len(rows) == N_ROWS
@@ -56,17 +58,17 @@ def test_build_creates_the_dimension_with_numeric_coordinates_and_norm_keys(ware
     assert reader_rows(settings, _DIM) == rows  # idempotent
 
 
-def test_the_stg_view_stays_invisible_to_the_reader(warehouse, transform):
-    settings = warehouse[0]
-    assert transform("build", select="tag:divipola")[0] == 0
+def test_the_stg_view_stays_invisible_to_the_reader(fleet, transform):
+    settings = fleet[0]
+    assert build_divipola(transform)[0] == 0
     with pytest.raises(psycopg.errors.InsufficientPrivilege):
         reader_rows(settings, "SELECT 1 FROM staging.stg_divipola_municipality")
 
 
-def test_normalized_name_collision_fails_staging_and_keeps_the_dimension(warehouse, transform):
-    settings = warehouse[0]
-    admin = warehouse[2]
-    assert transform("build", select="tag:divipola")[0] == 0
+def test_normalized_name_collision_fails_staging_and_keeps_the_dimension(fleet, transform):
+    settings = fleet[0]
+    admin = fleet[2]
+    assert build_divipola(transform)[0] == 0
     before = reader_rows(settings, _DIM)
     # Landing accepts both names (different text); only the normalized key collides.
     admin.execute(
@@ -82,10 +84,10 @@ def test_normalized_name_collision_fails_staging_and_keeps_the_dimension(warehou
     assert reader_rows(settings, _DIM) == before
 
 
-def test_out_of_range_coordinates_fail_and_keep_the_dimension(warehouse, transform):
-    settings = warehouse[0]
-    _, _, admin = warehouse
-    assert transform("build", select="tag:divipola")[0] == 0
+def test_out_of_range_coordinates_fail_and_keep_the_dimension(fleet, transform):
+    settings = fleet[0]
+    admin = fleet[2]
+    assert build_divipola(transform)[0] == 0
     before = reader_rows(settings, _DIM)
     admin.execute(
         "UPDATE landing.divipola_municipality SET latitude = '75,0' "
@@ -97,10 +99,10 @@ def test_out_of_range_coordinates_fail_and_keep_the_dimension(warehouse, transfo
     assert reader_rows(settings, _DIM) == before
 
 
-def test_truncated_snapshot_fails_the_size_guard(warehouse, transform):
-    settings = warehouse[0]
-    _, _, admin = warehouse
-    assert transform("build", select="tag:divipola")[0] == 0
+def test_truncated_snapshot_fails_the_size_guard(fleet, transform):
+    settings = fleet[0]
+    admin = fleet[2]
+    assert build_divipola(transform)[0] == 0
     before = reader_rows(settings, _DIM)
     admin.execute("DELETE FROM landing.divipola_municipality WHERE department_code >= '30'")
     code, output = transform("build", select="tag:divipola")
@@ -108,10 +110,10 @@ def test_truncated_snapshot_fails_the_size_guard(warehouse, transform):
     assert reader_rows(settings, _DIM) == before
 
 
-def test_unmapped_character_in_a_name_fails_the_charset_guard(warehouse, transform):
-    settings = warehouse[0]
-    _, _, admin = warehouse
-    assert transform("build", select="tag:divipola")[0] == 0
+def test_unmapped_character_in_a_name_fails_the_charset_guard(fleet, transform):
+    settings = fleet[0]
+    admin = fleet[2]
+    assert build_divipola(transform)[0] == 0
     before = reader_rows(settings, _DIM)
     admin.execute(
         "UPDATE landing.divipola_municipality SET municipality_name = 'MEDELLÍN @' "
