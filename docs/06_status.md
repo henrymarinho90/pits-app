@@ -79,6 +79,7 @@ Plan específico aprobado por Henry en esta sesión (literal: "Aprobado: aplicar
 | `07_lessons_learned.md` | vigente, sin versión; lecciones 1–141 (136–141 del hito Aislamiento de listeners, 2026-10-13; 128–135 del hito Endurecimiento, 2026-10-13; 118–127 del hito Fase 1b, 2026-10-12/13; 106–117 del hito Airflow, 2026-10-12; 102–105 del hito dbt, 2026-10-11; 96–101 del hito loader fx_rate, 2026-10-11) |
 | `08_market_research.md` | corrección del 2026-10-12 del corte vigente de `u3vn-bdcy` (OCTUBRE 2026, Ficha 1; citas de AGOSTO 2026 marcadas como superadas); fechas de consulta 2026-10-03 (antes `claude_08_market_research.md`) |
 | `09_us_market_research.md` | tercera ronda, 2026-10-09 (antes `claude_09_us_market_research.md`) |
+| `10_next_project_playbook.md` | v1 (2026-10-13); playbook para el próximo proyecto a partir de las lecciones 1–151 y D1–D120 |
 | `research/parque_por_marca.md` | investigación 2026-10-10 (D50); segunda ronda 2026-10-10, sección "Segunda ronda" (base de D52 y D55) |
 
 ## 3. Terminado
