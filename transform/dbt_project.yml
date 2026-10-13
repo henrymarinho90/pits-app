@@ -10,6 +10,12 @@ flags:
 model-paths: ["models"]
 test-paths: ["tests"]
 macro-paths: ["macros"]
+seed-paths: ["seeds"]
+
+# D128: the RUNT mapping fails the build when the vehicles of the latest publication without a DANE
+# code (all statuses) exceed this share; any unmatched pair below it only warns.
+vars:
+  dane_unmatched_vehicle_share_max: 0.01
 
 models:
   pits_transform:
@@ -19,3 +25,19 @@ models:
     marts:
       +materialized: table
       +schema: marts
+
+# D126: versioned, reviewed RUNT -> DANE exceptions. Seeds live in staging (the transformer owns
+# it); both tags so the RUNT build and the DIVIPOLA build reload them. Every column is text:
+# without it dbt would read the code 05237 as the number 5237.
+seeds:
+  pits_transform:
+    +schema: staging
+    +tags: [vehicle_fleet, divipola]
+    runt_municipality_dane_exception:
+      +column_types:
+        department_name_norm: text
+        municipality_name_norm: text
+        dane_municipality_code: text
+        dane_municipality_name: text
+        reason: text
+        decision_id: text

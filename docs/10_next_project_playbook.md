@@ -20,7 +20,7 @@ Ordenadas por tiempo ahorrado o errores evitados (el orden es **Inferencia**, a 
 
 | # | Regla | Origen |
 |---|---|---|
-| 1 | **Una sola revisión independiente al final del hito** ([Obs], instrucción de Henry). **Inferencia (propuesta, pendiente de D):** revisión por paso solo en pasos de riesgo alto (seguridad, permisos, migraciones o datos reales que no se regeneran). | [Obs]; pendiente de D (ver §3.1) |
+| 1 | **Una sola revisión independiente al final del hito** ([Obs], instrucción de Henry). **Inferencia (propuesta, pendiente de D):** revisión por paso solo en pasos de riesgo alto (seguridad, permisos, migraciones o datos reales que no se regeneran). | [Obs]; regla general: D130; excepciones por paso: Inferencia pendiente de D (ver §3.1) |
 | 2 | **Cada entrega a un agente lleva alcance, archivos permitidos, criterios de aceptación y gates como comandos separados.** Sin eso hay vueltas de revisión. | `orquestar.md` Etapa 2; #89 |
 | 3 | **Gates sin pipes:** `ruff check`, `ruff format --check` y `pytest` uno por uno, con su exit code. Nunca `cmd \| tail`: el exit code que se ve es el de `tail`. | [Obs] (pipes/`tail`); #151 (gates mal encadenados con `&&`) |
 | 4 | **PR en draft hasta la revisión final; avisar "no mergear aún"; verificar el SHA del head antes del merge.** | #149, #102; [Obs] |
@@ -149,12 +149,12 @@ La regla general es [Obs]; las excepciones por paso son **Inferencia** (propuest
 
 | Tipo de paso | Revisión | Motivo |
 |---|---|---|
-| Código de capa conocida, docs, tests offline | Solo la revisión final del hito | [Obs]: la revisión por paso con hasta 3 vueltas atrapó bugs reales pero subió mucho el costo. Henry cambió el proceso a una sola revisión al final. |
+| Código de capa conocida, docs, tests offline | Solo la revisión final del hito | [Obs]: la revisión por paso con hasta 3 vueltas atrapó bugs reales pero subió mucho el costo. Henry cambió el proceso a una sola revisión al final (D130). |
 | Seguridad: secretos, permisos, red, policies | Por paso | Bugs reales atrapados [Obs]: credenciales admin de S3 expuestas en la red, puertos de Iceberg y Lance abiertos, comentario de seguridad engañoso. Ver #136–#138. |
 | Migración o cambio sobre datos que no se regeneran | Por paso, con probe previo | **Inferencia:** #131, #141 |
 | Cambios de CI (partición de jobs, triggers) | Por paso o con test de paridad | **Inferencia:** [Obs]: 2 tests e2e sin job (#150). |
 
-Pendiente: `orquestar.md` y `revisor-senior.md` siguen diciendo "máximo tres vueltas por paso"; el cambio a revisión final es una instrucción de Henry al orquestador [Obs]. Por la regla 4 de `CLAUDE.md`, formalizarlo con una D nueva (**Inferencia** sobre el procedimiento).
+CERRADO por D130 (hito DANE/DIVIPOLA): `orquestar.md`, `revisor-senior.md`, `implementador.md` y `documentador.md` ya aplican la revisión única al final; las excepciones por paso siguen como Inferencia pendiente. Texto original: «Pendiente: `orquestar.md` y `revisor-senior.md` siguen diciendo "máximo tres vueltas por paso"; el cambio a revisión final es una instrucción de Henry al orquestador [Obs]. Por la regla 4 de `CLAUDE.md`, formalizarlo con una D nueva (**Inferencia** sobre el procedimiento).»
 
 ### 3.2 Qué lleva cada entrega
 

@@ -96,11 +96,16 @@ def _runt_extract_args(params: Mapping[str, Any]) -> list[str]:
     return force_args(params.get("force", False))
 
 
+def _divipola_extract_args(params: Mapping[str, Any]) -> list[str]:
+    return force_args(params.get("force", False))
+
+
 # Name -> translator of DAG params into validated argv. A name (not a callable) so the task
 # arguments stay serializable and a DAG file cannot smuggle arbitrary code into argv building.
 PARAM_ARGS: dict[str, Callable[[Mapping[str, Any]], list[str]]] = {
     "trm_extract": _trm_extract_args,
     "runt_extract": _runt_extract_args,
+    "divipola_extract": _divipola_extract_args,
 }
 
 
@@ -123,8 +128,9 @@ class PitsCliOperator(BaseOperator):
     :param env_allow: fnmatch patterns of the environment variables the child may see.
     :param secret_env: exact names whose values are masked in the task log.
     :param param_args: name in PARAM_ARGS; appends the argv derived from the DAG params
-        ("trm_extract": extract_mode / since, see extract_args; "runt_extract": force, see
-        force_args). Invalid params fail the task before the child starts (no retry).
+        ("trm_extract": extract_mode / since, see extract_args; "runt_extract" and
+        "divipola_extract": force, see force_args). Invalid params fail the task before the
+        child starts (no retry).
     :param executable: path of the pits script (overridable only by tests).
     :param kill_timeout: seconds between SIGTERM and SIGKILL in on_kill.
     """

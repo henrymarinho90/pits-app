@@ -1,0 +1,14 @@
+department_name_norm,municipality_name_norm,dane_municipality_code,dane_municipality_name,reason,decision_id
+BOGOTA D.C.,BOGOTA,11001,"BOGOTÁ, D.C.",official_name_differs,D126
+VALLE DEL CAUCA,CALI,76001,SANTIAGO DE CALI,official_name_differs,D126
+BOLIVAR,CARTAGENA,13001,CARTAGENA DE INDIAS,official_name_differs,D126
+NORTE DE SANTANDER,CUCUTA,54001,SAN JOSÉ DE CÚCUTA,official_name_differs,D126
+NARINO,TUMACO,52835,SAN ANDRÉS DE TUMACO,official_name_differs,D126
+CAUCA,PIENDAMO,19548,PIENDAMÓ - TUNÍA,official_name_differs,D126
+TOLIMA,MARIQUITA,73443,SAN SEBASTIÁN DE MARIQUITA,official_name_differs,D126
+"ARCHIPIELAGO DE SAN ANDRES, PROVIDENCIA",SAN ANDRES,88001,SAN ANDRÉS,official_name_differs,D126
+SUCRE,SINCE,70742,SAN LUIS DE SINCÉ,official_name_differs,D126
+ANTIOQUIA,SANTAFE DE ANTIOQUIA,05042,SANTA FÉ DE ANTIOQUIA,official_name_differs,D126
+CUNDINAMARCA,UBATE,25843,VILLA DE SAN DIEGO DE UBATÉ,official_name_differs,D126
+BOLIVAR,MOMPOS,13468,SANTA CRUZ DE MOMPOX,official_name_differs,D126
+ANTIOQUIA,DON MATIAS,05237,DONMATÍAS,official_name_differs,D126

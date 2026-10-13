@@ -93,6 +93,47 @@ sources:
                     to: source('ops', 'load_run_fleet')
                     field: load_id
 
+      - name: divipola_municipality
+        description: "DANE DIVIPOLA municipality codes, current snapshot as loaded (D124)."
+        config:
+          tags: [divipola]
+        data_tests:
+          - unique_combination_of_columns:
+              arguments:
+                combination_of_columns: [department_code, municipality_name]
+        columns:
+          - name: department_code
+            data_tests: [not_null]
+          - name: department_name
+            data_tests: [not_null]
+          - name: municipality_code
+            data_tests: [not_null, unique]
+          - name: municipality_name
+            data_tests: [not_null]
+          - name: municipality_type
+            data_tests:
+              - not_null
+              - accepted_values:
+                  arguments:
+                    values: ['Municipio', 'Isla', 'Área no municipalizada']
+                  config:
+                    severity: error
+          - name: longitude
+            data_tests: [not_null]
+          - name: latitude
+            data_tests: [not_null]
+          - name: source_system
+            data_tests: [not_null]
+          - name: source_reference
+            data_tests: [not_null]
+          - name: load_id
+            data_tests:
+              - not_null
+              - relationships:
+                  arguments:
+                    to: source('ops', 'load_run_divipola')
+                    field: load_id
+
   - name: ops
     schema: ops
     tables:
@@ -117,3 +158,11 @@ sources:
             warn_after: {count: 35, period: day}
             error_after: {count: 65, period: day}
             filter: "dataset = 'vehicle_fleet_snapshot'"
+      # Same physical table again, for the divipola dataset. No freshness on purpose (D124): the
+      # source rows have not changed since 2025-01-24 although the declared frequency is
+      # semestral, so any threshold would warn forever.
+      - name: load_run_divipola
+        identifier: load_run
+        description: "Audit of effective loads into landing (D81). DIVIPOLA view of it."
+        config:
+          tags: [divipola]

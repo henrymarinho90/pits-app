@@ -29,7 +29,12 @@ def dag(dagbag):
 
 def test_no_import_errors(dagbag):
     assert dagbag.import_errors == {}
-    assert sorted(dagbag.dags) == ["airflow_log_retention", "runt_fleet_snapshot", "trm_daily"]
+    assert sorted(dagbag.dags) == [
+        "airflow_log_retention",
+        "divipola_snapshot",
+        "runt_fleet_snapshot",
+        "trm_daily",
+    ]
 
 
 def test_linear_chain_of_five_tasks(dag):
@@ -286,6 +291,116 @@ open({str(argv_file)!r}, "w").write(json.dumps(sys.argv[1:]))
             assert json.loads(argv_file.read_text()) == expected
     finally:
         task.executable = original
+
+
+# --- divipola_snapshot (D129) -----------------------------------------------------------------
+
+DIVIPOLA_CHAIN = ["extract", "normalize", "load", "build"]
+
+
+@pytest.fixture(scope="module")
+def divipola(dagbag):
+    return dagbag.dags["divipola_snapshot"]
+
+
+def test_divipola_linear_chain_of_four_tasks_without_freshness(divipola):
+    assert sorted(divipola.task_ids) == sorted(DIVIPOLA_CHAIN)  # no freshness task (D124)
+    for index, task_id in enumerate(DIVIPOLA_CHAIN):
+        task = divipola.get_task(task_id)
+        assert task.upstream_task_ids == ({DIVIPOLA_CHAIN[index - 1]} if index else set())
+        last = index == len(DIVIPOLA_CHAIN) - 1
+        assert task.downstream_task_ids == (set() if last else {DIVIPOLA_CHAIN[index + 1]})
+
+
+def test_divipola_dag_level_settings(divipola):
+    assert divipola.catchup is False
+    assert divipola.max_active_runs == 1
+    assert divipola.dagrun_timeout == timedelta(minutes=60)
+    assert str(divipola.timezone) == "America/Bogota"
+    assert divipola.start_date is not None and divipola.start_date.tzinfo is not None
+
+
+def test_divipola_schedule_is_monday_07_00_bogota(divipola):
+    timetable = divipola.timetable
+    assert type(timetable).__name__ == "CronTriggerTimetable"
+    assert "0 7 * * 1" in repr(timetable)
+    assert "America/Bogota" in repr(timetable)
+
+
+def test_divipola_params_force_is_a_boolean_defaulting_to_false(divipola):
+    assert divipola.params.dump() == {"force": False}
+    param = divipola.params.get_param("force")
+    assert param.resolve(True) is True
+    for bad in ("yes", "false", 1, None):
+        with pytest.raises(ParamValidationError):
+            param.resolve(bad)
+
+
+@pytest.mark.parametrize("task_id", DIVIPOLA_CHAIN)
+def test_divipola_retries_and_backoff_follow_d92(divipola, task_id):
+    task = divipola.get_task(task_id)
+    assert task.retries == 3
+    assert task.retry_delay == timedelta(minutes=5)
+    assert task.retry_exponential_backoff == 2.0
+    assert task.max_retry_delay == timedelta(minutes=30)
+
+
+@pytest.mark.parametrize(
+    ("task_id", "minutes"), [("extract", 10), ("normalize", 10), ("load", 10), ("build", 15)]
+)
+def test_divipola_execution_timeouts(divipola, task_id, minutes):
+    assert divipola.get_task(task_id).execution_timeout == timedelta(minutes=minutes)
+
+
+@pytest.mark.parametrize(
+    ("task_id", "pool"),
+    [
+        ("extract", "default_pool"),
+        ("normalize", "default_pool"),
+        ("load", "pits_warehouse"),
+        ("build", "pits_warehouse"),
+    ],
+)
+def test_divipola_pools(divipola, task_id, pool):
+    task = divipola.get_task(task_id)
+    assert task.pool == pool
+    assert task.pool_slots == 1
+
+
+def test_divipola_env_allow_lists(divipola):
+    allow = {t: set(divipola.get_task(t).env_allow) for t in DIVIPOLA_CHAIN}
+    warehouse = {"PITS_PG_HOST", "POSTGRES_HOST_PORT", "PITS_WAREHOUSE_DB"}
+    assert allow["extract"] == S3_PLAIN | S3_WRITER | {"SODA_*"}
+    assert allow["normalize"] == S3_PLAIN | S3_WRITER
+    assert allow["load"] == S3_PLAIN | S3_READER | {"PITS_PG_LOADER_PASSWORD"} | warehouse
+    assert_no_admin_s3(divipola.get_task(t) for t in DIVIPOLA_CHAIN)
+    assert set(divipola.get_task("extract").secret_env) == S3_WRITER | {"SODA_APP_TOKEN"}
+    assert set(divipola.get_task("normalize").secret_env) == S3_WRITER
+    assert set(divipola.get_task("load").secret_env) == S3_READER | {"PITS_PG_LOADER_PASSWORD"}
+    assert allow["build"] == {"PITS_PG_TRANSFORMER_PASSWORD"} | warehouse
+    for task_id in DIVIPOLA_CHAIN:
+        assert not any(p.upper().startswith("AIRFLOW") for p in allow[task_id])
+
+
+def test_divipola_commands_and_param_args(divipola):
+    commands = {t: divipola.get_task(t).command for t in DIVIPOLA_CHAIN}
+    assert commands == {
+        "extract": ["extract", "divipola"],
+        "normalize": ["normalize", "divipola"],
+        "load": ["load", "divipola"],
+        "build": ["transform", "build", "--select", "tag:divipola"],
+    }
+    assert divipola.get_task("extract").param_args == "divipola_extract"
+    assert all(divipola.get_task(t).param_args is None for t in DIVIPOLA_CHAIN[1:])
+    assert all(
+        divipola.get_task(t).executable == "/opt/pits/.venv/bin/pits" for t in DIVIPOLA_CHAIN
+    )
+
+
+def test_the_runt_dag_is_unchanged_by_divipola(runt):
+    """D129: the RUNT build tag already covers the seed, the map and the enriched mart."""
+    assert runt.get_task("build").command == ["transform", "build", "--select", "tag:vehicle_fleet"]
+    assert sorted(runt.task_ids) == sorted(CHAIN)
 
 
 # --- airflow_log_retention (D109) -------------------------------------------------------------

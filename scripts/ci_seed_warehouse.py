@@ -2,9 +2,11 @@
 
 `seed` (loader profile) inserts one `ops.load_run` and 5 contiguous days of `landing.fx_rate`,
 plus one `ops.load_run` and a few `landing.vehicle_fleet_snapshot` rows with hard names (accents,
-enye, PUBLICO, INCONSISTENTE). It refuses to run (exit 1) if landing is not empty, so it can never
-mix synthetic rows with real ones. `verify` (reader profile) checks that the marts built by dbt
-hold exactly what was seeded (exit 1 otherwise).
+enye, PUBLICO, INCONSISTENTE), plus one `ops.load_run` and a synthetic DIVIPOLA snapshot in
+`landing.divipola_municipality` (D124: the 13 codes of the exception seed, the two municipalities
+of the fleet rows and filler rows so the size guard passes). It refuses to run (exit 1) if landing
+is not empty, so it can never mix synthetic rows with real ones. `verify` (reader profile) checks
+that the marts built by dbt hold exactly what was seeded (exit 1 otherwise).
 Settings come from the environment (D79); nothing sensitive is printed.
 """
 
@@ -47,6 +49,49 @@ FLEET_NORM_KEYS = [
 ]
 FX_HASH = "a" * 64
 FLEET_HASH = "b" * 64
+DIVIPOLA_HASH = "c" * 64
+DIVIPOLA_UPDATED = date(2025, 1, 24)
+# (department_code, department_name, municipality_code, municipality_name, type, longitude,
+# latitude) as DIVIPOLA publishes them (accents, decimal comma). The 13 codes of the exception seed
+# (transform/seeds, D126) must exist, with their DANE names; PASTO and BOGOTA, D.C. match FLEET by
+# normalized name. Written by hand: this is test data, not a copy of the real table.
+DIVIPOLA_NAMED = [
+    ("05", "ANTIOQUIA", "05042", "SANTA FÉ DE ANTIOQUIA", "Municipio", "-75,8", "6,55"),
+    ("05", "ANTIOQUIA", "05237", "DONMATÍAS", "Municipio", "-75,4", "6,48"),
+    ("11", "BOGOTÁ, D.C.", "11001", "BOGOTÁ, D.C.", "Municipio", "-74,106992", "4,649251"),
+    ("13", "BOLÍVAR", "13001", "CARTAGENA DE INDIAS", "Municipio", "-75,5", "10,4"),
+    ("13", "BOLÍVAR", "13468", "SANTA CRUZ DE MOMPOX", "Municipio", "-74,4", "9,2"),
+    ("19", "CAUCA", "19548", "PIENDAMÓ - TUNÍA", "Municipio", "-76,5", "2,6"),
+    ("25", "CUNDINAMARCA", "25843", "VILLA DE SAN DIEGO DE UBATÉ", "Municipio", "-73,8", "5,3"),
+    ("52", "NARIÑO", "52001", "PASTO", "Municipio", "-77,28", "1,21"),
+    ("52", "NARIÑO", "52835", "SAN ANDRÉS DE TUMACO", "Municipio", "-78,8", "1,8"),
+    ("54", "NORTE DE SANTANDER", "54001", "SAN JOSÉ DE CÚCUTA", "Municipio", "-72,5", "7,9"),
+    ("70", "SUCRE", "70742", "SAN LUIS DE SINCÉ", "Municipio", "-75,1", "9,2"),
+    ("73", "TOLIMA", "73443", "SAN SEBASTIÁN DE MARIQUITA", "Municipio", "-74,9", "5,2"),
+    ("76", "VALLE DEL CAUCA", "76001", "SANTIAGO DE CALI", "Municipio", "-76,5", "3,4"),
+    (
+        "88",
+        "ARCHIPIÉLAGO DE SAN ANDRÉS, PROVIDENCIA Y SANTA CATALINA",
+        "88001",
+        "SAN ANDRÉS",
+        "Isla",
+        "-81,707181",
+        "12,578108",
+    ),
+]
+# Filler so the size guard of D125 (>= 1,100 rows) passes: departments 30..39, 110 each.
+DIVIPOLA_FILLER = [
+    (f"{d:02d}", f"DEPARTAMENTO {d}", f"{d:02d}{m:03d}", f"MUNICIPIO {d} {m}", "Municipio",
+     "-74,5", "5,5")
+    for d in range(30, 40)
+    for m in range(1, 111)
+]  # fmt: skip
+DIVIPOLA = [*DIVIPOLA_NAMED, *DIVIPOLA_FILLER]
+# (department_norm, municipality_norm, code, method) the map must give for the FLEET pairs.
+FLEET_DANE_KEYS = [
+    ("BOGOTA, D.C.", "BOGOTA, D.C.", "11001", "auto_norm"),
+    ("NARINO", "PASTO", "52001", "auto_norm"),
+]
 
 _LOAD_RUN_SQL = (
     "INSERT INTO ops.load_run (dataset, source_system, input_fingerprint, transform_name, "
@@ -65,6 +110,12 @@ _FLEET_SQL = (
     "department_name, municipality_name, service_name, vehicle_status, vehicle_class, "
     "registration_year, vehicle_count, source_system, source_reference, load_id) "
     "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, 'mintransporte_runt_parque', %s, %s)"
+)
+_DIVIPOLA_SQL = (
+    "INSERT INTO landing.divipola_municipality (department_code, department_name, "
+    "municipality_code, municipality_name, municipality_type, longitude, latitude, "
+    "source_system, source_reference, load_id) "
+    "VALUES (%s, %s, %s, %s, %s, %s, %s, 'dane_divipola', %s, %s)"
 )
 
 
@@ -110,7 +161,11 @@ def seed(settings: WarehouseSettings) -> bool:
 def _seed(settings: WarehouseSettings) -> bool:
     conn = connect(settings, Profile.LOADER)
     try:
-        for table in ("landing.fx_rate", "landing.vehicle_fleet_snapshot"):
+        for table in (
+            "landing.fx_rate",
+            "landing.vehicle_fleet_snapshot",
+            "landing.divipola_municipality",
+        ):
             if conn.execute(f"SELECT EXISTS (SELECT 1 FROM {table})").fetchone()[0]:
                 return False
         fx_id = _load_run(
@@ -130,6 +185,17 @@ def _seed(settings: WarehouseSettings) -> bool:
         )
         for n, row in enumerate(FLEET):
             conn.execute(_FLEET_SQL, (*FLEET_PUBLICATION, *row, f"synthetic/ci#{n}", fleet_id))
+        divipola_id = _load_run(
+            conn,
+            "divipola_municipality",
+            "dane_divipola",
+            DIVIPOLA_HASH,
+            len(DIVIPOLA),
+            DIVIPOLA_UPDATED,
+            DIVIPOLA_UPDATED,
+        )
+        for n, row in enumerate(DIVIPOLA):
+            conn.execute(_DIVIPOLA_SQL, (*row, f"synthetic/ci#{n}", divipola_id))
         conn.commit()
         return True
     finally:
@@ -157,11 +223,27 @@ def _verify(settings: WarehouseSettings) -> list[str]:
             "SELECT DISTINCT department_name_norm, municipality_name_norm, vehicle_class_norm "
             "FROM marts.fct_vehicle_fleet_snapshot ORDER BY 1, 2, 3"
         ).fetchall()
+        dim = conn.execute("SELECT count(*) FROM marts.dim_municipality").fetchone()
+        dane = conn.execute(
+            "SELECT count(*), sum(vehicle_count), count(dane_municipality_code) "
+            "FROM marts.fct_vehicle_fleet_snapshot_dane"
+        ).fetchone()
+        dane_keys = conn.execute(
+            "SELECT DISTINCT department_name_norm, municipality_name_norm, "
+            "dane_municipality_code, dane_match_method "
+            "FROM marts.fct_vehicle_fleet_snapshot_dane ORDER BY 1, 2"
+        ).fetchall()
     finally:
         conn.close()
     expected = {
         "fct_fx_rate_daily": ((len(FX_DAYS), sum(FX_RATES)), fx),
         "fct_vehicle_fleet_snapshot": ((len(FLEET), sum(r[-1] for r in FLEET)), fleet),
+        "dim_municipality": ((len(DIVIPOLA),), dim),
+        # D127: same rows as the fct, and every cell of the seed finds its DANE code.
+        "fct_vehicle_fleet_snapshot_dane": (
+            (len(FLEET), sum(r[-1] for r in FLEET), len(FLEET)),
+            dane,
+        ),
     }
     problems = [
         f"{name}: expected (rows, total)={want}, got {tuple(got)}"
@@ -170,6 +252,10 @@ def _verify(settings: WarehouseSettings) -> list[str]:
     ]
     if [tuple(k) for k in keys] != sorted(FLEET_NORM_KEYS):
         problems.append(f"fct_vehicle_fleet_snapshot: normalized keys {keys} != {FLEET_NORM_KEYS}")
+    if [tuple(k) for k in dane_keys] != sorted(FLEET_DANE_KEYS):
+        problems.append(
+            f"fct_vehicle_fleet_snapshot_dane: DANE codes {dane_keys} != {FLEET_DANE_KEYS}"
+        )
     return problems
 
 
@@ -182,7 +268,10 @@ def seed_command() -> None:
         _fail(str(exc))
     if not done:
         _fail("landing is not empty; refusing to seed")
-    typer.echo(f"seeded fx_rate={len(FX_DAYS)} vehicle_fleet_snapshot={len(FLEET)}")
+    typer.echo(
+        f"seeded fx_rate={len(FX_DAYS)} vehicle_fleet_snapshot={len(FLEET)} "
+        f"divipola_municipality={len(DIVIPOLA)}"
+    )
 
 
 @app.command("verify")

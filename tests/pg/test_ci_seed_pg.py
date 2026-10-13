@@ -65,7 +65,7 @@ def test_seed_build_verify_and_second_seed_is_refused(seeder, build, pg_settings
         count = admin.execute("SELECT count(*) FROM ops.load_run").fetchone()[0]
     finally:
         admin.close()
-    assert count == 2  # the refused seed wrote nothing
+    assert count == 3  # the refused seed wrote nothing
     assert build().exit_code == 0  # idempotent
     assert _run(seeder, "verify").exit_code == 0
 
@@ -91,11 +91,16 @@ def test_failed_seed_rolls_everything_back(seeder, pg_settings, monkeypatch):
     try:
         counts = [
             admin.execute(f"SELECT count(*) FROM {t}").fetchone()[0]
-            for t in ("ops.load_run", "landing.fx_rate", "landing.vehicle_fleet_snapshot")
+            for t in (
+                "ops.load_run",
+                "landing.fx_rate",
+                "landing.vehicle_fleet_snapshot",
+                "landing.divipola_municipality",
+            )
         ]
     finally:
         admin.close()
-    assert counts == [0, 0, 0]
+    assert counts == [0, 0, 0, 0]
 
 
 def test_verify_detects_a_fleet_mismatch(seeder, build, monkeypatch):
@@ -116,3 +121,21 @@ def test_verify_detects_a_normalization_regression(seeder, build, monkeypatch):
     result = _run(seeder, "verify")
     assert result.exit_code == 1
     assert "normalized keys" in result.output
+
+
+def test_verify_detects_a_dane_mapping_regression(seeder, build, monkeypatch):
+    assert _run(seeder, "seed").exit_code == 0
+    assert build().exit_code == 0
+    monkeypatch.setattr(seeder, "FLEET_DANE_KEYS", [("NARINO", "PASTO", "52001", "curated")])
+    result = _run(seeder, "verify")
+    assert result.exit_code == 1
+    assert "DANE codes" in result.output
+
+
+def test_verify_detects_a_dimension_mismatch(seeder, build, monkeypatch):
+    assert _run(seeder, "seed").exit_code == 0
+    assert build().exit_code == 0
+    monkeypatch.setattr(seeder, "DIVIPOLA", seeder.DIVIPOLA[:-1])
+    result = _run(seeder, "verify")
+    assert result.exit_code == 1
+    assert "dim_municipality" in result.output

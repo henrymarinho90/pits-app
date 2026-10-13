@@ -21,6 +21,7 @@ data/
 *.parquet
 *.csv
 !tests/fixtures/**/*.csv
+!transform/seeds/*.csv
 
 # Claude local
 .claude/settings.local.json

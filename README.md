@@ -60,7 +60,7 @@ docker compose down                               # sin -v conserva los volúmen
 
 ## Orquestación (Fase 4, perfil `orchestration`)
 
-Airflow 3.3.2 con LocalExecutor (D89, D95) sobre el stack core. Tres DAGs: `trm_daily`, a las 10:00 America/Bogotá (15:00 UTC), y `runt_fleet_snapshot`, a las 11:00 America/Bogotá (16:00 UTC); ambos corren extract → normalize → load → build → freshness, sin catchup (D92). El tercero, `airflow_log_retention`, corre a las 03:00 America/Bogotá y borra los `*.log` de más de 30 días. `runt_fleet_snapshot` acepta el param `force` (solo bool). Detalle y runbook en `docs/06_status.md` §3.
+Airflow 3.3.2 con LocalExecutor (D89, D95) sobre el stack core. Cuatro DAGs: `trm_daily`, a las 10:00 America/Bogotá (15:00 UTC), y `runt_fleet_snapshot`, a las 11:00 America/Bogotá (16:00 UTC); ambos corren extract → normalize → load → build → freshness, sin catchup (D92). El tercero, `airflow_log_retention`, corre a las 03:00 America/Bogotá y borra los `*.log` de más de 30 días. El cuarto, `divipola_snapshot`, corre los lunes a las 07:00 America/Bogotá (12:00 UTC) y actualiza la geografía DANE/DIVIPOLA (D129). `runt_fleet_snapshot` acepta el param `force` (solo bool). Detalle y runbook en `docs/06_status.md` §3.
 
 ```bash
 docker compose -f docker-compose.yml --profile core up -d   # 1. core (Postgres) arriba; init-airflow-meta lo necesita
@@ -81,17 +81,17 @@ docker compose -f docker-compose.yml -f docker-compose.orchestration.yml --profi
 ```bash
 MSYS_NO_PATHCONV=1 docker run --rm --entrypoint bash -v "$(pwd -W):/repo:ro" -w /repo/orchestration pits-airflow:dev -c 'pip install --quiet --no-cache-dir --target /tmp/pt pytest==9.1.1 iniconfig==2.3.1 && PYTHONPATH=/tmp/pt python -m pytest tests -q -p no:cacheprovider'
 ```
-- Integración (`-m airflow`, excluida por defecto): `MSYS_NO_PATHCONV=1 uv run --env-file .env pytest -m airflow -q`, desde Git Bash, con el stack arriba, lejos de las 15:00 y 16:00 UTC y sin corridas activas en ninguno de los dos DAGs. Tarda más de 23 min; con RUNT no se ha medido completa (test_3 y test_4 tardan unos 10 min cada uno). Los tests se llaman `test_runt_*` y `test_N_*` (TRM). El caso force solo corre con `PITS_IT_FORCE=1` y cuesta unos 86 MB permanentes en raw y normalized.
+- Integración (`-m airflow`, excluida por defecto): `MSYS_NO_PATHCONV=1 uv run --env-file .env pytest -m airflow -q`, desde Git Bash, con el stack arriba, lejos de las 15:00 y 16:00 UTC y sin corridas activas en ninguno de los DAGs del proyecto (`trm_daily`, `runt_fleet_snapshot`, `divipola_snapshot` y `airflow_log_retention`). Tarda más de 23 min; con RUNT no se ha medido completa (test_3 y test_4 tardan unos 10 min cada uno). Los tests se llaman `test_runt_*` y `test_N_*` (TRM). El caso force solo corre con `PITS_IT_FORCE=1` y cuesta unos 86 MB permanentes en raw y normalized.
 - Regla D106: no corras `pits extract` a mano entre 14:45–15:30 ni 15:45–16:30 UTC, ni con corridas activas.
 - Limpiar tareas: `airflow tasks clear` sin `-s` y `-e` limpia todas las corridas; usa `-s`/`-e` con `-t load` (`-t '^load$'` no limpia nada).
 
 ## Estructura
 
 - `src/pits/` — paquete y CLI (Typer); `src/pits/storage/` — settings, cliente S3 y bucket raw; `src/pits/storage/orphans.py` — inventario de huérfanos (`pits storage orphans`).
-- `src/pits/sources/` — fuentes: cliente SODA (`soda/`), extractor TRM (`trm/`) y dominio RUNT (`runt/`: extract, parse, normalize, contract); `src/pits/ingestion/` — raw store write-once y manifest.
-- `src/pits/normalized/` — artefactos normalizados (`fx_rate`) y lector verificado, más los módulos `fleet_*` del parque RUNT (`fleet_csv.py`, `fleet_manifest.py`, `fleet_reader.py`); `src/pits/warehouse/` — conexión, bootstrap, migraciones SQL (incl. `0004_landing_vehicle_fleet_snapshot.sql`) y loader a Postgres; `src/pits/transform/` — wrapper de dbt.
-- `transform/` — proyecto dbt `pits_transform` (D85): modelos `staging` y `marts` (incl. `stg_vehicle_fleet_snapshot` y `fct_vehicle_fleet_snapshot`), tests y freshness.
-- `orchestration/` — DAGs de Airflow (`dags/trm_daily.py`, `dags/runt_fleet_snapshot.py`, `dags/airflow_log_retention.py`, operador `dags/pits_cli/`) y su proyecto uv con los constraints de Airflow (D94); `docker/airflow/` — Dockerfile e imagen `pits-airflow` (D89); `docker-compose.orchestration.yml` — servicios de Airflow (D95).
+- `src/pits/sources/` — fuentes: cliente SODA (`soda/`), extractor TRM (`trm/`) y dominio RUNT (`runt/`: extract, parse, normalize, contract) y DANE/DIVIPOLA (`divipola/`: extract, parse, normalize, contract); `src/pits/ingestion/` — raw store write-once y manifest.
+- `src/pits/normalized/` — artefactos normalizados (`fx_rate`) y lector verificado, más los módulos `fleet_*` del parque RUNT (`fleet_csv.py`, `fleet_manifest.py`, `fleet_reader.py`) y `divipola_*` de DANE/DIVIPOLA (`divipola_csv.py`, `divipola_manifest.py`, `divipola_reader.py`); `src/pits/warehouse/` — conexión, bootstrap, migraciones SQL (incl. `0004_landing_vehicle_fleet_snapshot.sql` y `0005_landing_divipola_municipality.sql`) y loader a Postgres; `src/pits/transform/` — wrapper de dbt.
+- `transform/` — proyecto dbt `pits_transform` (D85): modelos `staging` y `marts` (incl. `stg_vehicle_fleet_snapshot`, `fct_vehicle_fleet_snapshot`, `stg_divipola_municipality`, `dim_municipality`, `map_runt_municipality_dane` y `fct_vehicle_fleet_snapshot_dane`), seeds (`transform/seeds/`, incl. `runt_municipality_dane_exception.csv`), tests y freshness.
+- `orchestration/` — DAGs de Airflow (`dags/trm_daily.py`, `dags/runt_fleet_snapshot.py`, `dags/divipola_snapshot.py`, `dags/airflow_log_retention.py`, operador `dags/pits_cli/`) y su proyecto uv con los constraints de Airflow (D94); `docker/airflow/` — Dockerfile e imagen `pits-airflow` (D89); `docker-compose.orchestration.yml` — servicios de Airflow (D95).
 - `tests/` — tests con pytest; `tests/contract/` — tests de contrato (marker `contract`); `tests/pg/` — tests contra Postgres (marker `pg`); ambos excluidos por defecto.
 - `scripts/` — scripts operativos (incl. `scripts/dbt_run_timing.py`).
 - `docs/` — documentación del proyecto:
