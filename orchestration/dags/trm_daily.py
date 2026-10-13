@@ -3,6 +3,8 @@
 Linear chain; every step is idempotent and the load/transform steps serialize through the
 pool `pits_warehouse` (1 slot). The pool does NOT replace the advisory lock of D90: it only
 avoids queued tasks colliding; the lock remains the safety net (a busy lock exits 3 -> retry).
+build and freshness are limited to `tag:fx_rate` (D101): without the selector, freshness would
+also evaluate the vehicle fleet source, which this DAG does not refresh.
 `logical_date` is not passed to the CLI: the extract is incremental from its own watermark.
 """
 
@@ -64,7 +66,7 @@ with DAG(
         command=["extract", "trm"],
         env_allow=[*S3_ENV, *SODA_ENV],
         secret_env=[*S3_SECRETS, *SODA_SECRETS],
-        extract_params=True,
+        param_args="trm_extract",
         execution_timeout=timedelta(minutes=15),
     )
     normalize = PitsCliOperator(
@@ -84,7 +86,7 @@ with DAG(
     )
     build = PitsCliOperator(
         task_id="build",
-        command=["transform", "build"],
+        command=["transform", "build", "--select", "tag:fx_rate"],
         env_allow=[*WAREHOUSE_ENV, "PITS_PG_TRANSFORMER_PASSWORD"],
         secret_env=["PITS_PG_TRANSFORMER_PASSWORD"],
         pool=POOL,
@@ -93,7 +95,7 @@ with DAG(
     # dbt exits 0 on WARN (2 days) and 1 on ERROR (7 days) -> pits exit 1 -> the run fails (P9).
     freshness = PitsCliOperator(
         task_id="freshness",
-        command=["transform", "freshness"],
+        command=["transform", "freshness", "--select", "tag:fx_rate"],
         env_allow=[*WAREHOUSE_ENV, "PITS_PG_TRANSFORMER_PASSWORD"],
         secret_env=["PITS_PG_TRANSFORMER_PASSWORD"],
         pool=POOL,

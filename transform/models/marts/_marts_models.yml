@@ -3,6 +3,8 @@ version: 2
 models:
   - name: fct_fx_rate_daily
     description: "Daily FX rates (grain: rate_date + currency pair); contract for BI. Same 7 columns as landing.fx_rate."
+    config:
+      tags: [fx_rate]
     data_tests:
       - unique_combination_of_columns:
           arguments:
@@ -43,3 +45,87 @@ models:
               arguments:
                 to: source('ops', 'load_run')
                 field: load_id
+
+  - name: fct_vehicle_fleet_snapshot
+    description: "Vehicle fleet stock (grain: publication + department + municipality + service + status + class + registration year); contract for BI. All publications, statuses and services (D100)."
+    config:
+      tags: [vehicle_fleet]
+    data_tests:
+      - unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [publication_year, publication_month, department_name, municipality_name, service_name, vehicle_status, vehicle_class, registration_year]
+    columns:
+      - name: publication_year
+        description: "Year of the publication (snapshot month)."
+        data_tests:
+          - not_null
+      - name: publication_month
+        description: "Month (1-12) of the publication."
+        data_tests:
+          - not_null
+      - name: department_name
+        description: "Department as published (may be truncated at source; not corrected)."
+        data_tests:
+          - not_null
+      - name: municipality_name
+        description: "Municipality as published."
+        data_tests:
+          - not_null
+      - name: service_name
+        description: "Service type as published."
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ['NO REGISTRA', 'OFICIAL', 'OTROS', 'PARTICULAR', 'PÚBLICO']
+              config:
+                severity: error
+      - name: vehicle_status
+        description: "Vehicle status as published."
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ['ACTIVO', 'INCONSISTENTE']
+              config:
+                severity: error
+      - name: vehicle_class
+        description: "Vehicle class as published."
+        data_tests:
+          - not_null
+      - name: registration_year
+        description: "Registration year of the vehicles in the cell."
+        data_tests:
+          - not_null
+      - name: vehicle_count
+        description: "Vehicles in the cell at the publication date (stock, rule 5)."
+        data_tests:
+          - not_null
+      - name: source_system
+        description: "Source the snapshot came from."
+        data_tests:
+          - not_null
+      - name: source_reference
+        description: "Raw object path/row index (lineage to raw)."
+        data_tests:
+          - not_null
+      - name: load_id
+        description: "ops.load_run row that wrote this publication."
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: source('ops', 'load_run_fleet')
+                field: load_id
+      - name: department_name_norm
+        description: "department_name upper-cased, accents removed, spaces collapsed (D100)."
+        data_tests:
+          - not_null
+      - name: municipality_name_norm
+        description: "municipality_name, same normalization (D100)."
+        data_tests:
+          - not_null
+      - name: vehicle_class_norm
+        description: "vehicle_class, same normalization (D100)."
+        data_tests:
+          - not_null

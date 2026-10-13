@@ -287,3 +287,57 @@ def test_subprocess_runner_maps_oserror(monkeypatch):
     monkeypatch.setattr(rn.subprocess, "run", no_start)
     with pytest.raises(rn.WarehouseConfigError, match="could not start dbt"):
         rn.subprocess_runner(["dbt"], {})
+
+
+# --- --select (D101) ------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("command", "sub"), [("build", ["build"]), ("freshness", ["source", "freshness"])]
+)
+@pytest.mark.parametrize("selector", ["tag:fx_rate", "tag:vehicle_fleet"])
+def test_select_is_passed_to_dbt(env, project, command, sub, selector):
+    assert invoke(command, "--select", selector).exit_code == 0
+    ((argv, _),) = env[1].calls
+    expected = [DBT, *sub, "--project-dir", str(project), "--profiles-dir", str(project)]
+    assert argv == [*expected, "--select", selector]
+
+
+@pytest.mark.parametrize("command", ["build", "freshness"])
+@pytest.mark.parametrize(
+    "selector",
+    [
+        "",
+        "stg_fx_rate",
+        "tag:",
+        "tag:Fx",
+        "tag:fx-rate",
+        "tag:fx_rate+",
+        "+tag:fx_rate",
+        "tag:a tag:b",
+        "tag:a,tag:b",
+        "tag:a\ntag:b",
+        "path:models",
+        "source:landing.fx_rate",
+        "--exclude",
+    ],
+)
+def test_select_outside_allow_list_is_usage_error(env, command, selector):
+    result = invoke(command, "--select", selector)
+    assert result.exit_code == 2
+    assert env[1].calls == [] and env[2] == []  # neither dbt nor a session
+
+
+def test_without_select_argv_has_no_select(env):
+    assert invoke("build").exit_code == 0
+    assert "--select" not in env[1].calls[0][0]
+
+
+def test_parse_does_not_accept_select(env):
+    assert invoke("parse", "--select", "tag:fx_rate").exit_code == 2
+    assert env[1].calls == []
+
+
+def test_build_argv_rejects_invalid_select_even_when_called_directly():
+    with pytest.raises(ValueError, match="invalid selector"):
+        rn.build_argv("build", Path("/p"), DBT, "tag:x+")

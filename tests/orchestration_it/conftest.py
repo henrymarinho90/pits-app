@@ -14,7 +14,7 @@ from datetime import UTC, datetime, timedelta
 import pytest
 from airflow_support import (
     CREATED_RUNS,
-    DAG_ID,
+    DAG_IDS,
     POSTGRES,
     SCHEDULER,
     SEAWEEDFS,
@@ -25,7 +25,8 @@ from airflow_support import (
     runs,
 )
 
-SCHEDULE_GUARD = timedelta(minutes=15)  # around the 15:00 UTC scheduled run
+SCHEDULE_GUARD = timedelta(minutes=15)  # around each scheduled run
+SCHEDULE_HOURS_UTC = (15, 16)  # trm_daily 10:00 and runt_fleet_snapshot 11:00 America/Bogota
 
 
 def pytest_collection_modifyitems(items):
@@ -35,8 +36,12 @@ def pytest_collection_modifyitems(items):
 
 
 def _near_schedule(now: datetime) -> bool:
-    today = now.replace(hour=15, minute=0, second=0, microsecond=0)
-    return any(abs(now - day) < SCHEDULE_GUARD for day in (today - timedelta(days=1), today))
+    base = now.replace(minute=0, second=0, microsecond=0)
+    return any(
+        abs(now - (base.replace(hour=hour) + timedelta(days=offset))) < SCHEDULE_GUARD
+        for hour in SCHEDULE_HOURS_UTC
+        for offset in (-1, 0, 1)
+    )
 
 
 @pytest.fixture(scope="session", autouse=True)
@@ -46,18 +51,23 @@ def _stack_up():
     missing = {SCHEDULER, POSTGRES, SEAWEEDFS} - set(proc.stdout.split())
     if proc.returncode != 0 or missing:
         pytest.fail(f"stack not up (core + orchestration profiles); missing: {sorted(missing)}")
-    dag = next((d for d in airflow_json("dags", "list") if d["dag_id"] == DAG_ID), None)
-    if dag is None:
-        pytest.fail(f"DAG {DAG_ID} not found")
-    if str(dag["is_paused"]).lower() == "true":
-        pytest.fail(f"DAG {DAG_ID} is paused: unpause it first")
-    active = [r["run_id"] for r in runs() if r["state"] in {"running", "queued"}]
-    if active:
-        pytest.fail(f"{len(active)} run(s) of {DAG_ID} running or queued (max_active_runs=1)")
+    listed = {d["dag_id"]: d for d in airflow_json("dags", "list")}
+    for dag_id in DAG_IDS:
+        if dag_id not in listed:
+            pytest.fail(f"DAG {dag_id} not found (is the image rebuilt and the stack recreated?)")
+        if str(listed[dag_id]["is_paused"]).lower() == "true":
+            pytest.fail(f"DAG {dag_id} is paused: unpause it first")
+        active = [r["run_id"] for r in runs(dag_id) if r["state"] in {"running", "queued"}]
+        if active:
+            pytest.fail(f"{len(active)} run(s) of {dag_id} running or queued (max_active_runs=1)")
     if _near_schedule(datetime.now(UTC)):
-        pytest.fail("within 15 min of the 15:00 UTC scheduled run: run these tests later")
+        pytest.fail(
+            "within 15 min of a scheduled run (15:00 UTC trm_daily, 16:00 UTC "
+            "runt_fleet_snapshot): "
+            "run these tests later"
+        )
     yield
-    states = {r["run_id"]: r["state"] for r in runs()}
+    states = {r["run_id"]: r["state"] for dag_id in DAG_IDS for r in runs(dag_id)}
     unfinished = {
         i: states.get(i, "unknown") for i in CREATED_RUNS if states.get(i) not in TERMINAL_STATES
     }

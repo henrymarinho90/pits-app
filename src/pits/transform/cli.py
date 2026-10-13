@@ -1,5 +1,6 @@
 """`pits transform {parse,build,freshness}`: run dbt (D88) with the validated environment.
 
+`build` and `freshness` accept `--select tag:<name>` (D101; anything else is exit 2).
 Exit codes: 0 dbt succeeded; 1 permanent (dbt exit 1 or 2, missing project/dbt, configuration,
 authentication, privileges); 2 usage error (Typer); 3 transient (preflight connection failure
 or another transform run holds the lock; safe to retry).
@@ -14,7 +15,7 @@ from __future__ import annotations
 from collections.abc import Callable, Mapping
 from contextlib import AbstractContextManager
 from pathlib import Path
-from typing import NoReturn
+from typing import Annotated, NoReturn
 
 import typer
 
@@ -53,12 +54,32 @@ def _fail(message: str, code: int) -> NoReturn:
     raise typer.Exit(code=code)
 
 
-def _run(command: str, *, needs_database: bool) -> None:
+def _select_option(value: str | None) -> str | None:
+    """Typer callback: a selector outside the allow-list is a usage error (exit 2)."""
+    if value is None:
+        return None
+    try:
+        return rn.validate_select(value)
+    except ValueError as exc:
+        raise typer.BadParameter(str(exc)) from None
+
+
+SelectOption = Annotated[
+    str | None,
+    typer.Option(
+        "--select",
+        callback=_select_option,
+        help="Optional dbt selector, only tag:<name> (e.g. tag:fx_rate, tag:vehicle_fleet).",
+    ),
+]
+
+
+def _run(command: str, *, needs_database: bool, select: str | None = None) -> None:
     environ = environ_factory()
     try:
         project_dir = project_dir_factory()
         rn.check_project(project_dir)
-        argv = rn.build_argv(command, project_dir, executable_factory())
+        argv = rn.build_argv(command, project_dir, executable_factory(), select)
         if not needs_database:
             code = dbt_runner(argv, rn.child_env(environ))
         else:
@@ -80,12 +101,12 @@ def parse() -> None:
 
 
 @transform_app.command()
-def build() -> None:
+def build(select: SelectOption = None) -> None:
     """Run dbt build (models and tests) as pits_transformer."""
-    _run("build", needs_database=True)
+    _run("build", needs_database=True, select=select)
 
 
 @transform_app.command()
-def freshness() -> None:
+def freshness(select: SelectOption = None) -> None:
     """Run dbt source freshness as pits_transformer."""
-    _run("freshness", needs_database=True)
+    _run("freshness", needs_database=True, select=select)

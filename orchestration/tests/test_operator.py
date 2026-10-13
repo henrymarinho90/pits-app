@@ -14,7 +14,7 @@ import pytest
 from airflow.sdk.exceptions import AirflowException, AirflowFailException
 
 from pits_cli import operator as op_module
-from pits_cli.operator import PitsCliOperator, build_env, extract_args
+from pits_cli.operator import PARAM_ARGS, PitsCliOperator, build_env, extract_args, force_args
 
 FAKE = f"""#!{sys.executable}
 import json, os, signal, sys, time
@@ -311,22 +311,67 @@ def test_extract_args_invalid(mode, since):
 
 
 def test_operator_builds_argv_from_params(fake):
-    operator = make(fake, ["dump"], extract_params=True)
+    operator = make(fake, ["dump"], param_args="trm_extract")
     operator.execute({"params": {"extract_mode": "since", "since": "2026-10-01"}})
     argv = json.loads((fake.parent / "dump.json").read_text())["argv"]
     assert argv == ["dump", "--since", "2026-10-01"]
 
 
 def test_operator_defaults_to_incremental_without_params(fake):
-    make(fake, ["dump"], extract_params=True).execute({})
+    make(fake, ["dump"], param_args="trm_extract").execute({})
     assert json.loads((fake.parent / "dump.json").read_text())["argv"] == ["dump"]
 
 
 def test_operator_rejects_invalid_params_before_running(fake):
-    operator = make(fake, ["dump"], extract_params=True)
+    operator = make(fake, ["dump"], param_args="trm_extract")
     with pytest.raises(AirflowFailException):
         operator.execute({"params": {"extract_mode": "since", "since": None}})
     assert not (fake.parent / "dump.json").exists()  # the child never started
+
+
+@pytest.mark.parametrize(("value", "expected"), [(True, ["--force"]), (False, [])])
+def test_force_args_valid(value, expected):
+    assert force_args(value) == expected
+
+
+@pytest.mark.parametrize("value", ["false", "true", "", 1, 0, None, [], {}])
+def test_force_args_rejects_non_booleans(value):
+    with pytest.raises(ValueError):
+        force_args(value)
+
+
+@pytest.mark.parametrize(
+    ("params", "expected"),
+    [({}, ["dump"]), ({"force": False}, ["dump"]), ({"force": True}, ["dump", "--force"])],
+)
+def test_operator_runt_param_args_builds_force(fake, params, expected):
+    make(fake, ["dump"], param_args="runt_extract").execute({"params": params})
+    assert json.loads((fake.parent / "dump.json").read_text())["argv"] == expected
+
+
+def test_operator_runt_ignores_trm_params(fake):
+    """Each translator reads only its own params: extract_mode means nothing for runt_extract."""
+    make(fake, ["dump"], param_args="runt_extract").execute({"params": {"extract_mode": "full"}})
+    assert json.loads((fake.parent / "dump.json").read_text())["argv"] == ["dump"]
+
+
+@pytest.mark.parametrize("bad", ["yes", "false", 1, None])
+def test_operator_rejects_non_boolean_force_before_running(fake, bad):
+    operator = make(fake, ["dump"], param_args="runt_extract")
+    with pytest.raises(AirflowFailException):
+        operator.execute({"params": {"force": bad}})
+    assert not (fake.parent / "dump.json").exists()
+
+
+def test_operator_without_param_args_ignores_params(fake):
+    make(fake, ["dump"]).execute({"params": {"force": True, "extract_mode": "full"}})
+    assert json.loads((fake.parent / "dump.json").read_text())["argv"] == ["dump"]
+
+
+def test_unknown_param_args_name_is_rejected_at_definition():
+    assert set(PARAM_ARGS) == {"trm_extract", "runt_extract"}
+    with pytest.raises(ValueError, match="param_args"):
+        PitsCliOperator(task_id="t", command=["x"], env_allow=[], param_args="bogus")
 
 
 def test_kill_grace_is_below_the_supervisor_escalation_delay():

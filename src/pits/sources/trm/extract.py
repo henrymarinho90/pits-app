@@ -31,6 +31,13 @@ from pits.ingestion.raw_store import (
     RawStoreTransientError,
     batch_prefix,
 )
+from pits.sources.extract_common import (
+    ExtractError,
+    ExtractPermanentError,
+    ExtractTransientError,
+    check_metadata,
+    parse_rows_updated_at,
+)
 from pits.sources.soda.client import (
     RawPage,
     SodaClient,
@@ -55,17 +62,14 @@ from pits.sources.trm.contract import (
 Mode = Literal["incremental", "full", "since"]
 EXTRACTOR_NAME = "pits.sources.trm"
 
-
-class ExtractError(RuntimeError):
-    """Base class for extractor failures; messages never contain secrets."""
-
-
-class ExtractPermanentError(ExtractError):
-    """Retrying will not help (schema drift, invalid rows, write conflict, bad manifest)."""
-
-
-class ExtractTransientError(ExtractError):
-    """Retrying later may succeed (network, 5xx, dataset replaced mid-run, empty dataset)."""
+__all__ = [
+    "ExtractError",
+    "ExtractPermanentError",
+    "ExtractTransientError",
+    "ExtractUsageError",
+    "ExtractResult",
+    "extract_trm",
+]
 
 
 class ExtractUsageError(ExtractError):
@@ -118,7 +122,7 @@ def _extract(
     batch_id = new_batch_id()
     prefix = batch_prefix(SOURCE_SYSTEM, extraction_date, batch_id)
 
-    rows_updated_at = _check_metadata(soda)
+    rows_updated_at = check_metadata(soda, DATASET_ID, EXPECTED_SCHEMA)
 
     previous = None
     if mode in ("incremental", "since"):
@@ -211,32 +215,8 @@ def _extract(
     return ExtractResult(manifest=manifest, manifest_key=key)
 
 
-def _parse_rows_updated_at(meta: dict[str, Any]) -> int:
-    value = meta.get("rowsUpdatedAt")
-    if isinstance(value, bool) or not isinstance(value, int):
-        raise ExtractPermanentError("Metadata rowsUpdatedAt is missing or not an integer")
-    return value
-
-
 def _rows_updated_at(soda: SodaClient) -> int:
-    return _parse_rows_updated_at(soda.get_metadata(DATASET_ID))
-
-
-def _check_metadata(soda: SodaClient) -> int:
-    """Validate the non-system column schema exactly; return rowsUpdatedAt."""
-    meta = soda.get_metadata(DATASET_ID)
-    columns = meta.get("columns")
-    if not isinstance(columns, list) or not all(isinstance(c, dict) for c in columns):
-        raise ExtractPermanentError("Metadata has no valid 'columns' list")
-    actual = {
-        c.get("fieldName"): c.get("dataTypeName")
-        for c in columns
-        if not str(c.get("fieldName", "")).startswith(":")
-    }
-    expected = {c.name: c.data_type for c in EXPECTED_SCHEMA}
-    if actual != expected:
-        raise ExtractPermanentError(f"Schema drift in metadata: expected {expected}, got {actual}")
-    return _parse_rows_updated_at(meta)
+    return parse_rows_updated_at(soda.get_metadata(DATASET_ID))
 
 
 def _parse_date(value: Any, where: str) -> date:

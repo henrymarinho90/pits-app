@@ -1,3 +1,4 @@
+{{ config(tags=['fx_rate']) }}
 -- Reads staging on purpose: a failure blocks the mart build, keeping the previous mart intact.
 -- D76: one row per calendar day per pair; any gap makes count(*) < max - min + 1.
 select

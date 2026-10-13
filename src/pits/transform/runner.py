@@ -7,6 +7,7 @@ subprocess (dbt's Python API is not a stable contract and would load dbt in this
 from __future__ import annotations
 
 import os
+import re
 import subprocess
 import sys
 from collections.abc import Callable, Iterator, Mapping, Sequence
@@ -61,9 +62,24 @@ def dbt_executable() -> str:
     )
 
 
-def build_argv(command: str, project_dir: Path, executable: str) -> list[str]:
+SELECT_PATTERN = re.compile(r"^tag:[a-z_]+$")
+
+
+def validate_select(value: str) -> str:
+    """D101: only `tag:<name>` selectors reach dbt (no paths, graph operators or exclusions)."""
+    if not SELECT_PATTERN.fullmatch(value):
+        raise ValueError(f"invalid selector {value!r}: expected tag:<name> (lowercase letters, _)")
+    return value
+
+
+def build_argv(
+    command: str, project_dir: Path, executable: str, select: str | None = None
+) -> list[str]:
     sub = {"parse": ["parse"], "build": ["build"], "freshness": ["source", "freshness"]}[command]
-    return [executable, *sub, "--project-dir", str(project_dir), "--profiles-dir", str(project_dir)]
+    argv = [executable, *sub, "--project-dir", str(project_dir), "--profiles-dir", str(project_dir)]
+    if select is not None:
+        argv += ["--select", validate_select(select)]
+    return argv
 
 
 def child_env(

@@ -21,7 +21,9 @@ from pathlib import Path
 SCHEDULER = "pits-airflow-scheduler"
 POSTGRES = "pits-postgres"
 SEAWEEDFS = "pits-seaweedfs"
-DAG_ID = "trm_daily"
+DAG_ID = "trm_daily"  # default of every helper below
+RUNT_DAG_ID = "runt_fleet_snapshot"
+DAG_IDS = (DAG_ID, RUNT_DAG_ID)
 LOGS = "/opt/airflow/logs"
 ROOT = Path(__file__).resolve().parents[2]
 RUN_SCRIPT = ROOT / "scripts" / "run_dag_and_wait.sh"
@@ -59,7 +61,9 @@ def airflow_json(*args: str) -> list[dict]:
     raise AssertionError(f"no JSON in the output of airflow {' '.join(args[:2])}")
 
 
-def trigger(conf: dict | None = None, logical_date: datetime | None = None) -> str:
+def trigger(
+    conf: dict | None = None, logical_date: datetime | None = None, dag_id: str = DAG_ID
+) -> str:
     """Trigger a manual run with a unique run_id; return it (does not wait)."""
     run_id = f"manual__it_{datetime.now(UTC):%Y%m%dT%H%M%S%f}"
     CREATED_RUNS.append(run_id)
@@ -68,21 +72,21 @@ def trigger(conf: dict | None = None, logical_date: datetime | None = None) -> s
         args += ["-c", json.dumps(conf)]
     if logical_date is not None:
         args += ["-l", logical_date.isoformat()]
-    proc = docker_exec(*args, DAG_ID)
+    proc = docker_exec(*args, dag_id)
     assert proc.returncode == 0, f"trigger failed (exit {proc.returncode})"
     return run_id
 
 
-def runs() -> list[dict]:
-    return airflow_json("dags", "list-runs", DAG_ID)
+def runs(dag_id: str = DAG_ID) -> list[dict]:
+    return airflow_json("dags", "list-runs", dag_id)
 
 
-def run_state(run_id: str) -> str:
-    return next((r["state"] for r in runs() if r["run_id"] == run_id), "unknown")
+def run_state(run_id: str, dag_id: str = DAG_ID) -> str:
+    return next((r["state"] for r in runs(dag_id) if r["run_id"] == run_id), "unknown")
 
 
-def task_states(run_id: str) -> dict[str, str]:
-    rows = airflow_json("tasks", "states-for-dag-run", DAG_ID, run_id)
+def task_states(run_id: str, dag_id: str = DAG_ID) -> dict[str, str]:
+    rows = airflow_json("tasks", "states-for-dag-run", dag_id, run_id)
     return {r["task_id"]: r["state"] for r in rows}
 
 
@@ -96,23 +100,27 @@ def wait_until(predicate: Callable[[], bool], what: str, timeout: float) -> None
         time.sleep(POLL_SECONDS)
 
 
-def wait_task_state(run_id: str, task_id: str, state: str, timeout: float) -> None:
-    wait_until(lambda: task_states(run_id).get(task_id) == state, f"{task_id} -> {state}", timeout)
+def wait_task_state(
+    run_id: str, task_id: str, state: str, timeout: float, dag_id: str = DAG_ID
+) -> None:
+    wait_until(
+        lambda: task_states(run_id, dag_id).get(task_id) == state, f"{task_id} -> {state}", timeout
+    )
 
 
-def wait_run_state(run_id: str, state: str, timeout: float) -> None:
-    wait_until(lambda: run_state(run_id) == state, f"run -> {state}", timeout)
+def wait_run_state(run_id: str, state: str, timeout: float, dag_id: str = DAG_ID) -> None:
+    wait_until(lambda: run_state(run_id, dag_id) == state, f"run -> {state}", timeout)
 
 
-def attempts(run_id: str, task_id: str) -> list[int]:
-    folder = f"{LOGS}/dag_id={DAG_ID}/run_id={run_id}/task_id={task_id}"
+def attempts(run_id: str, task_id: str, dag_id: str = DAG_ID) -> list[int]:
+    folder = f"{LOGS}/dag_id={dag_id}/run_id={run_id}/task_id={task_id}"
     proc = docker_exec("bash", "-c", f"ls '{folder}' 2>/dev/null")
     return sorted(int(m.group(1)) for m in re.finditer(r"attempt=(\d+)\.log", proc.stdout))
 
 
-def log_events(run_id: str, task_id: str, attempt: int) -> list[str]:
+def log_events(run_id: str, task_id: str, attempt: int, dag_id: str = DAG_ID) -> list[str]:
     """Messages (`event` and exception values) of a task attempt log (JSON lines)."""
-    path = f"{LOGS}/dag_id={DAG_ID}/run_id={run_id}/task_id={task_id}/attempt={attempt}.log"
+    path = f"{LOGS}/dag_id={dag_id}/run_id={run_id}/task_id={task_id}/attempt={attempt}.log"
     proc = docker_exec("cat", path)
     assert proc.returncode == 0, f"cannot read the log of {task_id} attempt {attempt}"
     events = []
@@ -127,26 +135,43 @@ def log_events(run_id: str, task_id: str, attempt: int) -> list[str]:
     return events
 
 
+def task_outcomes(
+    run_id: str, task_id: str, attempt: int = 1, dag_id: str = DAG_ID
+) -> list[dict[str, str]]:
+    """Fields (key=value) of every `outcome=...` line a CLI task printed (one per publication for
+    the RUNT normalize/load)."""
+    return [
+        dict(pair.split("=", 1) for pair in event.split() if "=" in pair)
+        for event in log_events(run_id, task_id, attempt, dag_id)
+        if event.startswith("outcome=")
+    ]
+
+
 def load_outcome(run_id: str, attempt: int = 1) -> dict[str, str]:
-    """Fields (key=value) of the `outcome=...` line of the load task."""
-    for event in log_events(run_id, "load", attempt):
-        if event.startswith("outcome="):
-            return dict(pair.split("=", 1) for pair in event.split() if "=" in pair)
-    raise AssertionError("no outcome= line in the load log")
+    """Fields (key=value) of the `outcome=...` line of the trm_daily load task."""
+    found = task_outcomes(run_id, "load", attempt)
+    assert found, "no outcome= line in the load log"
+    return found[0]
 
 
-def run_script(*, logical_date: str | None = None) -> tuple[int, str]:
-    """scripts/run_dag_and_wait.sh trm_daily; returns (exit code, run_id)."""
-    env = {**os.environ, "TIMEOUT_SECONDS": "600"}
+def run_script(
+    *,
+    logical_date: str | None = None,
+    dag_id: str = DAG_ID,
+    conf: dict | None = None,
+    timeout_seconds: int = 600,
+) -> tuple[int, str]:
+    """scripts/run_dag_and_wait.sh <dag_id> [conf]; returns (exit code, run_id)."""
+    env = {**os.environ, "TIMEOUT_SECONDS": str(timeout_seconds)}
     if logical_date:
         env["LOGICAL_DATE"] = logical_date
     proc = subprocess.run(
-        [BASH, str(RUN_SCRIPT), DAG_ID],
+        [BASH, str(RUN_SCRIPT), dag_id, *([json.dumps(conf)] if conf is not None else [])],
         capture_output=True,
         text=True,
         encoding="utf-8",
         env=env,
-        timeout=700,
+        timeout=timeout_seconds + 100,
     )
     match = re.search(r"run_id=(\S+)", proc.stdout)
     assert match, "the script did not print the run_id"

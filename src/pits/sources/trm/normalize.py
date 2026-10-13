@@ -19,15 +19,13 @@ from pits.ingestion.manifest import (
 )
 from pits.ingestion.raw_store import RawStore, RawStoreError, RawStoreTransientError, batch_prefix
 from pits.normalized.commit import NormalizedOutcome, commit_normalized
+from pits.normalized.fingerprint import InputRef, Transform, compute_input_fingerprint
 from pits.normalized.fx_rate_csv import CONTENT_TYPE, FxRateCsvError, serialize_fx_rate
 from pits.normalized.manifest import (
     Coverage,
-    InputRef,
     NormalizedManifest,
     NormalizedManifestError,
     Output,
-    Transform,
-    compute_input_fingerprint,
 )
 from pits.sources.trm.contract import BACKFILL_FROM, DATASET_ID, SOURCE_SYSTEM
 from pits.sources.trm.parse import TrmDataError, TrmRecord, parse_page

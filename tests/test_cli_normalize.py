@@ -10,6 +10,7 @@ import pytest
 from botocore.client import BaseClient
 from botocore.exceptions import EndpointConnectionError, InvalidRegionError
 from botocore.stub import Stubber
+from runt_support import B2, put_runt_batch, raw_row
 from soda_fake import contiguous_rows, extract_batch
 from typer.testing import CliRunner
 
@@ -260,3 +261,90 @@ def test_help_lists_trm_and_group_is_registered() -> None:
     assert "normalize" in top.output
     result = runner.invoke(app, ["normalize", "--help"])
     assert result.exit_code == 0 and "trm" in result.output
+
+
+RUNT_LINE = re.compile(
+    r"outcome=(created|already_present) publication=(\d{4}-\d{2}) fingerprint=([0-9a-f]{64}) "
+    r"inputs=1 batch=([0-9a-f-]{36}) rows=(\d+) parts=(\d+) manifest=s3://pits-norm/"
+    r"vehicle_fleet_snapshot/source_system=mintransporte_runt_parque/"
+    r"publication_month=\2/fingerprint=\3/manifest\.json\n"
+)
+
+
+def _run_runt(world: World, *args: str):
+    with Stubber(world.client) as stubber:
+        stubber.add_response("head_bucket", {}, NORM)
+        stubber.add_response("get_bucket_versioning", {"Status": "Enabled"}, NORM)
+        result = runner.invoke(app, ["normalize", "runt", *args])
+        stubber.assert_no_pending_responses()
+    return result
+
+
+def _runt_rows(n: int = 3, **over: str):
+    return [raw_row(i, **over) for i in range(n)]
+
+
+def test_runt_success_exact_stdout_then_already_present(world: World) -> None:
+    put_runt_batch(world.raw, B1, date(2026, 10, 12), _runt_rows())
+    first = _run_runt(world)
+    assert first.exit_code == 0, first.stderr
+    m = RUNT_LINE.fullmatch(first.stdout)
+    assert m and m.group(1, 2, 4, 5, 6) == ("created", "2026-10", B1, "3", "1")
+    assert first.stderr == ""
+    second = _run_runt(world)
+    assert second.exit_code == 0 and second.stderr == ""
+    assert second.stdout == first.stdout.replace("outcome=created", "outcome=already_present")
+    assert len(world.norm.objects) == 2  # one part + manifest
+
+
+def test_runt_prints_one_line_per_publication(world: World) -> None:
+    put_runt_batch(
+        world.raw, B1, date(2026, 9, 12), _runt_rows(3, year=2026, month=9), year=2026, month=9
+    )
+    put_runt_batch(world.raw, B2, date(2026, 10, 12), _runt_rows(), year=2026, month=10)
+    result = _run_runt(world)
+    assert result.exit_code == 0
+    lines = result.stdout.splitlines(keepends=True)
+    assert [RUNT_LINE.fullmatch(x).group(2) for x in lines] == ["2026-09", "2026-10"]
+
+
+def test_runt_invalid_value_exits_1_after_printing_the_committed_publications(
+    world: World,
+) -> None:
+    put_runt_batch(
+        world.raw, B1, date(2026, 9, 12), _runt_rows(3, year=2026, month=9), year=2026, month=9
+    )
+    bad = _runt_rows(2, nombre_municipio=" X")
+    put_runt_batch(world.raw, B2, date(2026, 10, 12), bad, year=2026, month=10)
+    result = _run_runt(world)
+    assert result.exit_code == 1
+    assert RUNT_LINE.fullmatch(result.stdout) and "publication=2026-09" in result.stdout
+    assert result.stderr.startswith("error: ") and "Traceback" not in result.stderr
+    assert " X" not in result.stderr
+
+
+def test_runt_without_raw_batches_exits_1(world: World) -> None:
+    result = _run_runt(world)
+    assert result.exit_code == 1 and result.stdout == ""
+    assert "No committed raw RUNT batch" in result.stderr
+
+
+def test_runt_transient_error_exits_3(world: World, monkeypatch: pytest.MonkeyPatch) -> None:
+    def boom(prefix: str) -> list[str]:
+        raise RawStoreTransientError("simulated network failure")
+
+    monkeypatch.setattr(world.raw, "list_prefixes", boom)
+    result = _run_runt(world)
+    assert result.exit_code == 3
+    assert result.stdout == "" and result.stderr == "error: simulated network failure\n"
+
+
+def test_runt_unknown_option_is_usage_error(world: World) -> None:
+    result = runner.invoke(app, ["normalize", "runt", "--nope"])
+    assert result.exit_code == 2 and result.stdout == ""
+
+
+def test_runt_missing_variables_exit_1(world: World, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("S3_ENDPOINT_URL")
+    result = runner.invoke(app, ["normalize", "runt"])
+    assert result.exit_code == 1 and "S3_ENDPOINT_URL" in result.stderr
