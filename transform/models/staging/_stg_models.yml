@@ -131,3 +131,63 @@ models:
         description: "vehicle_class, same normalization (D100)."
         data_tests:
           - not_null
+
+  - name: stg_divipola_municipality
+    description: "DIVIPOLA municipalities: landing columns as published, numeric coordinates and normalized join keys (D125). Repeats the source tests on purpose: a failure skips the dimension."
+    config:
+      tags: [divipola]
+    data_tests:
+      - unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [department_code, municipality_name]
+      - unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [department_name_norm, municipality_name_norm]
+    columns:
+      - name: department_code
+        description: "2-digit DANE department code."
+        data_tests: [not_null]
+      - name: department_name
+        description: "Department as published (with accents)."
+        data_tests: [not_null]
+      - name: municipality_code
+        description: "5-digit DANE municipality code (department code + 3 digits)."
+        data_tests: [not_null, unique]
+      - name: municipality_name
+        description: "Municipality as published (with accents)."
+        data_tests: [not_null]
+      - name: municipality_type
+        description: "Municipio, Isla or Área no municipalizada."
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ['Municipio', 'Isla', 'Área no municipalizada']
+              config:
+                severity: error
+      - name: longitude
+        description: "Decimal degrees (published with a decimal comma)."
+        data_tests: [not_null]
+      - name: latitude
+        description: "Decimal degrees (published with a decimal comma)."
+        data_tests: [not_null]
+      - name: source_system
+        description: "Source the snapshot came from."
+        data_tests: [not_null]
+      - name: source_reference
+        description: "Raw object path/row index (lineage to raw)."
+        data_tests: [not_null]
+      - name: load_id
+        description: "ops.load_run row that wrote this snapshot."
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: source('ops', 'load_run_divipola')
+                field: load_id
+      - name: department_name_norm
+        description: "department_name upper-cased, accents removed, spaces collapsed (D100 macro)."
+        data_tests: [not_null]
+      - name: municipality_name_norm
+        description: "municipality_name, same normalization."
+        data_tests: [not_null]

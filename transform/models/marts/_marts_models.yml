@@ -129,3 +129,54 @@ models:
         description: "vehicle_class, same normalization (D100)."
         data_tests:
           - not_null
+
+  - name: dim_municipality
+    description: "DANE municipality dimension (grain: one row per 5-digit DIVIPOLA code), current snapshot (D125). Coordinates are typed but not used by any demand mart."
+    config:
+      tags: [divipola]
+    data_tests:
+      - unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [department_name_norm, municipality_name_norm]
+    columns:
+      - name: dane_municipality_code
+        description: "5-digit DANE municipality code."
+        data_tests: [not_null, unique]
+      - name: dane_department_code
+        description: "2-digit DANE department code (first two digits of the municipality code)."
+        data_tests: [not_null]
+      - name: department_name
+        description: "Department as published by DANE (with accents)."
+        data_tests: [not_null]
+      - name: municipality_name
+        description: "Municipality as published by DANE (with accents)."
+        data_tests: [not_null]
+      - name: department_name_norm
+        description: "department_name normalized with the D100 macro."
+        data_tests: [not_null]
+      - name: municipality_name_norm
+        description: "municipality_name normalized with the D100 macro."
+        data_tests: [not_null]
+      - name: municipality_type
+        description: "Municipio, Isla or Área no municipalizada."
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ['Municipio', 'Isla', 'Área no municipalizada']
+              config:
+                severity: error
+      - name: longitude
+        description: "Decimal degrees, numeric."
+        data_tests: [not_null]
+      - name: latitude
+        description: "Decimal degrees, numeric."
+        data_tests: [not_null]
+      - name: load_id
+        description: "ops.load_run row that wrote the snapshot."
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: source('ops', 'load_run_divipola')
+                field: load_id
