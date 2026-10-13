@@ -71,7 +71,7 @@ def _required(env: Mapping[str, str], name: str) -> str:
     return value
 
 
-def _identity_credentials(env: Mapping[str, str], identity: str) -> tuple[str, str]:
+def _identity_credentials(env: Mapping[str, str], identity: Identity) -> tuple[str, str]:
     """Return (access_key, secret) for `identity`; errors name variables, never values."""
     if identity not in _IDENTITY_VARS:
         raise StorageConfigError(f"Unknown storage identity: {identity!r}")
@@ -92,7 +92,7 @@ def _identity_credentials(env: Mapping[str, str], identity: str) -> tuple[str, s
     return access_key_id, secret_access_key
 
 
-def load_storage_settings(env: Mapping[str, str], identity: Identity = "admin") -> StorageSettings:
+def load_storage_settings(env: Mapping[str, str], *, identity: Identity) -> StorageSettings:
     """Build StorageSettings from `env` for one S3 identity; errors never include values."""
     endpoint_url = _required(env, "S3_ENDPOINT_URL")
     access_key_id, secret_access_key = _identity_credentials(env, identity)

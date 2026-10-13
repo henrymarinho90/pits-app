@@ -31,43 +31,45 @@ ENABLE = {"Bucket": BUCKET, "VersioningConfiguration": {"Status": "Enabled"}}
 
 
 def test_normalized_bucket_defaults_to_pits_normalized() -> None:
-    assert load_storage_settings(ENV).normalized_bucket == "pits-normalized"
+    assert load_storage_settings(ENV, identity="admin").normalized_bucket == "pits-normalized"
 
 
 def test_blank_normalized_bucket_uses_default() -> None:
-    assert load_storage_settings({**ENV, "S3_NORMALIZED_BUCKET": "  "}).normalized_bucket == (
-        "pits-normalized"
-    )
+    assert load_storage_settings(
+        {**ENV, "S3_NORMALIZED_BUCKET": "  "}, identity="admin"
+    ).normalized_bucket == ("pits-normalized")
 
 
 def test_normalized_bucket_from_env() -> None:
-    assert load_storage_settings({**ENV, "S3_NORMALIZED_BUCKET": "my-norm"}).normalized_bucket == (
-        "my-norm"
-    )
+    assert load_storage_settings(
+        {**ENV, "S3_NORMALIZED_BUCKET": "my-norm"}, identity="admin"
+    ).normalized_bucket == ("my-norm")
 
 
 @pytest.mark.parametrize("bucket", ["ab", "Pits-Norm", "pits_norm", "xn--pits", "192.168.0.1"])
 def test_invalid_normalized_bucket_names_the_variable(bucket: str) -> None:
     with pytest.raises(StorageConfigError, match="S3_NORMALIZED_BUCKET") as exc:
-        load_storage_settings({**ENV, "S3_NORMALIZED_BUCKET": bucket})
+        load_storage_settings({**ENV, "S3_NORMALIZED_BUCKET": bucket}, identity="admin")
     assert ENV["S3_SECRET_ACCESS_KEY"] not in str(exc.value)
 
 
 def test_normalized_bucket_with_contract_prefix_rejected() -> None:
     with pytest.raises(StorageConfigError, match=r"S3_NORMALIZED_BUCKET.*pits-contract-"):
-        load_storage_settings({**ENV, "S3_NORMALIZED_BUCKET": "pits-contract-abcd1234"})
+        load_storage_settings(
+            {**ENV, "S3_NORMALIZED_BUCKET": "pits-contract-abcd1234"}, identity="admin"
+        )
 
 
 def test_normalized_bucket_must_differ_from_raw() -> None:
     with pytest.raises(StorageConfigError, match="must differ"):
-        load_storage_settings({**ENV, "S3_NORMALIZED_BUCKET": "pits-raw"})
+        load_storage_settings({**ENV, "S3_NORMALIZED_BUCKET": "pits-raw"}, identity="admin")
     with pytest.raises(StorageConfigError, match="must differ"):
-        load_storage_settings({**ENV, "S3_RAW_BUCKET": "pits-normalized"})
+        load_storage_settings({**ENV, "S3_RAW_BUCKET": "pits-normalized"}, identity="admin")
 
 
 def test_raw_bucket_error_message_unchanged() -> None:
     with pytest.raises(StorageConfigError, match="S3_RAW_BUCKET is not a valid S3 bucket name"):
-        load_storage_settings({**ENV, "S3_RAW_BUCKET": "Pits-Raw"})
+        load_storage_settings({**ENV, "S3_RAW_BUCKET": "Pits-Raw"}, identity="admin")
 
 
 # --- ensure_versioned_bucket / verify ----------------------------------------------------

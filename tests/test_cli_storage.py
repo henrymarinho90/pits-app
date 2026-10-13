@@ -181,10 +181,11 @@ def test_init_connection_error_exits_1_without_secret(monkeypatch: pytest.Monkey
     assert "Traceback" not in result.stderr
 
 
-def test_storage_help_lists_init() -> None:
+def test_storage_help_lists_init_and_orphans() -> None:
     result = runner.invoke(app, ["storage", "--help"])
     assert result.exit_code == 0
     assert "init" in result.output
+    assert "orphans" in result.output
 
 
 def test_version_command_unchanged() -> None:

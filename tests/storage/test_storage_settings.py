@@ -13,17 +13,20 @@ ENV = {
 
 
 def test_loads_valid_env_with_default_region() -> None:
-    settings = load_storage_settings(ENV)
+    settings = load_storage_settings(ENV, identity="admin")
     assert settings.raw_bucket == "pits-raw"
     assert settings.region == "us-east-1"
 
 
 def test_empty_region_falls_back_to_default() -> None:
-    assert load_storage_settings({**ENV, "S3_REGION": ""}).region == "us-east-1"
+    assert load_storage_settings({**ENV, "S3_REGION": ""}, identity="admin").region == "us-east-1"
 
 
 def test_explicit_region_is_kept() -> None:
-    assert load_storage_settings({**ENV, "S3_REGION": "us-west-2"}).region == "us-west-2"
+    assert (
+        load_storage_settings({**ENV, "S3_REGION": "us-west-2"}, identity="admin").region
+        == "us-west-2"
+    )
 
 
 @pytest.mark.parametrize(
@@ -32,20 +35,20 @@ def test_explicit_region_is_kept() -> None:
 def test_missing_variable_is_named_without_values(missing: str) -> None:
     env = {k: v for k, v in ENV.items() if k != missing}
     with pytest.raises(StorageConfigError) as exc:
-        load_storage_settings(env)
+        load_storage_settings(env, identity="admin")
     assert missing in str(exc.value)
     assert ENV["S3_SECRET_ACCESS_KEY"] not in str(exc.value)
 
 
 def test_blank_variable_counts_as_missing() -> None:
     with pytest.raises(StorageConfigError, match="S3_ACCESS_KEY_ID"):
-        load_storage_settings({**ENV, "S3_ACCESS_KEY_ID": "   "})
+        load_storage_settings({**ENV, "S3_ACCESS_KEY_ID": "   "}, identity="admin")
 
 
 @pytest.mark.parametrize("url", ["127.0.0.1:8333", "ftp://host", "http://", "not a url"])
 def test_invalid_endpoint_rejected(url: str) -> None:
     with pytest.raises(StorageConfigError, match="S3_ENDPOINT_URL"):
-        load_storage_settings({**ENV, "S3_ENDPOINT_URL": url})
+        load_storage_settings({**ENV, "S3_ENDPOINT_URL": url}, identity="admin")
 
 
 @pytest.mark.parametrize(
@@ -71,27 +74,30 @@ def test_invalid_endpoint_rejected(url: str) -> None:
 )
 def test_invalid_bucket_rejected(bucket: str) -> None:
     with pytest.raises(StorageConfigError, match="S3_RAW_BUCKET"):
-        load_storage_settings({**ENV, "S3_RAW_BUCKET": bucket})
+        load_storage_settings({**ENV, "S3_RAW_BUCKET": bucket}, identity="admin")
 
 
 def test_contract_prefix_rejected() -> None:
     with pytest.raises(StorageConfigError, match="pits-contract-"):
-        load_storage_settings({**ENV, "S3_RAW_BUCKET": "pits-contract-abcd1234"})
+        load_storage_settings({**ENV, "S3_RAW_BUCKET": "pits-contract-abcd1234"}, identity="admin")
 
 
 def test_repr_hides_secret() -> None:
-    assert ENV["S3_SECRET_ACCESS_KEY"] not in repr(load_storage_settings(ENV))
+    assert ENV["S3_SECRET_ACCESS_KEY"] not in repr(load_storage_settings(ENV, identity="admin"))
 
 
 @pytest.mark.parametrize("bucket", ["abc", "a" * 63, "pits.raw"])
 def test_valid_bucket_edges_accepted(bucket: str) -> None:
-    assert load_storage_settings({**ENV, "S3_RAW_BUCKET": bucket}).raw_bucket == bucket
+    assert (
+        load_storage_settings({**ENV, "S3_RAW_BUCKET": bucket}, identity="admin").raw_bucket
+        == bucket
+    )
 
 
 def test_endpoint_with_embedded_credentials_rejected_without_leaking_url() -> None:
     url = "http://user:hunter2@127.0.0.1:8333"
     with pytest.raises(StorageConfigError, match="must not embed credentials") as exc:
-        load_storage_settings({**ENV, "S3_ENDPOINT_URL": url})
+        load_storage_settings({**ENV, "S3_ENDPOINT_URL": url}, identity="admin")
     assert "hunter2" not in str(exc.value)
     assert url not in str(exc.value)
 
@@ -112,18 +118,17 @@ IDENTITY_ENV = {
 
 
 def test_each_identity_loads_its_own_credentials() -> None:
-    assert load_storage_settings(IDENTITY_ENV).access_key_id == "AKIDEXAMPLE0001"
-    assert load_storage_settings(IDENTITY_ENV, "admin").access_key_id == "AKIDEXAMPLE0001"
-    writer = load_storage_settings(IDENTITY_ENV, "writer")
+    assert load_storage_settings(IDENTITY_ENV, identity="admin").access_key_id == "AKIDEXAMPLE0001"
+    writer = load_storage_settings(IDENTITY_ENV, identity="writer")
     assert (writer.access_key_id, writer.secret_access_key) == (WRITER_KEY, WRITER_SECRET)
-    reader = load_storage_settings(IDENTITY_ENV, "reader")
+    reader = load_storage_settings(IDENTITY_ENV, identity="reader")
     assert (reader.access_key_id, reader.secret_access_key) == (READER_KEY, READER_SECRET)
 
 
 @pytest.mark.parametrize("identity", ["writer", "reader"])
 def test_no_fallback_to_admin(identity: str) -> None:
     with pytest.raises(StorageConfigError) as exc:
-        load_storage_settings(ENV, identity)  # type: ignore[arg-type]
+        load_storage_settings(ENV, identity=identity)  # type: ignore[arg-type]
     assert f"PITS_S3_{identity.upper()}_ACCESS_KEY_ID" in str(exc.value)
 
 
@@ -133,18 +138,18 @@ def test_missing_identity_variable_is_named_without_values(identity: str, part: 
     name = f"PITS_S3_{identity.upper()}_{part}"
     env = {k: v for k, v in IDENTITY_ENV.items() if k != name}
     with pytest.raises(StorageConfigError) as exc:
-        load_storage_settings(env, identity)  # type: ignore[arg-type]
+        load_storage_settings(env, identity=identity)  # type: ignore[arg-type]
     assert name in str(exc.value)
     assert WRITER_SECRET not in str(exc.value) and READER_SECRET not in str(exc.value)
 
 
 def test_admin_identity_does_not_need_the_others() -> None:
-    assert load_storage_settings(ENV, "admin").access_key_id == "AKIDEXAMPLE0001"
+    assert load_storage_settings(ENV, identity="admin").access_key_id == "AKIDEXAMPLE0001"
 
 
 def test_admin_credential_format_is_not_validated() -> None:
     env = {**ENV, "S3_ACCESS_KEY_ID": "ak", "S3_SECRET_ACCESS_KEY": "s"}
-    assert load_storage_settings(env, "admin").access_key_id == "ak"
+    assert load_storage_settings(env, identity="admin").access_key_id == "ak"
 
 
 @pytest.mark.parametrize(
@@ -164,7 +169,7 @@ def test_invalid_identity_format_is_rejected_without_value(
 ) -> None:
     name = f"PITS_S3_{identity.upper()}_{part}"
     with pytest.raises(StorageConfigError) as exc:
-        load_storage_settings({**IDENTITY_ENV, name: value}, identity)  # type: ignore[arg-type]
+        load_storage_settings({**IDENTITY_ENV, name: value}, identity=identity)  # type: ignore[arg-type]
     assert name in str(exc.value) and value not in str(exc.value)
 
 
@@ -181,14 +186,19 @@ def test_access_keys_must_differ_when_both_present(identity: str, other_var: str
     own = f"PITS_S3_{identity.upper()}_ACCESS_KEY_ID"
     env = {**IDENTITY_ENV, other_var: IDENTITY_ENV[own]}
     with pytest.raises(StorageConfigError) as exc:
-        load_storage_settings(env, identity)  # type: ignore[arg-type]
+        load_storage_settings(env, identity=identity)  # type: ignore[arg-type]
     assert own in str(exc.value) and other_var in str(exc.value)
 
 
 def test_unknown_identity_is_rejected() -> None:
     with pytest.raises(StorageConfigError):
-        load_storage_settings(IDENTITY_ENV, "root")  # type: ignore[arg-type]
+        load_storage_settings(IDENTITY_ENV, identity="root")  # type: ignore[arg-type]
 
 
 def test_repr_hides_identity_secret() -> None:
-    assert WRITER_SECRET not in repr(load_storage_settings(IDENTITY_ENV, "writer"))
+    assert WRITER_SECRET not in repr(load_storage_settings(IDENTITY_ENV, identity="writer"))
+
+
+def test_identity_is_required() -> None:
+    with pytest.raises(TypeError):
+        load_storage_settings(ENV)  # type: ignore[call-arg]
