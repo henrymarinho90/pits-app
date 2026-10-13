@@ -22,7 +22,11 @@ from pits.storage.orphans import (
     format_timestamp,
     scan_bucket,
 )
-from pits.storage.raw_bucket import RawBucketError, ensure_versioned_bucket
+from pits.storage.raw_bucket import (
+    RawBucketError,
+    ensure_versioned_bucket,
+    ensure_write_once_policy,
+)
 from pits.storage.settings import StorageConfigError, StorageSettings, load_storage_settings
 
 storage_app = typer.Typer(
@@ -47,15 +51,20 @@ def _flag(value: bool) -> str:
 
 @storage_app.command()
 def init() -> None:
-    """Create the raw and normalized buckets if missing; make sure versioning is Enabled."""
+    """Create the raw and normalized buckets if missing; versioning Enabled; write-once policy.
+
+    Order matters: versioning is enabled first and only if not already Enabled, because the
+    write-once policy (D104(c)) denies PutBucketVersioning to everyone, admin included.
+    """
     try:
         settings = load_storage_settings(os.environ, identity="admin")
         client = client_factory(settings)
         for bucket in (settings.raw_bucket, settings.normalized_bucket):
             result = ensure_versioned_bucket(client, bucket)
+            ensure_write_once_policy(client, bucket)
             typer.echo(
                 f"bucket={result.bucket} created={_flag(result.created)} "
-                f"versioning=Enabled changed={_flag(result.versioning_changed)}"
+                f"versioning=Enabled changed={_flag(result.versioning_changed)} policy=applied"
             )
     except (StorageConfigError, RawBucketError) as exc:
         _fail(str(exc))
