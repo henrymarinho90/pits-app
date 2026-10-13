@@ -6,7 +6,7 @@ on:
   pull_request:
     branches: [main]
   push:
-    branches: [main, feat/ci-contract] # TEMP: iterar sin PR; quitar antes del PR
+    branches: [main]
 
 permissions:
   contents: read
