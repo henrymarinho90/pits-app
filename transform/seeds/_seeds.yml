@@ -57,7 +57,7 @@ seeds:
   # ---- D139: regional brand/line share (tag fleet_brand ONLY: no test may also depend on a
   # vehicle_fleet/divipola node, because dbt selection is eager).
   - name: regional_brand_source
-    description: "Regional source_system -> DANE department code whose RUNT fleet weights the pooled regional shares (D140). 15 = BOYACA, 66 = RISARALDA (verified against fct_parts_demand_fleet)."
+    description: "Regional source_system -> DANE department code whose RUNT fleet weights the pooled regional shares (D140). 15 = BOYACA, 66 = RISARALDA (verified against fct_parts_demand_fleet). Attribution: Gobernacion de Boyaca em3d-hmim / Gobernacion de Risaralda x9pp-pcn5, CC BY-SA 4.0 (docs 08, ficha 9)."
     config:
       tags: [fleet_brand]
     data_tests:
@@ -83,7 +83,7 @@ seeds:
         data_tests: [not_null]
 
   - name: regional_vehicle_class_map
-    description: "Regional vehicle class (normalized) -> RUNT vehicle_class_norm, or 'excluded' when the class is out of the calibration (D139). Approved mapping (inference reviewed in the PR); a class not listed is 'unmapped' and warns."
+    description: "Regional vehicle class (normalized) -> RUNT vehicle_class_norm, or 'excluded' when the class is out of the calibration (D139). Approved mapping (inference reviewed in the PR); a class not listed is 'unmapped' and warns. Attribution of the regional sources: Gobernacion de Boyaca em3d-hmim / Gobernacion de Risaralda x9pp-pcn5, CC BY-SA 4.0 (docs 08, ficha 9)."
     config:
       tags: [fleet_brand]
     data_tests:
@@ -109,7 +109,7 @@ seeds:
         data_tests: [not_null]
 
   - name: brand_alias
-    description: "Brand alias (normalized) -> brand (normalized), applied first (D139). Only aliases observed in the sources."
+    description: "Brand alias (normalized) -> brand (normalized), applied first (D139). Only aliases observed in the sources. Attribution of the regional sources: Gobernacion de Boyaca em3d-hmim / Gobernacion de Risaralda x9pp-pcn5, CC BY-SA 4.0 (docs 08, ficha 9)."
     config:
       tags: [fleet_brand]
     data_tests:
@@ -128,7 +128,7 @@ seeds:
         data_tests: [not_null]
 
   - name: auteco_line_brand_map
-    description: "AUTECO is the distributor, not the brand: exact normalized line -> real brand (D139). 'SIN ASIGNAR' rows are explicit (no source of the brand); evidence is dato (documented), inferencia (inferred from the line name) or sin_evidencia. An AUTECO line not listed resolves to SIN ASIGNAR and warns."
+    description: "AUTECO is the distributor, not the brand: exact normalized line -> real brand (D139). 'SIN ASIGNAR' rows are explicit (no source of the brand); evidence is dato (documented), inferencia (inferred from the line name) or sin_evidencia. An AUTECO line not listed resolves to SIN ASIGNAR and warns. Origin: real AUTECO lines queried with SODA $group on 2026-10-14, classified with the mapping rules of docs/research/parque_por_marca.md. Attribution: CC BY-SA 4.0 (docs 08, ficha 9). It has 4 rows of difference against the Boyaca investigation (BAJAJ 5,276 vs 5,272; SIN ASIGNAR 499 vs 503), typos assigned to BAJAJ by inference (D141(b), Henry review pending)."
     config:
       tags: [fleet_brand]
     data_tests:

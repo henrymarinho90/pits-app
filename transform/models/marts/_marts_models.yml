@@ -433,7 +433,7 @@ models:
         description: "Sum of region_weight over the regions that have the class."
         data_tests: [not_null]
       - name: pooled_vehicle_count
-        description: "Regional vehicles of the brand and class, summed over the regions."
+        description: "Regional vehicles of the brand and class, summed over all the regions, including regions with weight 0 (today only GRUA, which is NULL anyway)."
         data_tests: [not_null]
       - name: pooled_share
         description: "Weighted share of the brand in the class; NULL when pooling_status is no_runt_weight."
@@ -445,7 +445,7 @@ models:
               arguments:
                 values: ['ok', 'no_runt_weight']
       - name: sample_size_ok
-        description: "pooled_vehicle_count >= 1000 (P6)."
+        description: "pooled_vehicle_count >= 1000 (P6). pooled_vehicle_count also sums regions with weight 0 (see that column)."
         data_tests: [not_null]
       - name: calibration_scope
         description: "Always regional."
@@ -505,7 +505,7 @@ models:
         description: "Sum of region_weight over the regions that have the class."
         data_tests: [not_null]
       - name: pooled_vehicle_count
-        description: "Regional vehicles of the line, summed over the regions."
+        description: "Regional vehicles of the line, summed over all the regions, including regions with weight 0 (today only GRUA, which is NULL anyway)."
         data_tests: [not_null]
       - name: pooled_share
         description: "p(b,l|c); NULL when pooling_status is no_runt_weight."
@@ -521,7 +521,7 @@ models:
               arguments:
                 values: ['ok', 'no_runt_weight']
       - name: sample_size_ok
-        description: "pooled_vehicle_count >= 1000 (P6)."
+        description: "pooled_vehicle_count >= 1000 (P6). pooled_vehicle_count also sums regions with weight 0 (see that column)."
         data_tests: [not_null]
       - name: calibration_scope
         description: "Always regional."
