@@ -53,3 +53,102 @@ seeds:
       - name: decision_id
         description: "Decision that approved the row."
         data_tests: [not_null]
+
+  # ---- D139: regional brand/line share (tag fleet_brand ONLY: no test may also depend on a
+  # vehicle_fleet/divipola node, because dbt selection is eager).
+  - name: regional_brand_source
+    description: "Regional source_system -> DANE department code whose RUNT fleet weights the pooled regional shares (D140). 15 = BOYACA, 66 = RISARALDA (verified against fct_parts_demand_fleet)."
+    config:
+      tags: [fleet_brand]
+    data_tests:
+      - unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [source_system]
+      - unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [dane_department_code]
+    columns:
+      - name: source_system
+        description: "source_system of landing.regional_fleet_brand_count."
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ['gobernacion_boyaca_parque_automotor', 'gobernacion_risaralda_parque_automotor']
+      - name: dane_department_code
+        description: "2-digit DANE department code (text)."
+        data_tests: [not_null]
+      - name: decision_id
+        description: "Decision that approved the row."
+        data_tests: [not_null]
+
+  - name: regional_vehicle_class_map
+    description: "Regional vehicle class (normalized) -> RUNT vehicle_class_norm, or 'excluded' when the class is out of the calibration (D139). Approved mapping (inference reviewed in the PR); a class not listed is 'unmapped' and warns."
+    config:
+      tags: [fleet_brand]
+    data_tests:
+      - unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [source_system, source_class_norm]
+    columns:
+      - name: source_system
+        description: "source_system of landing.regional_fleet_brand_count."
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ['gobernacion_boyaca_parque_automotor', 'gobernacion_risaralda_parque_automotor']
+      - name: source_class_norm
+        description: "Class as the region publishes it, normalized with the D100 macro."
+        data_tests: [not_null]
+      - name: vehicle_class_norm
+        description: "RUNT vehicle_class_norm, or 'excluded'."
+        data_tests: [not_null]
+      - name: decision_id
+        description: "Decision that approved the row."
+        data_tests: [not_null]
+
+  - name: brand_alias
+    description: "Brand alias (normalized) -> brand (normalized), applied first (D139). Only aliases observed in the sources."
+    config:
+      tags: [fleet_brand]
+    data_tests:
+      - unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [source_brand_norm]
+    columns:
+      - name: source_brand_norm
+        description: "Brand as published, normalized (D100)."
+        data_tests: [not_null]
+      - name: brand_norm
+        description: "Brand it stands for, normalized."
+        data_tests: [not_null]
+      - name: decision_id
+        description: "Decision that approved the row."
+        data_tests: [not_null]
+
+  - name: auteco_line_brand_map
+    description: "AUTECO is the distributor, not the brand: exact normalized line -> real brand (D139). 'SIN ASIGNAR' rows are explicit (no source of the brand); evidence is dato (documented), inferencia (inferred from the line name) or sin_evidencia. An AUTECO line not listed resolves to SIN ASIGNAR and warns."
+    config:
+      tags: [fleet_brand]
+    data_tests:
+      - unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [line_norm]
+    columns:
+      - name: line_norm
+        description: "Line as published, normalized (D100)."
+        data_tests: [not_null]
+      - name: real_brand
+        description: "Real brand (normalized) or SIN ASIGNAR."
+        data_tests: [not_null]
+      - name: evidence
+        description: "Basis of the assignment."
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ['dato', 'inferencia', 'sin_evidencia']
+      - name: decision_id
+        description: "Decision that approved the row."
+        data_tests: [not_null]

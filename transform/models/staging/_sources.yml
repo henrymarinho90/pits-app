@@ -134,6 +134,43 @@ sources:
                     to: source('ops', 'load_run_divipola')
                     field: load_id
 
+      - name: regional_fleet_brand_count
+        description: "Regional vehicle counts by class, brand and line, one snapshot per source_system as loaded (D138). No freshness: the departmental datasets are not updated on a schedule."
+        config:
+          tags: [fleet_brand]
+        data_tests:
+          - unique_combination_of_columns:
+              arguments:
+                combination_of_columns: [source_system, vehicle_class, brand, line, service_name, vehicle_status]
+        columns:
+          - name: source_system
+            data_tests:
+              - not_null
+              - accepted_values:
+                  arguments:
+                    values: ['gobernacion_boyaca_parque_automotor', 'gobernacion_risaralda_parque_automotor']
+                  config:
+                    severity: error
+          - name: rows_updated
+            data_tests: [not_null]
+          - name: vehicle_class
+            data_tests: [not_null]
+          - name: brand
+            data_tests: [not_null]
+          - name: line
+            data_tests: [not_null]
+          - name: vehicle_count
+            data_tests: [not_null]
+          - name: source_reference
+            data_tests: [not_null]
+          - name: load_id
+            data_tests:
+              - not_null
+              - relationships:
+                  arguments:
+                    to: source('ops', 'load_run_brand')
+                    field: load_id
+
   - name: ops
     schema: ops
     tables:
@@ -166,3 +203,9 @@ sources:
         description: "Audit of effective loads into landing (D81). DIVIPOLA view of it."
         config:
           tags: [divipola]
+      # Same physical table again, for the regional brand dataset (D138). No freshness.
+      - name: load_run_brand
+        identifier: load_run
+        description: "Audit of effective loads into landing (D81). Regional brand view of it."
+        config:
+          tags: [fleet_brand]

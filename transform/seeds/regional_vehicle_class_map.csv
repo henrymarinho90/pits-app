@@ -1,0 +1,40 @@
+source_system,source_class_norm,vehicle_class_norm,decision_id
+gobernacion_boyaca_parque_automotor,"AUTOMOVIL","AUTOMOVIL",D139
+gobernacion_boyaca_parque_automotor,"MOTOCICLETA","MOTOCICLETA",D139
+gobernacion_boyaca_parque_automotor,"CAMIONETA","CAMIONETA",D139
+gobernacion_boyaca_parque_automotor,"CAMPERO","CAMPERO",D139
+gobernacion_boyaca_parque_automotor,"CAMION","CAMION",D139
+gobernacion_boyaca_parque_automotor,"VOLQUETA","VOLQUETA",D139
+gobernacion_boyaca_parque_automotor,"MOTOCARRO","MOTOCARRO",D139
+gobernacion_boyaca_parque_automotor,"MICRO BUS","MICROBUS",D139
+gobernacion_boyaca_parque_automotor,"BUS","BUS",D139
+gobernacion_boyaca_parque_automotor,"BUSETA","BUSETA",D139
+gobernacion_boyaca_parque_automotor,"TRACTO-CAMION","TRACTOCAMION",D139
+gobernacion_boyaca_parque_automotor,"AMBULANCIA","excluded",D139
+gobernacion_boyaca_parque_automotor,"MOTOTRICICLO","MOTOTRICICLO",D139
+gobernacion_boyaca_parque_automotor,"CUATRIMOTO","CUATRIMOTO",D139
+gobernacion_boyaca_parque_automotor,"GRUA","GRUA",D139
+gobernacion_boyaca_parque_automotor,"NA","excluded",D139
+gobernacion_boyaca_parque_automotor,"VAN","excluded",D139
+gobernacion_boyaca_parque_automotor,"MOTO TRACTOR","excluded",D139
+gobernacion_boyaca_parque_automotor,"CAMION D.TROQUE","CAMION",D139
+gobernacion_boyaca_parque_automotor,"MAQ. AGRICOLA","MAQ. AGRICOLA",D139
+gobernacion_boyaca_parque_automotor,"MINI BUS","MICROBUS",D139
+gobernacion_risaralda_parque_automotor,"MOTOCICLETA","MOTOCICLETA",D139
+gobernacion_risaralda_parque_automotor,"AUTOMOVIL","AUTOMOVIL",D139
+gobernacion_risaralda_parque_automotor,"CAMIONETA","CAMIONETA",D139
+gobernacion_risaralda_parque_automotor,"CAMPERO","CAMPERO",D139
+gobernacion_risaralda_parque_automotor,"CAMION","CAMION",D139
+gobernacion_risaralda_parque_automotor,"MOTOCARRO","MOTOCARRO",D139
+gobernacion_risaralda_parque_automotor,"VOLQUETA","VOLQUETA",D139
+gobernacion_risaralda_parque_automotor,"MICROBUS","MICROBUS",D139
+gobernacion_risaralda_parque_automotor,"BUS","BUS",D139
+gobernacion_risaralda_parque_automotor,"TRACTOCAMION","TRACTOCAMION",D139
+gobernacion_risaralda_parque_automotor,"BUSETA","BUSETA",D139
+gobernacion_risaralda_parque_automotor,"CUATRIMOTO","CUATRIMOTO",D139
+gobernacion_risaralda_parque_automotor,"CICLOMOTOR","CICLOMOTOR",D139
+gobernacion_risaralda_parque_automotor,"MOTOTRICICLO","MOTOTRICICLO",D139
+gobernacion_risaralda_parque_automotor,"CUADRICICLO","CUADRICICLO",D139
+gobernacion_risaralda_parque_automotor,"SIN CLASE","excluded",D139
+gobernacion_risaralda_parque_automotor,"AUTOMOVIL ELECTRICO","AUTOMOVIL",D139
+gobernacion_risaralda_parque_automotor,"MOTOCICLETA ELECTRICA","MOTOCICLETA",D139

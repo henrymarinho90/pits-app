@@ -27,12 +27,14 @@ models:
       +schema: marts
 
 # D126: versioned, reviewed RUNT -> DANE exceptions. Seeds live in staging (the transformer owns
-# it); both tags so the RUNT build and the DIVIPOLA build reload them. Every column is text:
-# without it dbt would read the code 05237 as the number 5237.
+# it). Every column is text: without it dbt would read the code 05237 as the number 5237.
+# Tags are set per seed in seeds/_seeds.yml, NOT here: dbt tags are additive across levels, so a
+# project-wide +tags would also tag the D139 regional seeds with vehicle_fleet/divipola and a
+# test depending on both families would run in both builds. The RUNT/DIVIPOLA seeds carry
+# [vehicle_fleet, divipola] and the regional seeds only [fleet_brand] (D139).
 seeds:
   pits_transform:
     +schema: staging
-    +tags: [vehicle_fleet, divipola]
     runt_municipality_dane_exception:
       +column_types:
         department_name_norm: text
@@ -46,4 +48,28 @@ seeds:
       +column_types:
         vehicle_class_norm: text
         vehicle_group: text
+        decision_id: text
+    # D139: regional brand/line seeds (tag fleet_brand only, see seeds/_seeds.yml). Every column
+    # is text so that department codes such as 15 stay strings.
+    regional_brand_source:
+      +column_types:
+        source_system: text
+        dane_department_code: text
+        decision_id: text
+    regional_vehicle_class_map:
+      +column_types:
+        source_system: text
+        source_class_norm: text
+        vehicle_class_norm: text
+        decision_id: text
+    brand_alias:
+      +column_types:
+        source_brand_norm: text
+        brand_norm: text
+        decision_id: text
+    auteco_line_brand_map:
+      +column_types:
+        line_norm: text
+        real_brand: text
+        evidence: text
         decision_id: text
