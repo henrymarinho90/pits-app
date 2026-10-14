@@ -10,7 +10,8 @@ import os
 import uuid
 from collections.abc import Callable
 from datetime import UTC, date, datetime
-from typing import NoReturn
+from enum import StrEnum
+from typing import Annotated, NoReturn
 
 import typer
 from botocore.client import BaseClient
@@ -18,6 +19,8 @@ from botocore.exceptions import BotoCoreError
 
 from pits import __version__
 from pits.ingestion.raw_store import RawStore, S3RawStore
+from pits.sources.brand_fleet.contract import get_source
+from pits.sources.brand_fleet.extract import extract_brand_fleet
 from pits.sources.divipola.extract import extract_divipola
 from pits.sources.extract_common import ExtractPermanentError, ExtractTransientError
 from pits.sources.runt.extract import extract_runt
@@ -200,5 +203,55 @@ def divipola(
     typer.echo(
         f"outcome={result.outcome} batch_id={m.batch_id} rows_updated={result.rows_updated} "
         f"rows={m.row_count} files={len(m.files)} "
+        f"manifest=s3://{storage_settings.raw_bucket}/{result.manifest_key}"
+    )
+
+
+class BrandFleetSourceName(StrEnum):
+    boyaca = "boyaca"
+    risaralda = "risaralda"
+
+
+@extract_app.command("brand-fleet")
+def brand_fleet(
+    source: Annotated[
+        BrandFleetSourceName, typer.Option("--source", help="Departmental dataset to extract.")
+    ],
+    force: bool = typer.Option(
+        False, "--force", help="Create a new batch even if rowsUpdatedAt is unchanged."
+    ),
+) -> None:
+    """Extract a regional brand/line fleet dataset (Boyaca or Risaralda) into a raw batch."""
+    contract = get_source(source.value)
+    try:
+        soda_settings = load_soda_settings(os.environ)
+        storage_settings = load_storage_settings(os.environ, identity="writer")
+    except (SodaConfigError, StorageConfigError) as exc:
+        _fail(str(exc), 1)
+
+    try:
+        store = store_factory(client_factory(storage_settings), storage_settings.raw_bucket)
+    except BotoCoreError as exc:
+        _fail(f"storage client error ({type(exc).__name__})", 1)
+    try:
+        with soda_factory(soda_settings) as soda:
+            result = extract_brand_fleet(
+                soda,
+                store,
+                contract,
+                force=force,
+                now=clock,
+                new_batch_id=batch_id_factory,
+                extractor_version=__version__,
+            )
+    except ExtractTransientError as exc:
+        _fail(str(exc), 3)
+    except ExtractPermanentError as exc:
+        _fail(str(exc), 1)
+
+    m = result.manifest
+    typer.echo(
+        f"outcome={result.outcome} source={contract.key} batch_id={m.batch_id} "
+        f"rows_updated={result.rows_updated} rows={m.row_count} files={len(m.files)} "
         f"manifest=s3://{storage_settings.raw_bucket}/{result.manifest_key}"
     )
