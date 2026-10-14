@@ -12,6 +12,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from dataclasses import dataclass
+from enum import StrEnum
 from typing import Any
 
 from pits.ingestion.manifest import SchemaColumn
@@ -24,6 +25,7 @@ __all__ = [
     "SOURCES",
     "WATERMARK_COLUMN",
     "BrandFleetSource",
+    "BrandFleetSourceName",
     "RowError",
     "get_source",
     "validate_row",
@@ -35,6 +37,13 @@ PAGE_SIZE = 5000
 MAX_PAGE_BYTES = 8 * 1024 * 1024  # D65/D75 single-object limit
 LICENSE = "CC_40_BY_SA"
 FORBIDDEN_COLUMN = "placa"
+
+
+class BrandFleetSourceName(StrEnum):
+    """Values of the --source option of the extract, normalize and load commands."""
+
+    boyaca = "boyaca"
+    risaralda = "risaralda"
 
 
 @dataclass(frozen=True)

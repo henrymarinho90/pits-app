@@ -369,3 +369,15 @@ def test_normalized_layout_recognizes_divipola_artifacts() -> None:
         assert match is not None and match.group(1) == base and match.group(2) == rest
     other = base.replace("2025-01-24", "2025-1-24")
     assert NORMALIZED_LAYOUT.fullmatch(other + "manifest.json") is None
+
+
+def test_normalized_layout_recognizes_regional_brand_artifacts() -> None:
+    base = (
+        "regional_fleet_brand/source_system=gobernacion_risaralda_parque_automotor/"
+        f"rows_updated=2026-07-06/fingerprint={FP1}/"
+    )
+    for rest in ("brand_count.csv", "manifest.json"):
+        match = NORMALIZED_LAYOUT.fullmatch(base + rest)
+        assert match is not None and match.group(1) == base and match.group(2) == rest
+    other = base.replace("2026-07-06", "2026-7-6")
+    assert NORMALIZED_LAYOUT.fullmatch(other + "manifest.json") is None

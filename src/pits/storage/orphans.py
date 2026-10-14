@@ -34,7 +34,8 @@ RAW_LAYOUT = re.compile(
 NORMALIZED_LAYOUT = re.compile(
     rf"((?:fx_rate/source_system={_SOURCE}/inputs_until={_DATE}"
     rf"|vehicle_fleet_snapshot/source_system={_SOURCE}/publication_month=\d{{4}}-\d{{2}}"
-    rf"|divipola_municipality/source_system={_SOURCE}/rows_updated={_DATE})"
+    rf"|divipola_municipality/source_system={_SOURCE}/rows_updated={_DATE}"
+    rf"|regional_fleet_brand/source_system={_SOURCE}/rows_updated={_DATE})"
     rf"/fingerprint=[0-9a-f]{{64}}/)(.+)",
     re.DOTALL,
 )

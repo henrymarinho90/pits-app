@@ -10,7 +10,6 @@ import os
 import uuid
 from collections.abc import Callable
 from datetime import UTC, date, datetime
-from enum import StrEnum
 from typing import Annotated, NoReturn
 
 import typer
@@ -19,7 +18,7 @@ from botocore.exceptions import BotoCoreError
 
 from pits import __version__
 from pits.ingestion.raw_store import RawStore, S3RawStore
-from pits.sources.brand_fleet.contract import get_source
+from pits.sources.brand_fleet.contract import BrandFleetSourceName, get_source
 from pits.sources.brand_fleet.extract import extract_brand_fleet
 from pits.sources.divipola.extract import extract_divipola
 from pits.sources.extract_common import ExtractPermanentError, ExtractTransientError
@@ -205,11 +204,6 @@ def divipola(
         f"rows={m.row_count} files={len(m.files)} "
         f"manifest=s3://{storage_settings.raw_bucket}/{result.manifest_key}"
     )
-
-
-class BrandFleetSourceName(StrEnum):
-    boyaca = "boyaca"
-    risaralda = "risaralda"
 
 
 @extract_app.command("brand-fleet")
