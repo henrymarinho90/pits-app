@@ -41,3 +41,9 @@ seeds:
         dane_municipality_name: text
         reason: text
         decision_id: text
+    # D133: vehicle_class -> vehicle_group; classifies only, never filters.
+    vehicle_class_demand_scope:
+      +column_types:
+        vehicle_class_norm: text
+        vehicle_group: text
+        decision_id: text
