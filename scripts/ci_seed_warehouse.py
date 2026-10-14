@@ -4,7 +4,10 @@
 plus one `ops.load_run` and a few `landing.vehicle_fleet_snapshot` rows with hard names (accents,
 enye, PUBLICO, INCONSISTENTE), plus one `ops.load_run` and a synthetic DIVIPOLA snapshot in
 `landing.divipola_municipality` (D124: the 13 codes of the exception seed, the two municipalities
-of the fleet rows and filler rows so the size guard passes). It refuses to run (exit 1) if landing
+of the fleet rows and filler rows so the size guard passes), plus one `ops.load_run` and a
+fictional regional snapshot per source in `landing.regional_fleet_brand_count` (D138: fictional
+brands, so the fleet_brand marts of D140 have rows and a weight; the RUNT rows of departments
+15 and 66 in FLEET are those weights). It refuses to run (exit 1) if landing
 is not empty, so it can never mix synthetic rows with real ones. `verify` (reader profile) checks
 that the marts built by dbt hold exactly what was seeded (exit 1 otherwise).
 Settings come from the environment (D79); nothing sensitive is printed.
@@ -18,6 +21,7 @@ import uuid
 from collections.abc import Callable
 from datetime import date, timedelta
 from decimal import Decimal
+from fractions import Fraction
 from typing import NoReturn
 
 import psycopg
@@ -39,20 +43,54 @@ FLEET = [
     ("Nariño", "Pasto", "PÚBLICO", "ACTIVO", "camión  pesado", 2020, 11),
     ("NARIÑO", "PASTO", "PÚBLICO", "INCONSISTENTE", "CAMION PESADO", 2021, 13),
     ("BOGOTA, D.C.", "BOGOTA, D.C.", "OTROS", "ACTIVO", "ÑANDÚ ÜBER", 2018, 23),
+    # D140: the RUNT weights of the two regional sources (departments 15 and 66).
+    ("BOYACA", "TUNJA", "PARTICULAR", "ACTIVO", "AUTOMOVIL", 2020, 2000),
+    ("RISARALDA", "PEREIRA", "PARTICULAR", "ACTIVO", "AUTOMOVIL", 2020, 1000),
 ]
 # Distinct (department, municipality, class) _norm keys the dbt macro must produce from FLEET
 # (D100: accents removed, upper case, collapsed spaces). Written by hand, NOT derived from FLEET.
 FLEET_NORM_KEYS = [
     ("BOGOTA, D.C.", "BOGOTA, D.C.", "NANDU UBER"),
+    ("BOYACA", "TUNJA", "AUTOMOVIL"),
     ("NARINO", "PASTO", "CAMION"),
     ("NARINO", "PASTO", "CAMION PESADO"),
+    ("RISARALDA", "PEREIRA", "AUTOMOVIL"),
 ]
-# D132/D134, written by hand from FLEET: the demand mart keeps the three ACTIVO PARTICULAR/PUBLICO
-# rows as 2 cells (CAMIÓN and CAMION merge: 5 + 7 = 12, plus CAMION PESADO 11 = 23 vehicles); the
-# scope mart has 3 statuses (included 23, excluded_status_inconsistente 13, excluded_service_otros
-# 23 = 59 vehicles, the FLEET total).
-DEMAND_FLEET_EXPECTED = (2, 23)
-DEMAND_SCOPE_EXPECTED = (3, 59)
+# D132/D134, written by hand from FLEET: the demand mart keeps the five ACTIVO PARTICULAR/PUBLICO
+# rows as 4 cells (CAMIÓN and CAMION merge: 5 + 7 = 12, plus CAMION PESADO 11, TUNJA 2000 and
+# PEREIRA 1000 = 3023 vehicles); the scope mart has 3 statuses (included 3023,
+# excluded_status_inconsistente 13, excluded_service_otros 23 = 3059 vehicles, the FLEET total).
+DEMAND_FLEET_EXPECTED = (4, 3023)
+DEMAND_SCOPE_EXPECTED = (3, 3059)
+# D138, fictional regional snapshots: (class, brand, line, service, status, count). Boyaca
+# publishes service and status, Risaralda does not (NULL). AUTECO ACTIVE 110 resolves to SIN
+# ASIGNAR through the real seed; SIN CLASE is out of the calibration (excluded_class).
+REGIONAL = {
+    "gobernacion_boyaca_parque_automotor": [
+        ("AUTOMOVIL", "MARCA ALFA", "A1", "PARTICULAR", "ACTIVO", 60),
+        ("AUTOMOVIL", "MARCA BETA", "B1", "PARTICULAR", "ACTIVO", 40),
+        ("AUTOMOVIL", "AUTECO", "ACTIVE 110", "PARTICULAR", "ACTIVO", 3),
+        ("AUTOMOVIL", "MARCA ALFA", "A1", "PUBLICO", "ACTIVO", 7),
+    ],
+    "gobernacion_risaralda_parque_automotor": [
+        ("AUTOMOVIL", "MARCA ALFA", "A1", None, None, 30),
+        ("AUTOMOVIL", "MARCA GAMMA", "G1", None, None, 70),
+        ("SIN CLASE", "MARCA ZETA", "Z1", None, None, 2),
+    ],
+}
+REGIONAL_ROWS_UPDATED = date(2026, 7, 6)
+REGIONAL_HASHES = {
+    "gobernacion_boyaca_parque_automotor": "d" * 64,
+    "gobernacion_risaralda_parque_automotor": "e" * 64,
+}
+# Written by hand: weights AUTOMOVIL = {Boyaca 2000, Risaralda 1000} (the RUNT rows of FLEET); the
+# calibration scope keeps 103 + 100 vehicles; the grids are 4 brands (or lines) x 2 regions.
+WEIGHT_EXPECTED = (2, 3000)
+SCOPE_REGIONAL_EXPECTED = (4, 212)  # (source, status) groups, all vehicles
+BRAND_SHARE_EXPECTED = (8, 203)  # (rows, regional vehicles in scope)
+LINE_SHARE_EXPECTED = (8, 203)
+# p(MARCA ALFA | AUTOMOVIL) = (2000 * 60/103 + 1000 * 30/100) / 3000, from the numbers above.
+ALFA_POOLED_SHARE = (Fraction(2000 * 60, 103) + Fraction(1000 * 30, 100)) / 3000
 FX_HASH = "a" * 64
 FLEET_HASH = "b" * 64
 DIVIPOLA_HASH = "c" * 64
@@ -67,12 +105,14 @@ DIVIPOLA_NAMED = [
     ("11", "BOGOTÁ, D.C.", "11001", "BOGOTÁ, D.C.", "Municipio", "-74,106992", "4,649251"),
     ("13", "BOLÍVAR", "13001", "CARTAGENA DE INDIAS", "Municipio", "-75,5", "10,4"),
     ("13", "BOLÍVAR", "13468", "SANTA CRUZ DE MOMPOX", "Municipio", "-74,4", "9,2"),
+    ("15", "BOYACÁ", "15001", "TUNJA", "Municipio", "-73,36", "5,53"),
     ("19", "CAUCA", "19548", "PIENDAMÓ - TUNÍA", "Municipio", "-76,5", "2,6"),
     ("25", "CUNDINAMARCA", "25843", "VILLA DE SAN DIEGO DE UBATÉ", "Municipio", "-73,8", "5,3"),
     ("52", "NARIÑO", "52001", "PASTO", "Municipio", "-77,28", "1,21"),
     ("52", "NARIÑO", "52835", "SAN ANDRÉS DE TUMACO", "Municipio", "-78,8", "1,8"),
     ("54", "NORTE DE SANTANDER", "54001", "SAN JOSÉ DE CÚCUTA", "Municipio", "-72,5", "7,9"),
     ("70", "SUCRE", "70742", "SAN LUIS DE SINCÉ", "Municipio", "-75,1", "9,2"),
+    ("66", "RISARALDA", "66001", "PEREIRA", "Municipio", "-75,69", "4,81"),
     ("73", "TOLIMA", "73443", "SAN SEBASTIÁN DE MARIQUITA", "Municipio", "-74,9", "5,2"),
     ("76", "VALLE DEL CAUCA", "76001", "SANTIAGO DE CALI", "Municipio", "-76,5", "3,4"),
     (
@@ -96,7 +136,9 @@ DIVIPOLA = [*DIVIPOLA_NAMED, *DIVIPOLA_FILLER]
 # (department_norm, municipality_norm, code, method) the map must give for the FLEET pairs.
 FLEET_DANE_KEYS = [
     ("BOGOTA, D.C.", "BOGOTA, D.C.", "11001", "auto_norm"),
+    ("BOYACA", "TUNJA", "15001", "auto_norm"),
     ("NARINO", "PASTO", "52001", "auto_norm"),
+    ("RISARALDA", "PEREIRA", "66001", "auto_norm"),
 ]
 
 _LOAD_RUN_SQL = (
@@ -116,6 +158,11 @@ _FLEET_SQL = (
     "department_name, municipality_name, service_name, vehicle_status, vehicle_class, "
     "registration_year, vehicle_count, source_system, source_reference, load_id) "
     "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, 'mintransporte_runt_parque', %s, %s)"
+)
+_REGIONAL_SQL = (
+    "INSERT INTO landing.regional_fleet_brand_count (source_system, rows_updated, vehicle_class, "
+    "brand, line, service_name, vehicle_status, vehicle_count, source_reference, load_id) "
+    "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)"
 )
 _DIVIPOLA_SQL = (
     "INSERT INTO landing.divipola_municipality (department_code, department_name, "
@@ -171,6 +218,7 @@ def _seed(settings: WarehouseSettings) -> bool:
             "landing.fx_rate",
             "landing.vehicle_fleet_snapshot",
             "landing.divipola_municipality",
+            "landing.regional_fleet_brand_count",
         ):
             if conn.execute(f"SELECT EXISTS (SELECT 1 FROM {table})").fetchone()[0]:
                 return False
@@ -202,6 +250,24 @@ def _seed(settings: WarehouseSettings) -> bool:
         )
         for n, row in enumerate(DIVIPOLA):
             conn.execute(_DIVIPOLA_SQL, (*row, f"synthetic/ci#{n}", divipola_id))
+        for source_system, rows in REGIONAL.items():
+            regional_id = _load_run(
+                conn,
+                "regional_fleet_brand_count",
+                source_system,
+                REGIONAL_HASHES[source_system],
+                len(rows),
+                REGIONAL_ROWS_UPDATED,
+                REGIONAL_ROWS_UPDATED,
+            )
+            for n, (cls, brand, line, service, status, count) in enumerate(rows):
+                conn.execute(
+                    _REGIONAL_SQL,
+                    (
+                        source_system, REGIONAL_ROWS_UPDATED, cls, brand, line, service, status,
+                        count, f"synthetic/ci#{n}", regional_id,
+                    ),
+                )  # fmt: skip
         conn.commit()
         return True
     finally:
@@ -245,6 +311,25 @@ def _verify(settings: WarehouseSettings) -> list[str]:
         scope = conn.execute(
             "SELECT count(*), sum(vehicle_count) FROM marts.fct_parts_demand_scope"
         ).fetchone()
+        weight = conn.execute(
+            "SELECT count(*), sum(weight_vehicle_count) FROM marts.fct_regional_brand_weight"
+        ).fetchone()
+        regional_scope = conn.execute(
+            "SELECT count(*), sum(vehicle_count) FROM marts.fct_regional_fleet_brand_scope"
+        ).fetchone()
+        brand_share = conn.execute(
+            "SELECT count(*), sum(vehicle_count) FROM marts.fct_regional_brand_share"
+        ).fetchone()
+        line_share = conn.execute(
+            "SELECT count(*), sum(vehicle_count) FROM marts.fct_regional_line_share"
+        ).fetchone()
+        alfa = conn.execute(
+            "SELECT DISTINCT pooled_share FROM marts.fct_regional_brand_share "
+            "WHERE vehicle_class_norm = 'AUTOMOVIL' AND brand_norm = 'MARCA ALFA'"
+        ).fetchall()
+        sin_asignar = conn.execute(
+            "SELECT count(*) FROM marts.fct_regional_brand_share WHERE brand_norm = 'SIN ASIGNAR'"
+        ).fetchone()
     finally:
         conn.close()
     expected = {
@@ -258,6 +343,10 @@ def _verify(settings: WarehouseSettings) -> list[str]:
         ),
         "fct_parts_demand_fleet": (DEMAND_FLEET_EXPECTED, demand),
         "fct_parts_demand_scope": (DEMAND_SCOPE_EXPECTED, scope),
+        "fct_regional_brand_weight": (WEIGHT_EXPECTED, weight),
+        "fct_regional_fleet_brand_scope": (SCOPE_REGIONAL_EXPECTED, regional_scope),
+        "fct_regional_brand_share": (BRAND_SHARE_EXPECTED, brand_share),
+        "fct_regional_line_share": (LINE_SHARE_EXPECTED, line_share),
     }
     problems = [
         f"{name}: expected (rows, total)={want}, got {tuple(got)}"
@@ -270,6 +359,14 @@ def _verify(settings: WarehouseSettings) -> list[str]:
         problems.append(
             f"fct_vehicle_fleet_snapshot_dane: DANE codes {dane_keys} != {FLEET_DANE_KEYS}"
         )
+    # D140: one pooled value per (class, brand), equal to the hand-computed weighted share; the
+    # AUTECO line of the seed shows up as SIN ASIGNAR once per region of the class (2 rows).
+    if len(alfa) != 1 or alfa[0][0] is None or abs(Fraction(alfa[0][0]) - ALFA_POOLED_SHARE) > 1e-9:
+        problems.append(
+            f"fct_regional_brand_share: pooled MARCA ALFA {alfa} != {ALFA_POOLED_SHARE}"
+        )
+    if tuple(sin_asignar) != (2,):
+        problems.append(f"fct_regional_brand_share: SIN ASIGNAR rows {sin_asignar} != (2,)")
     return problems
 
 
@@ -284,7 +381,8 @@ def seed_command() -> None:
         _fail("landing is not empty; refusing to seed")
     typer.echo(
         f"seeded fx_rate={len(FX_DAYS)} vehicle_fleet_snapshot={len(FLEET)} "
-        f"divipola_municipality={len(DIVIPOLA)}"
+        f"divipola_municipality={len(DIVIPOLA)} "
+        f"regional_fleet_brand_count={sum(len(r) for r in REGIONAL.values())}"
     )
 
 
