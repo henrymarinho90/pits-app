@@ -1,6 +1,7 @@
-"""`pits load fx-rate` (D82), `pits load vehicle-fleet` (D99) and `pits load divipola` (D124):
-committed normalized artifacts -> `landing.fx_rate` / `landing.vehicle_fleet_snapshot` /
-`landing.divipola_municipality`.
+"""`pits load fx-rate` (D82), `pits load vehicle-fleet` (D99), `pits load divipola` (D124) and
+`pits load brand-fleet` (D138): committed normalized artifacts -> `landing.fx_rate` /
+`landing.vehicle_fleet_snapshot` / `landing.divipola_municipality` /
+`landing.regional_fleet_brand_count`.
 
 Exit codes: 0 loaded or already_loaded; 1 permanent (configuration, manifest/hash mismatch,
 constraint violation, verification failure, drift without --repair, artifact older than the
@@ -17,7 +18,7 @@ import os
 import re
 from collections.abc import Callable, Mapping
 from contextlib import AbstractContextManager
-from typing import NoReturn
+from typing import Annotated, NoReturn
 
 import typer
 from botocore.client import BaseClient
@@ -26,8 +27,15 @@ from botocore.exceptions import BotoCoreError
 from pits import __version__
 from pits.ingestion.raw_store import RawStore, S3RawStore
 from pits.normalized.fleet_reader import PUBLICATION_RE
+from pits.sources.brand_fleet.contract import BrandFleetSourceName, get_source
 from pits.storage.client import build_s3_client
 from pits.storage.settings import StorageConfigError, StorageSettings, load_storage_settings
+from pits.warehouse.brand_fleet_load import (
+    BrandFleetLoadResult,
+    BrandFleetWarehouse,
+    load_brand_fleet,
+    open_brand_fleet_warehouse,
+)
 from pits.warehouse.divipola_load import (
     DivipolaLoadResult,
     DivipolaWarehouse,
@@ -76,6 +84,9 @@ fleet_warehouse_factory: Callable[[WarehouseSettings], AbstractContextManager[Fl
 divipola_warehouse_factory: Callable[
     [WarehouseSettings], AbstractContextManager[DivipolaWarehouse]
 ] = open_divipola_warehouse
+brand_fleet_warehouse_factory: Callable[
+    [WarehouseSettings], AbstractContextManager[BrandFleetWarehouse]
+] = open_brand_fleet_warehouse
 
 
 @load_app.callback()
@@ -114,6 +125,18 @@ def _format_divipola(result: DivipolaLoadResult, normalized_bucket: str) -> str:
         f"outcome={result.outcome.value} rows_updated={result.rows_updated.isoformat()} "
         f"load_id={result.load_id} fingerprint={result.fingerprint} rows={result.rows} "
         f"inserted={result.inserted} updated={result.updated} deleted={result.deleted} "
+        f"manifest=s3://{normalized_bucket}/{result.manifest_key}"
+    )
+
+
+def _format_brand_fleet(
+    result: BrandFleetLoadResult, source_key: str, normalized_bucket: str
+) -> str:
+    return (
+        f"outcome={result.outcome.value} source={source_key} "
+        f"rows_updated={result.rows_updated.isoformat()} load_id={result.load_id} "
+        f"fingerprint={result.fingerprint} rows={result.rows} vehicles={result.vehicles} "
+        f"inserted={result.inserted} deleted={result.deleted} "
         f"manifest=s3://{normalized_bucket}/{result.manifest_key}"
     )
 
@@ -269,3 +292,52 @@ def divipola(
     except WarehouseError as exc:
         _fail(str(exc), 1)
     typer.echo(_format_divipola(result, storage.normalized_bucket))
+
+
+@load_app.command("brand-fleet")
+def brand_fleet(
+    source: Annotated[
+        BrandFleetSourceName, typer.Option("--source", help="Departmental dataset to load.")
+    ],
+    fingerprint: str | None = typer.Option(
+        None,
+        "--fingerprint",
+        callback=_check_fingerprint,
+        help="Force this normalized artifact (sha256 hex) instead of the latest one.",
+    ),
+    repair: bool = typer.Option(
+        False,
+        "--repair",
+        help="Re-apply the artifact when the warehouse drifted from the loaded one.",
+    ),
+) -> None:
+    """Load the latest regional_fleet_brand artifact of one source (replaces only that source)."""
+    contract = get_source(source.value)
+    try:
+        storage = load_storage_settings(os.environ, identity="reader")
+        settings = settings_factory(os.environ)
+    except (StorageConfigError, WarehouseError) as exc:
+        _fail(str(exc), 1)
+
+    try:
+        client = client_factory(storage)
+        store = store_factory(client, storage.normalized_bucket)
+    except BotoCoreError as exc:
+        _fail(f"storage client error ({type(exc).__name__})", 1)
+
+    try:
+        with brand_fleet_warehouse_factory(settings) as warehouse:
+            result = load_brand_fleet(
+                store,
+                warehouse,
+                storage.raw_bucket,
+                contract,
+                loader_version=__version__,
+                fingerprint=fingerprint,
+                repair=repair,
+            )
+    except WarehouseTransientError as exc:
+        _fail(str(exc), 3)
+    except WarehouseError as exc:
+        _fail(str(exc), 1)
+    typer.echo(_format_brand_fleet(result, contract.key, storage.normalized_bucket))
