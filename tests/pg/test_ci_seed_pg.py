@@ -139,3 +139,14 @@ def test_verify_detects_a_dimension_mismatch(seeder, build, monkeypatch):
     result = _run(seeder, "verify")
     assert result.exit_code == 1
     assert "dim_municipality" in result.output
+
+
+def test_verify_detects_a_parts_demand_mismatch(seeder, build, monkeypatch):
+    assert _run(seeder, "seed").exit_code == 0
+    assert build().exit_code == 0
+    monkeypatch.setattr(seeder, "DEMAND_FLEET_EXPECTED", (2, 24))
+    monkeypatch.setattr(seeder, "DEMAND_SCOPE_EXPECTED", (3, 60))
+    result = _run(seeder, "verify")
+    assert result.exit_code == 1
+    assert "fct_parts_demand_fleet" in result.output
+    assert "fct_parts_demand_scope" in result.output
