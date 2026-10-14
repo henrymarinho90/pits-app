@@ -47,6 +47,12 @@ FLEET_NORM_KEYS = [
     ("NARINO", "PASTO", "CAMION"),
     ("NARINO", "PASTO", "CAMION PESADO"),
 ]
+# D132/D134, written by hand from FLEET: the demand mart keeps the three ACTIVO PARTICULAR/PUBLICO
+# rows as 2 cells (CAMIÓN and CAMION merge: 5 + 7 = 12, plus CAMION PESADO 11 = 23 vehicles); the
+# scope mart has 3 statuses (included 23, excluded_status_inconsistente 13, excluded_service_otros
+# 23 = 59 vehicles, the FLEET total).
+DEMAND_FLEET_EXPECTED = (2, 23)
+DEMAND_SCOPE_EXPECTED = (3, 59)
 FX_HASH = "a" * 64
 FLEET_HASH = "b" * 64
 DIVIPOLA_HASH = "c" * 64
@@ -233,6 +239,12 @@ def _verify(settings: WarehouseSettings) -> list[str]:
             "dane_municipality_code, dane_match_method "
             "FROM marts.fct_vehicle_fleet_snapshot_dane ORDER BY 1, 2"
         ).fetchall()
+        demand = conn.execute(
+            "SELECT count(*), sum(active_vehicle_count) FROM marts.fct_parts_demand_fleet"
+        ).fetchone()
+        scope = conn.execute(
+            "SELECT count(*), sum(vehicle_count) FROM marts.fct_parts_demand_scope"
+        ).fetchone()
     finally:
         conn.close()
     expected = {
@@ -244,6 +256,8 @@ def _verify(settings: WarehouseSettings) -> list[str]:
             (len(FLEET), sum(r[-1] for r in FLEET), len(FLEET)),
             dane,
         ),
+        "fct_parts_demand_fleet": (DEMAND_FLEET_EXPECTED, demand),
+        "fct_parts_demand_scope": (DEMAND_SCOPE_EXPECTED, scope),
     }
     problems = [
         f"{name}: expected (rows, total)={want}, got {tuple(got)}"

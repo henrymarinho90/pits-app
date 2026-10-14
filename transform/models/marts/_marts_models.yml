@@ -281,3 +281,91 @@ models:
         description: "2-digit DANE department code, NULL when unmatched."
       - name: dane_match_method
         description: "auto_norm, curated, or NULL when unmatched."
+
+  - name: fct_parts_demand_fleet
+    description: "Active vehicle fleet (stock, not a count of parts) by REGISTRATION municipality (the RUNT office seat, not where the vehicle runs), service, class and registration year; the demand base for spare parts (D132). Only ACTIVO vehicles of PARTICULAR and PÚBLICO service; all classes, grouped by vehicle_group (D133); all publications. Pairs without DANE code keep NULL codes."
+    config:
+      tags: [vehicle_fleet, divipola, parts_demand]
+    data_tests:
+      - unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [publication_year, publication_month, department_name_norm, municipality_name_norm, service_name, vehicle_class_norm, registration_year]
+    columns:
+      - name: publication_year
+        description: "Year of the publication (snapshot month)."
+        data_tests: [not_null]
+      - name: publication_month
+        description: "Month (1-12) of the publication."
+        data_tests: [not_null]
+      - name: department_name_norm
+        description: "RUNT department normalized (D100)."
+        data_tests: [not_null]
+      - name: municipality_name_norm
+        description: "RUNT registration municipality normalized (D100)."
+        data_tests: [not_null]
+      - name: service_name
+        description: "Service type as published (PARTICULAR or PÚBLICO)."
+        data_tests: [not_null]
+      - name: vehicle_class_norm
+        description: "Vehicle class normalized (D100); CAMION and CAMIÓN are one key."
+        data_tests: [not_null]
+      - name: registration_year
+        description: "Registration year as published (RUNT sentinels 1900 and 1901 kept)."
+        data_tests: [not_null]
+      - name: dane_department_code
+        description: "2-digit DANE department code, NULL when unmatched."
+      - name: dane_municipality_code
+        description: "5-digit DANE municipality code, NULL when unmatched (D128)."
+        data_tests:
+          - relationships:
+              arguments:
+                to: ref('dim_municipality')
+                field: dane_municipality_code
+      - name: dane_match_method
+        description: "auto_norm, curated, or NULL when unmatched."
+      - name: demand_segment
+        description: "particular (PARTICULAR service) or fleet (PÚBLICO service) (D54, D56)."
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ['particular', 'fleet']
+      - name: vehicle_group
+        description: "Group of the class from the D133 seed; unmapped when the class is not in it."
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ['car', 'motorcycle', 'heavy', 'trailer', 'machinery', 'other', 'unmapped']
+      - name: active_vehicle_count
+        description: "Active vehicles in the cell at the publication date (stock, rule 5)."
+        data_tests: [not_null]
+      - name: load_id
+        description: "ops.load_run row that wrote the publication."
+        data_tests: [not_null]
+
+  - name: fct_parts_demand_scope
+    description: "Vehicles per publication and scope_status: included in fct_parts_demand_fleet or the reason they are excluded (D134). The sum of all statuses equals the staging total of the publication."
+    config:
+      tags: [vehicle_fleet, divipola, parts_demand]
+    data_tests:
+      - unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [publication_year, publication_month, scope_status]
+    columns:
+      - name: publication_year
+        description: "Year of the publication (snapshot month)."
+        data_tests: [not_null]
+      - name: publication_month
+        description: "Month (1-12) of the publication."
+        data_tests: [not_null]
+      - name: scope_status
+        description: "included or the first exclusion that applies (status first, then service)."
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ['included', 'excluded_status_inconsistente', 'excluded_service_oficial', 'excluded_service_otros', 'excluded_service_no_registra']
+      - name: vehicle_count
+        description: "Vehicles in that status at the publication date (stock, rule 5)."
+        data_tests: [not_null]

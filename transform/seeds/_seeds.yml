@@ -30,3 +30,26 @@ seeds:
       - name: decision_id
         description: "Decision that approved the row."
         data_tests: [not_null]
+
+  - name: vehicle_class_demand_scope
+    description: "One row per real RUNT vehicle_class_norm with the vehicle_group Henry approved (D133). It only classifies, it never filters: every class enters the parts-demand mart; a class missing here shows as 'unmapped' and warns."
+    config:
+      tags: [vehicle_fleet, divipola]
+    data_tests:
+      - unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [vehicle_class_norm]
+    columns:
+      - name: vehicle_class_norm
+        description: "RUNT vehicle_class normalized with the D100 macro (the join key)."
+        data_tests: [not_null]
+      - name: vehicle_group
+        description: "Coarse group of the class (inference reviewed by Henry in the PR)."
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ['car', 'motorcycle', 'heavy', 'trailer', 'machinery', 'other']
+      - name: decision_id
+        description: "Decision that approved the row."
+        data_tests: [not_null]
