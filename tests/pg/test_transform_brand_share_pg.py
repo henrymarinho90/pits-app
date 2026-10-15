@@ -41,6 +41,14 @@ _SCOPE = (
     "SELECT source_system, scope_status, vehicle_count FROM marts.fct_regional_fleet_brand_scope "
     "ORDER BY 1, 2"
 )
+_SYNTHETIC = tuple(
+    f"SELECT * FROM marts.fct_synthetic_{name} ORDER BY {order}"
+    for name, order in (
+        ("fleet_cell", "1, 2, 3, 4, 5"),
+        ("brand_fleet", "1, 2, 3, 4, 5, 9"),
+        ("line_fleet", "1, 2, 3, 4, 5, 6, 7"),
+    )
+)
 
 
 def warns(output: str) -> set[str]:
@@ -261,6 +269,9 @@ def test_fresh_database_without_the_demand_mart_fails_only_the_weight_node(wareh
     }
     # The scope mart does not depend on the weights, so it is built; the three that do are not.
     assert {m for m in marts if m.startswith("fct_regional")} == {"fct_regional_fleet_brand_scope"}
+    # The synthetic marts read the weights' upstream: skipped, never built (D145).
+    assert not {m for m in marts if m.startswith("fct_synthetic")}
+    assert re.search(r"SKIP relation marts\.fct_synthetic_fleet_cell", output)
 
 
 def test_a_department_without_weight_fails_and_leaves_the_previous_marts_intact(
@@ -313,12 +324,15 @@ def test_an_unknown_source_system_in_landing_fails_staging_and_keeps_the_marts(
 
 def test_the_vehicle_fleet_and_divipola_builds_do_not_touch_the_brand_marts(built, transform):
     settings, _ = built
-    before = [reader_rows(settings, q) for q in (_BRAND, _LINE, _WEIGHT, _SCOPE)]
+    queries = (_BRAND, _LINE, _WEIGHT, _SCOPE, *_SYNTHETIC)
+    before = [reader_rows(settings, q) for q in queries]
+    assert all(before[4:])  # the synthetic marts exist and have rows (D142)
     for tag in ("tag:vehicle_fleet", "tag:divipola", "tag:parts_demand"):
         code, output = transform("build", select=tag)
         assert code == 0, output
         assert "regional" not in output and "brand_alias" not in output
-    assert [reader_rows(settings, q) for q in (_BRAND, _LINE, _WEIGHT, _SCOPE)] == before
+        assert "synthetic" not in output
+    assert [reader_rows(settings, q) for q in queries] == before
 
 
 def test_the_vehicle_fleet_build_is_green_without_any_brand_mart(warehouse, transform):
@@ -330,7 +344,7 @@ def test_the_vehicle_fleet_build_is_green_without_any_brand_mart(warehouse, tran
         )
     }
     assert "fct_parts_demand_fleet" in marts
-    assert not any(m.startswith("fct_regional") for m in marts)
+    assert not any(m.startswith(("fct_regional", "fct_synthetic")) for m in marts)
 
 
 def test_the_brand_seeds_carry_only_their_own_tag_and_no_test_mixes_families(transform):
