@@ -690,3 +690,73 @@ models:
           - accepted_values:
               arguments:
                 values: ['largest_remainder_v1']
+
+  - name: fct_synthetic_line_fleet
+    description: "SYNTHETIC line breakdown of the active PARTICULAR fleet per (publication, department, class, brand), largest_remainder_v1 (Hamilton, D143) over the brand totals of fct_synthetic_brand_fleet. Not real data nor an official demand metric (03 section 28). Only rows with synthetic_vehicle_count > 0; uncalibrated brand rows pass through as one SIN CALIBRACION line (D144 a)."
+    config:
+      tags: [fleet_brand, brand_synthetic]
+    data_tests:
+      - unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [publication_year, publication_month, department_name_norm, dane_department_code, vehicle_class_norm, brand_norm, line_norm]
+    columns:
+      - name: publication_year
+        description: "Year of the RUNT publication."
+        data_tests: [not_null]
+      - name: publication_month
+        description: "Month of the RUNT publication."
+        data_tests: [not_null]
+      - name: department_name_norm
+        description: "Registration department normalized (D100)."
+        data_tests: [not_null]
+      - name: dane_department_code
+        description: "2-digit DANE department code; NULL without DANE match."
+      - name: vehicle_class_norm
+        description: "RUNT vehicle class normalized (D100)."
+        data_tests: [not_null]
+      - name: brand_norm
+        description: "Brand of the line; SIN ASIGNAR is a brand (D144 b); SIN CALIBRACION marks an uncalibrated group."
+        data_tests: [not_null]
+      - name: line_norm
+        description: "Line normalized; SIN CALIBRACION when the brand is SIN CALIBRACION (D144 a)."
+        data_tests: [not_null]
+      - name: synthetic_vehicle_count
+        description: "Integer vehicles assigned to the line in the department (> 0)."
+        data_tests: [not_null]
+      - name: allocation_quota
+        description: "Hamilton quota round(N_b * pooled_line_share_in_brand, 12) before the integer rounding."
+        data_tests: [not_null]
+      - name: sample_size_ok
+        description: "Inherited from the regional line row (>= 1,000 pooled vehicles, D144 c); false for SIN CALIBRACION."
+        data_tests: [not_null]
+      - name: source_systems
+        description: "Regions that calibrate the class (fct_regional_line_share); NULL for SIN CALIBRACION."
+      - name: rows_updated_min
+        description: "Oldest rowsUpdatedAt among those regions; NULL for SIN CALIBRACION."
+      - name: rows_updated_max
+        description: "Newest rowsUpdatedAt among those regions; NULL for SIN CALIBRACION."
+      - name: weight_publication_year
+        description: "Year of the RUNT publication of the pooling weights; NULL for SIN CALIBRACION."
+      - name: weight_publication_month
+        description: "Month of the RUNT publication of the pooling weights; NULL for SIN CALIBRACION."
+      - name: data_origin
+        description: "Always synthetic (D131)."
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ['synthetic']
+      - name: calibration_scope
+        description: "Always regional (D140)."
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ['regional']
+      - name: allocation_method
+        description: "Always largest_remainder_v1 (D143)."
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ['largest_remainder_v1']
