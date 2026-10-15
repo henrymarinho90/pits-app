@@ -372,7 +372,7 @@ models:
 
   # ---- D140: regional brand/line share (tag fleet_brand ONLY).
   - name: fct_regional_brand_weight
-    description: "RUNT weight of each region per vehicle class: active PARTICULAR vehicles of the region's department in the latest fct_parts_demand_fleet publication (D140). Used to pool the regional shares; not a sample size. The only fleet_brand node that reads a vehicle_fleet node."
+    description: "RUNT weight of each region per vehicle class: active PARTICULAR vehicles of the region's department in the latest fct_parts_demand_fleet publication (D140). Used to pool the regional shares; not a sample size. One of the two fleet_brand nodes that read a vehicle_fleet node (with fct_synthetic_fleet_cell, D145)."
     config:
       tags: [fleet_brand]
     data_tests:
@@ -572,3 +572,191 @@ models:
       - name: load_id
         description: "ops.load_run row that wrote the snapshot."
         data_tests: [not_null]
+
+  # ---- D142-D145: synthetic brand breakdown (tags fleet_brand + brand_synthetic).
+  - name: fct_synthetic_fleet_cell
+    description: "Cell of the synthetic brand breakdown: real active PARTICULAR vehicles per (publication, department, municipality, class) of the latest fct_parts_demand_fleet publication, summed over registration_year (D142). Second fleet_brand node that reads a vehicle_fleet node (D145). Real counts, not synthetic."
+    config:
+      tags: [fleet_brand, brand_synthetic]
+    data_tests:
+      - unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [publication_year, publication_month, department_name_norm, municipality_name_norm, vehicle_class_norm]
+    columns:
+      - name: publication_year
+        description: "Year of the latest RUNT publication."
+        data_tests: [not_null]
+      - name: publication_month
+        description: "Month of the latest RUNT publication."
+        data_tests: [not_null]
+      - name: department_name_norm
+        description: "Registration department normalized (D100)."
+        data_tests: [not_null]
+      - name: municipality_name_norm
+        description: "Registration municipality normalized (D100)."
+        data_tests: [not_null]
+      - name: vehicle_class_norm
+        description: "RUNT vehicle class normalized (D100)."
+        data_tests: [not_null]
+      - name: dane_department_code
+        description: "2-digit DANE department code; NULL for a pair without DANE match (D128)."
+      - name: dane_municipality_code
+        description: "5-digit DANE municipality code; NULL for a pair without DANE match (D128)."
+      - name: vehicle_group
+        description: "Class group from the D133 seed (unmapped if missing)."
+        data_tests: [not_null]
+      - name: active_vehicle_count
+        description: "Active PARTICULAR vehicles of the cell (stock, rule 5), real, summed over registration_year."
+        data_tests: [not_null]
+      - name: calibration_status
+        description: "calibrated if the class has a non-NULL pooled_share in fct_regional_brand_share (D144 a); else no_calibration."
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ['calibrated', 'no_calibration']
+
+  - name: fct_synthetic_brand_fleet
+    description: "SYNTHETIC brand breakdown of the active PARTICULAR fleet per cell, largest_remainder_v1 (Hamilton, D143). Not real data nor an official demand metric (03 section 28). Only rows with synthetic_vehicle_count > 0; uncalibrated cells carry one SIN CALIBRACION row with the whole N (D144 a)."
+    config:
+      tags: [fleet_brand, brand_synthetic]
+    data_tests:
+      - unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [publication_year, publication_month, department_name_norm, municipality_name_norm, vehicle_class_norm, brand_norm]
+    columns:
+      - name: publication_year
+        description: "Year of the RUNT publication of the cell."
+        data_tests: [not_null]
+      - name: publication_month
+        description: "Month of the RUNT publication of the cell."
+        data_tests: [not_null]
+      - name: department_name_norm
+        description: "Registration department normalized (D100)."
+        data_tests: [not_null]
+      - name: municipality_name_norm
+        description: "Registration municipality normalized (D100)."
+        data_tests: [not_null]
+      - name: vehicle_class_norm
+        description: "RUNT vehicle class normalized (D100)."
+        data_tests: [not_null]
+      - name: dane_department_code
+        description: "2-digit DANE department code of the cell; NULL without DANE match."
+      - name: dane_municipality_code
+        description: "5-digit DANE municipality code of the cell; NULL without DANE match."
+      - name: vehicle_group
+        description: "Class group from the D133 seed."
+        data_tests: [not_null]
+      - name: brand_norm
+        description: "Brand of the synthetic row; SIN ASIGNAR is a brand (D144 b); SIN CALIBRACION marks an uncalibrated cell."
+        data_tests: [not_null]
+      - name: synthetic_vehicle_count
+        description: "Integer vehicles assigned to the brand in the cell (> 0)."
+        data_tests: [not_null]
+      - name: allocation_quota
+        description: "Hamilton quota round(N * pooled_share, 12) before the integer rounding."
+        data_tests: [not_null]
+      - name: sample_size_ok
+        description: "Inherited from the regional (class, brand) row (D144 c); false for SIN CALIBRACION."
+        data_tests: [not_null]
+      - name: source_systems
+        description: "Regions that calibrate the class (fct_regional_brand_share); NULL for SIN CALIBRACION."
+      - name: rows_updated_min
+        description: "Oldest rowsUpdatedAt among those regions; NULL for SIN CALIBRACION."
+      - name: rows_updated_max
+        description: "Newest rowsUpdatedAt among those regions; NULL for SIN CALIBRACION."
+      - name: weight_publication_year
+        description: "Year of the RUNT publication of the pooling weights; NULL for SIN CALIBRACION."
+      - name: weight_publication_month
+        description: "Month of the RUNT publication of the pooling weights; NULL for SIN CALIBRACION."
+      - name: data_origin
+        description: "Always synthetic (D131)."
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ['synthetic']
+      - name: calibration_scope
+        description: "Always regional (D140)."
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ['regional']
+      - name: allocation_method
+        description: "Always largest_remainder_v1 (D143)."
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ['largest_remainder_v1']
+
+  - name: fct_synthetic_line_fleet
+    description: "SYNTHETIC line breakdown of the active PARTICULAR fleet per (publication, department, class, brand), largest_remainder_v1 (Hamilton, D143) over the brand totals of fct_synthetic_brand_fleet. Not real data nor an official demand metric (03 section 28). Only rows with synthetic_vehicle_count > 0; uncalibrated brand rows pass through as one SIN CALIBRACION line (D144 a)."
+    config:
+      tags: [fleet_brand, brand_synthetic]
+    data_tests:
+      - unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [publication_year, publication_month, department_name_norm, dane_department_code, vehicle_class_norm, brand_norm, line_norm]
+    columns:
+      - name: publication_year
+        description: "Year of the RUNT publication."
+        data_tests: [not_null]
+      - name: publication_month
+        description: "Month of the RUNT publication."
+        data_tests: [not_null]
+      - name: department_name_norm
+        description: "Registration department normalized (D100)."
+        data_tests: [not_null]
+      - name: dane_department_code
+        description: "2-digit DANE department code; NULL without DANE match."
+      - name: vehicle_class_norm
+        description: "RUNT vehicle class normalized (D100)."
+        data_tests: [not_null]
+      - name: brand_norm
+        description: "Brand of the line; SIN ASIGNAR is a brand (D144 b); SIN CALIBRACION marks an uncalibrated group."
+        data_tests: [not_null]
+      - name: line_norm
+        description: "Line normalized; SIN CALIBRACION when the brand is SIN CALIBRACION (D144 a)."
+        data_tests: [not_null]
+      - name: synthetic_vehicle_count
+        description: "Integer vehicles assigned to the line in the department (> 0)."
+        data_tests: [not_null]
+      - name: allocation_quota
+        description: "Hamilton quota round(N_b * pooled_line_share_in_brand, 12) before the integer rounding."
+        data_tests: [not_null]
+      - name: sample_size_ok
+        description: "Inherited from the regional line row (>= 1,000 pooled vehicles, D144 c); false for SIN CALIBRACION."
+        data_tests: [not_null]
+      - name: source_systems
+        description: "Regions that calibrate the class (fct_regional_line_share); NULL for SIN CALIBRACION."
+      - name: rows_updated_min
+        description: "Oldest rowsUpdatedAt among those regions; NULL for SIN CALIBRACION."
+      - name: rows_updated_max
+        description: "Newest rowsUpdatedAt among those regions; NULL for SIN CALIBRACION."
+      - name: weight_publication_year
+        description: "Year of the RUNT publication of the pooling weights; NULL for SIN CALIBRACION."
+      - name: weight_publication_month
+        description: "Month of the RUNT publication of the pooling weights; NULL for SIN CALIBRACION."
+      - name: data_origin
+        description: "Always synthetic (D131)."
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ['synthetic']
+      - name: calibration_scope
+        description: "Always regional (D140)."
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ['regional']
+      - name: allocation_method
+        description: "Always largest_remainder_v1 (D143)."
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ['largest_remainder_v1']

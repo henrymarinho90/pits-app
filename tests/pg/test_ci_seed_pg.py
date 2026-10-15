@@ -183,6 +183,28 @@ def test_verify_detects_a_pooled_share_regression(seeder, build, monkeypatch):
     assert "pooled MARCA ALFA" in result.output
 
 
+def test_verify_detects_a_synthetic_mismatch(seeder, build, monkeypatch):
+    assert _run(seeder, "seed").exit_code == 0
+    assert build().exit_code == 0
+    monkeypatch.setattr(seeder, "SYNTHETIC_BRAND_EXPECTED", (9, 3013))
+    monkeypatch.setattr(seeder, "SYNTHETIC_LINE_EXPECTED", (8, 3012))
+    monkeypatch.setattr(seeder, "SYNTHETIC_CELL_EXPECTED", (4, 3012))
+    monkeypatch.setattr(seeder, "SYNTHETIC_UNCALIBRATED_CELLS", [("PASTO", "CAMION", 13)])
+    monkeypatch.setattr(
+        seeder, "SYNTHETIC_BRAND_COUNTS", [("TUNJA", "AUTOMOVIL", "MARCA ALFA", 976)]
+    )
+    result = _run(seeder, "verify")
+    assert result.exit_code == 1
+    for text in (
+        "fct_synthetic_brand_fleet: expected",
+        "fct_synthetic_line_fleet",
+        "fct_synthetic_fleet_cell: expected",
+        "no_calibration cells",
+        "brand counts",
+    ):
+        assert text in result.output
+
+
 def test_the_regional_seed_is_fictional_and_loaded_per_source(seeder, pg_settings):
     assert _run(seeder, "seed").exit_code == 0
     admin = connect(pg_settings, Profile.ADMIN, autocommit=True)

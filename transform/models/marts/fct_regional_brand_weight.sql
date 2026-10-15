@@ -4,7 +4,8 @@
 -- weight each region by this number, so a big region counts more than a small one; it is not
 -- a sample size. A source_system whose department has no RUNT rows has no row here, and the
 -- assert_regional_brand_weight_present test fails the build instead of inventing a weight.
--- This is the ONLY node of the fleet_brand family that reads a vehicle_fleet/divipola node.
+-- One of the two nodes of the fleet_brand family that read a vehicle_fleet/divipola node (the other
+-- is fct_synthetic_fleet_cell, D145).
 with latest as (
     select max(publication_year * 100 + publication_month) as publication_key
     from {{ ref('fct_parts_demand_fleet') }}

@@ -16,6 +16,9 @@ seed-paths: ["seeds"]
 # code (all statuses) exceed this share; any unmatched pair below it only warns.
 vars:
   dane_unmatched_vehicle_share_max: 0.01
+  # D144 f: warn threshold of assert_synthetic_brand_share_drift (national synthetic brand share
+  # vs pooled_share of the calibrated classes). Inference, revisable.
+  synthetic_brand_drift_max: 0.005
 
 models:
   pits_transform:

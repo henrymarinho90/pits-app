@@ -91,6 +91,30 @@ BRAND_SHARE_EXPECTED = (8, 203)  # (rows, regional vehicles in scope)
 LINE_SHARE_EXPECTED = (8, 203)
 # p(MARCA ALFA | AUTOMOVIL) = (2000 * 60/103 + 1000 * 30/100) / 3000, from the numbers above.
 ALFA_POOLED_SHARE = (Fraction(2000 * 60, 103) + Fraction(1000 * 30, 100)) / 3000
+# D145, written by hand from FLEET and REGIONAL (not computed from them). The active PARTICULAR
+# cells of the latest publication are PASTO CAMION (5 + 7 = 12), TUNJA AUTOMOVIL 2000 and PEREIRA
+# AUTOMOVIL 1000 (PUBLICO, INCONSISTENTE and OTROS rows are out) = 3 cells, 3012 vehicles. Only
+# AUTOMOVIL is calibrated (no regional source has CAMION; SIN CLASE has no share), so the single
+# SIN CALIBRACION cell is PASTO CAMION (12). Pooled AUTOMOVIL shares (weights 2000/1000, scope
+# Boyaca 60/40/3, Risaralda 30/70): ALFA .48835, BETA .25890, SIN ASIGNAR .01942, GAMMA .23333.
+# Hamilton on TUNJA (N=2000): quotas 976.70/517.80/38.83/466.67 -> floors sum 1997, R=3 go to the
+# largest remainders SIN ASIGNAR, BETA, ALFA = 977/518/39/466. On PEREIRA (N=1000): quotas
+# 488.35/258.90/19.42/233.33 -> floors sum 998, R=2 go to BETA, SIN ASIGNAR = 488/259/20/233.
+# Each brand has one line, so the line mart repeats the brand totals per department (Boyaca,
+# Risaralda), plus the PASTO CAMION row: 4 + 4 + 1 = 9 rows in both marts.
+SYNTHETIC_CELL_EXPECTED = (3, 3012)
+SYNTHETIC_UNCALIBRATED_CELLS = [("PASTO", "CAMION", 12)]
+SYNTHETIC_BRAND_EXPECTED = (9, 3012)
+SYNTHETIC_LINE_EXPECTED = (9, 3012)
+# (municipality_name_norm, vehicle_class_norm, brand_norm, synthetic_vehicle_count)
+SYNTHETIC_BRAND_COUNTS = [
+    ("PASTO", "CAMION", "SIN CALIBRACION", 12),
+    ("PEREIRA", "AUTOMOVIL", "MARCA ALFA", 488),
+    ("PEREIRA", "AUTOMOVIL", "SIN ASIGNAR", 20),
+    ("TUNJA", "AUTOMOVIL", "MARCA ALFA", 977),
+    ("TUNJA", "AUTOMOVIL", "MARCA BETA", 518),
+    ("TUNJA", "AUTOMOVIL", "SIN ASIGNAR", 39),
+]
 FX_HASH = "a" * 64
 FLEET_HASH = "b" * 64
 DIVIPOLA_HASH = "c" * 64
@@ -330,6 +354,34 @@ def _verify(settings: WarehouseSettings) -> list[str]:
         sin_asignar = conn.execute(
             "SELECT count(*) FROM marts.fct_regional_brand_share WHERE brand_norm = 'SIN ASIGNAR'"
         ).fetchone()
+        syn_cell = conn.execute(
+            "SELECT count(*), sum(active_vehicle_count) FROM marts.fct_synthetic_fleet_cell"
+        ).fetchone()
+        syn_uncal = conn.execute(
+            "SELECT municipality_name_norm, vehicle_class_norm, active_vehicle_count "
+            "FROM marts.fct_synthetic_fleet_cell WHERE calibration_status = 'no_calibration' "
+            "ORDER BY 1, 2"
+        ).fetchall()
+        syn_brand = conn.execute(
+            "SELECT count(*), sum(synthetic_vehicle_count) FROM marts.fct_synthetic_brand_fleet"
+        ).fetchone()
+        syn_line = conn.execute(
+            "SELECT count(*), sum(synthetic_vehicle_count) FROM marts.fct_synthetic_line_fleet"
+        ).fetchone()
+        syn_counts = conn.execute(
+            "SELECT municipality_name_norm, vehicle_class_norm, brand_norm, "
+            "synthetic_vehicle_count "
+            "FROM marts.fct_synthetic_brand_fleet WHERE (municipality_name_norm, brand_norm) IN "
+            "(('PASTO', 'SIN CALIBRACION'), ('PEREIRA', 'MARCA ALFA'), ('PEREIRA', 'SIN ASIGNAR'), "
+            "('TUNJA', 'MARCA ALFA'), ('TUNJA', 'MARCA BETA'), ('TUNJA', 'SIN ASIGNAR')) "
+            "ORDER BY 1, 2, 3"
+        ).fetchall()
+        syn_active = conn.execute(
+            "SELECT sum(active_vehicle_count) FROM marts.fct_parts_demand_fleet "
+            "WHERE demand_segment = 'particular' AND publication_year * 100 + publication_month = "
+            "(SELECT max(publication_year * 100 + publication_month) "
+            "FROM marts.fct_parts_demand_fleet)"
+        ).fetchone()
     finally:
         conn.close()
     expected = {
@@ -347,6 +399,9 @@ def _verify(settings: WarehouseSettings) -> list[str]:
         "fct_regional_fleet_brand_scope": (SCOPE_REGIONAL_EXPECTED, regional_scope),
         "fct_regional_brand_share": (BRAND_SHARE_EXPECTED, brand_share),
         "fct_regional_line_share": (LINE_SHARE_EXPECTED, line_share),
+        "fct_synthetic_fleet_cell": (SYNTHETIC_CELL_EXPECTED, syn_cell),
+        "fct_synthetic_brand_fleet": (SYNTHETIC_BRAND_EXPECTED, syn_brand),
+        "fct_synthetic_line_fleet": (SYNTHETIC_LINE_EXPECTED, syn_line),
     }
     problems = [
         f"{name}: expected (rows, total)={want}, got {tuple(got)}"
@@ -367,6 +422,22 @@ def _verify(settings: WarehouseSettings) -> list[str]:
         )
     if tuple(sin_asignar) != (2,):
         problems.append(f"fct_regional_brand_share: SIN ASIGNAR rows {sin_asignar} != (2,)")
+    # D145: conservation (sum synthetic = sum active PARTICULAR of the latest publication), the
+    # uncalibrated cells and a few hand-computed brand counts.
+    if syn_brand[1] != syn_active[0] or syn_line[1] != syn_active[0]:
+        problems.append(
+            f"synthetic marts: brand {syn_brand[1]} / line {syn_line[1]} != active PARTICULAR "
+            f"{syn_active[0]}"
+        )
+    if [tuple(r) for r in syn_uncal] != SYNTHETIC_UNCALIBRATED_CELLS:
+        problems.append(
+            f"fct_synthetic_fleet_cell: no_calibration cells {syn_uncal} != "
+            f"{SYNTHETIC_UNCALIBRATED_CELLS}"
+        )
+    if [tuple(r) for r in syn_counts] != sorted(SYNTHETIC_BRAND_COUNTS):
+        problems.append(
+            f"fct_synthetic_brand_fleet: brand counts {syn_counts} != {SYNTHETIC_BRAND_COUNTS}"
+        )
     return problems
 
 
