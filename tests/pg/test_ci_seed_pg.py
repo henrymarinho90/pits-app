@@ -5,6 +5,7 @@ from __future__ import annotations
 import importlib.util
 import shutil
 from decimal import Decimal
+from fractions import Fraction
 from pathlib import Path
 
 import pytest
@@ -65,7 +66,9 @@ def test_seed_build_verify_and_second_seed_is_refused(seeder, build, pg_settings
         count = admin.execute("SELECT count(*) FROM ops.load_run").fetchone()[0]
     finally:
         admin.close()
-    assert count == 3  # the refused seed wrote nothing
+    assert (
+        count == 5
+    )  # fx, fleet, divipola and the two regional snapshots; the refused seed wrote nothing
     assert build().exit_code == 0  # idempotent
     assert _run(seeder, "verify").exit_code == 0
 
@@ -96,11 +99,12 @@ def test_failed_seed_rolls_everything_back(seeder, pg_settings, monkeypatch):
                 "landing.fx_rate",
                 "landing.vehicle_fleet_snapshot",
                 "landing.divipola_municipality",
+                "landing.regional_fleet_brand_count",
             )
         ]
     finally:
         admin.close()
-    assert counts == [0, 0, 0, 0]
+    assert counts == [0, 0, 0, 0, 0]
 
 
 def test_verify_detects_a_fleet_mismatch(seeder, build, monkeypatch):
@@ -116,7 +120,7 @@ def test_verify_detects_a_normalization_regression(seeder, build, monkeypatch):
     assert _run(seeder, "seed").exit_code == 0
     assert build().exit_code == 0
     monkeypatch.setattr(
-        seeder, "FLEET_NORM_KEYS", [("NARIÑO", "PASTO", "CAMION"), *seeder.FLEET_NORM_KEYS[:2]]
+        seeder, "FLEET_NORM_KEYS", [("NARIÑO", "PASTO", "CAMION"), *seeder.FLEET_NORM_KEYS[:4]]
     )
     result = _run(seeder, "verify")
     assert result.exit_code == 1
@@ -144,9 +148,56 @@ def test_verify_detects_a_dimension_mismatch(seeder, build, monkeypatch):
 def test_verify_detects_a_parts_demand_mismatch(seeder, build, monkeypatch):
     assert _run(seeder, "seed").exit_code == 0
     assert build().exit_code == 0
-    monkeypatch.setattr(seeder, "DEMAND_FLEET_EXPECTED", (2, 24))
-    monkeypatch.setattr(seeder, "DEMAND_SCOPE_EXPECTED", (3, 60))
+    monkeypatch.setattr(seeder, "DEMAND_FLEET_EXPECTED", (4, 3024))
+    monkeypatch.setattr(seeder, "DEMAND_SCOPE_EXPECTED", (3, 3060))
     result = _run(seeder, "verify")
     assert result.exit_code == 1
     assert "fct_parts_demand_fleet" in result.output
     assert "fct_parts_demand_scope" in result.output
+
+
+def test_verify_detects_a_regional_brand_mismatch(seeder, build, monkeypatch):
+    assert _run(seeder, "seed").exit_code == 0
+    assert build().exit_code == 0
+    monkeypatch.setattr(seeder, "WEIGHT_EXPECTED", (2, 3001))
+    monkeypatch.setattr(seeder, "BRAND_SHARE_EXPECTED", (8, 204))
+    monkeypatch.setattr(seeder, "LINE_SHARE_EXPECTED", (7, 203))
+    monkeypatch.setattr(seeder, "SCOPE_REGIONAL_EXPECTED", (4, 213))
+    result = _run(seeder, "verify")
+    assert result.exit_code == 1
+    for name in (
+        "fct_regional_brand_weight",
+        "fct_regional_brand_share",
+        "fct_regional_line_share",
+        "fct_regional_fleet_brand_scope",
+    ):
+        assert name in result.output
+
+
+def test_verify_detects_a_pooled_share_regression(seeder, build, monkeypatch):
+    assert _run(seeder, "seed").exit_code == 0
+    assert build().exit_code == 0
+    monkeypatch.setattr(seeder, "ALFA_POOLED_SHARE", seeder.ALFA_POOLED_SHARE + Fraction(1, 100))
+    result = _run(seeder, "verify")
+    assert result.exit_code == 1
+    assert "pooled MARCA ALFA" in result.output
+
+
+def test_the_regional_seed_is_fictional_and_loaded_per_source(seeder, pg_settings):
+    assert _run(seeder, "seed").exit_code == 0
+    admin = connect(pg_settings, Profile.ADMIN, autocommit=True)
+    try:
+        runs = admin.execute(
+            "SELECT source_system, row_count FROM ops.load_run "
+            "WHERE dataset = 'regional_fleet_brand_count' ORDER BY 1"
+        ).fetchall()
+        brands = {
+            r[0] for r in admin.execute("SELECT brand FROM landing.regional_fleet_brand_count")
+        }
+    finally:
+        admin.close()
+    assert runs == [
+        ("gobernacion_boyaca_parque_automotor", 4),
+        ("gobernacion_risaralda_parque_automotor", 3),
+    ]
+    assert all(b.startswith("MARCA ") or b == "AUTECO" for b in brands)

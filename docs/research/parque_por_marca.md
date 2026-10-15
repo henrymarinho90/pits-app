@@ -267,3 +267,21 @@ En la tabla de fuentes de la primera ronda, la fila de Caldas `dkxf-ikd7` dice "
 Consecuencia: ni Caldas ni Barbosa son parque vigente. La fecha "actualizado" del catálogo de Socrata no es la frescura de los datos; hay que comparar `rowsUpdatedAt` con `viewLastModified`. Pasa lo mismo con Boyacá (datos 2024-08-30; metadatos 2026-05-18), Floridablanca (datos 2023-02-10; metadatos 2026-05-18) y AMCO (datos 2020-11-07; metadatos 2026-05-18). Las fechas de Fusagasugá (2026-06-01) y Risaralda (2026-07-06) de la primera ronda siguen siendo correctas: ahí `rowsUpdatedAt` y `viewLastModified` coinciden.
 
 Corrección sobre RUNT: la primera ronda cita "corte agosto de 2026" para RUNT en cifras (página web), y `08` / `03` lo citan para `u3vn-bdcy`. La consulta SODA del 2026-10-10 devuelve únicamente el corte OCTUBRE 2026 (sección 3). La cifra de RUNT en cifras (22.476.551, agosto) y la de SODA (22.655.040 con todos los estados, octubre) son de cortes distintos y no deben compararse como si fueran el mismo.
+
+### 7. Comparación con la corrida regional real (2026-10-14)
+
+Fuente: corrida real del hito A de marca (`06_status.md` §3; `05` sección E-8), ejecutada por el orquestador el 2026-10-14. Son cifras de Boyacá (`em3d-hmim`, datos de 2024-08-30) y Risaralda (`x9pp-pcn5`, datos de 2026-07-06), ponderadas por el parque RUNT de cada departamento. **No son dato nacional** y no reemplazan las secciones anteriores ni la brecha de parque nacional por marca (`06_status.md` §1).
+
+**AUTECO en Boyacá (diferencia de conteos).** La sección 5 documenta 5.862 filas AUTECO, con BAJAJ 5.272 y SIN ASIGNAR 503. La seed `auteco_line_brand_map` (D139), generada con las reglas de la tabla de mapeo, da BAJAJ 5.276 y SIN ASIGNAR 499; el resto (VICTORY 68, KYMCO 14, SIGMA 2, HONDA 1, KAWASAKI 1, KTM 1) suma 5.862 con esos dos. La diferencia es de 4 filas: typos aislados que la investigación dejó sin asignar y que la seed asigna a BAJAJ por inferencia (`evidence` = `inferencia`). Pendiente: revisión de Henry en el PR.
+
+**AUTECO en Risaralda.** La sección 4 cita 1.890 filas (0,8 %), pero esa cifra corresponde solo a MOTOCICLETA (tabla de motos de la sección 4). La seed cuenta 1.897 filas AUTECO en todas las clases: BAJAJ 1.137, SIN ASIGNAR 640, KYMCO 62 y VICTORY 58. Inferencia, no verificada clase por clase: las 7 filas de diferencia son de clases distintas de moto.
+
+**Participaciones pooled (corrida, ponderadas por el RUNT).** Participación sobre las regiones que tienen la clase:
+
+- AUTOMOVIL: CHEVROLET 30,36 %; RENAULT 27,91 %; MAZDA 11,36 %; KIA 6,68 %; HYUNDAI 4,54 %; NISSAN 4,26 %.
+- MOTOCICLETA: YAMAHA 19,02 %; BAJAJ 18,85 %; AKT 16,65 %; SUZUKI 13,25 %; HONDA 10,92 %; VICTORY 3,56 %.
+- SIN ASIGNAR pooled: MOTOCICLETA 0,50 %; MOTOCARRO 0,22 %; MOTOTRICICLO 2,34 %.
+
+Comparación con la sección 4, que da participaciones por departamento sin ponderar. Derivado de cifras ya publicadas, sin recalcular la base: en AUTOMOVIL, CHEVROLET y RENAULT suman 66,9 % en Boyacá y 51,2 % en Risaralda; la pooled suma 58,27 % (30,36 + 27,91), entre los dos valores, como corresponde a un promedio ponderado. En MOTOCICLETA, el top 5 de Risaralda de la sección 4 (AKT, Yamaha, Suzuki, Bajaj y Honda) suma 79,0 %; la pooled de esas cinco marcas suma 78,69 %. No es una diferencia de la misma base: la sección 4 no pondera. No se calculó una diferencia por marca; si hace falta, debe hacerse con la misma base.
+
+Alcance: estas participaciones son regionales y no son participación nacional de parque por marca. Ninguna de estas cifras se usa como calibración nacional.

@@ -369,3 +369,206 @@ models:
       - name: vehicle_count
         description: "Vehicles in that status at the publication date (stock, rule 5)."
         data_tests: [not_null]
+
+  # ---- D140: regional brand/line share (tag fleet_brand ONLY).
+  - name: fct_regional_brand_weight
+    description: "RUNT weight of each region per vehicle class: active PARTICULAR vehicles of the region's department in the latest fct_parts_demand_fleet publication (D140). Used to pool the regional shares; not a sample size. The only fleet_brand node that reads a vehicle_fleet node."
+    config:
+      tags: [fleet_brand]
+    data_tests:
+      - unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [source_system, vehicle_class_norm]
+    columns:
+      - name: source_system
+        description: "Regional source whose department the weight comes from."
+        data_tests: [not_null]
+      - name: dane_department_code
+        description: "2-digit DANE department code of the region (seed)."
+        data_tests: [not_null]
+      - name: vehicle_class_norm
+        description: "RUNT vehicle class normalized (D100)."
+        data_tests: [not_null]
+      - name: weight_vehicle_count
+        description: "Active PARTICULAR vehicles of the class in the department (stock, rule 5)."
+        data_tests: [not_null]
+      - name: weight_publication_year
+        description: "Year of the RUNT publication the weight comes from."
+        data_tests: [not_null]
+      - name: weight_publication_month
+        description: "Month of the RUNT publication the weight comes from."
+        data_tests: [not_null]
+
+  - name: fct_regional_brand_share
+    description: "Brand share inside each vehicle class, per region and pooled over the regions that have the class, weighted by the RUNT (D140). calibration_scope is regional: nothing synthetic. SIN ASIGNAR is a visible brand."
+    config:
+      tags: [fleet_brand]
+    data_tests:
+      - unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [source_system, vehicle_class_norm, brand_norm]
+    columns:
+      - name: source_system
+        description: "Region (source_system) of the row."
+        data_tests: [not_null]
+      - name: vehicle_class_norm
+        description: "RUNT vehicle class (after the regional class map)."
+        data_tests: [not_null]
+      - name: brand_norm
+        description: "Resolved brand (alias, then AUTECO line map); never AUTECO."
+        data_tests: [not_null]
+      - name: vehicle_count
+        description: "Vehicles of the brand in the region and class (0 if the brand is absent there)."
+        data_tests: [not_null]
+      - name: region_class_total
+        description: "Vehicles of the class in the region (calibration scope)."
+        data_tests: [not_null]
+      - name: regional_share
+        description: "vehicle_count / region_class_total."
+        data_tests: [not_null]
+      - name: region_weight
+        description: "RUNT weight of the region for the class (0 if none)."
+        data_tests: [not_null]
+      - name: pooled_weight
+        description: "Sum of region_weight over the regions that have the class."
+        data_tests: [not_null]
+      - name: pooled_vehicle_count
+        description: "Regional vehicles of the brand and class, summed over all the regions, including regions with weight 0 (today only GRUA, which is NULL anyway)."
+        data_tests: [not_null]
+      - name: pooled_share
+        description: "Weighted share of the brand in the class; NULL when pooling_status is no_runt_weight."
+      - name: pooling_status
+        description: "ok, or no_runt_weight when the sum of weights is 0 (warn test)."
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ['ok', 'no_runt_weight']
+      - name: sample_size_ok
+        description: "pooled_vehicle_count >= 1000 (P6). pooled_vehicle_count also sums regions with weight 0 (see that column)."
+        data_tests: [not_null]
+      - name: calibration_scope
+        description: "Always regional."
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ['regional']
+      - name: source_systems
+        description: "Comma-separated regions that have the class."
+        data_tests: [not_null]
+      - name: rows_updated_min
+        description: "Oldest rowsUpdatedAt date among those regions."
+        data_tests: [not_null]
+      - name: rows_updated_max
+        description: "Newest rowsUpdatedAt date among those regions."
+        data_tests: [not_null]
+      - name: weight_publication_year
+        description: "Year of the RUNT publication of the weights (NULL without weight)."
+      - name: weight_publication_month
+        description: "Month of the RUNT publication of the weights (NULL without weight)."
+
+  - name: fct_regional_line_share
+    description: "Line share inside each (class, brand), per region and pooled, weighted by the RUNT (D140). pooled_share is p(b,l|c), pooled_brand_share p(b|c) and pooled_line_share_in_brand p(l|b,c)."
+    config:
+      tags: [fleet_brand]
+    data_tests:
+      - unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [source_system, vehicle_class_norm, brand_norm, line_norm]
+    columns:
+      - name: source_system
+        description: "Region (source_system) of the row."
+        data_tests: [not_null]
+      - name: vehicle_class_norm
+        description: "RUNT vehicle class (after the regional class map)."
+        data_tests: [not_null]
+      - name: brand_norm
+        description: "Resolved brand; never AUTECO."
+        data_tests: [not_null]
+      - name: line_norm
+        description: "Line normalized (D100)."
+        data_tests: [not_null]
+      - name: vehicle_count
+        description: "Vehicles of the line in the region and class (0 if absent there)."
+        data_tests: [not_null]
+      - name: region_class_total
+        description: "Vehicles of the class in the region (calibration scope)."
+        data_tests: [not_null]
+      - name: regional_share
+        description: "vehicle_count / region_class_total."
+        data_tests: [not_null]
+      - name: region_weight
+        description: "RUNT weight of the region for the class (0 if none)."
+        data_tests: [not_null]
+      - name: pooled_weight
+        description: "Sum of region_weight over the regions that have the class."
+        data_tests: [not_null]
+      - name: pooled_vehicle_count
+        description: "Regional vehicles of the line, summed over all the regions, including regions with weight 0 (today only GRUA, which is NULL anyway)."
+        data_tests: [not_null]
+      - name: pooled_share
+        description: "p(b,l|c); NULL when pooling_status is no_runt_weight."
+      - name: pooled_brand_share
+        description: "p(b|c): sum of pooled_share over the lines of the brand."
+      - name: pooled_line_share_in_brand
+        description: "p(l|b,c) = pooled_share / pooled_brand_share."
+      - name: pooling_status
+        description: "ok, or no_runt_weight when the sum of weights is 0 (warn test)."
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ['ok', 'no_runt_weight']
+      - name: sample_size_ok
+        description: "pooled_vehicle_count >= 1000 (P6). pooled_vehicle_count also sums regions with weight 0 (see that column)."
+        data_tests: [not_null]
+      - name: calibration_scope
+        description: "Always regional."
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ['regional']
+      - name: source_systems
+        description: "Comma-separated regions that have the class."
+        data_tests: [not_null]
+      - name: rows_updated_min
+        description: "Oldest rowsUpdatedAt date among those regions."
+        data_tests: [not_null]
+      - name: rows_updated_max
+        description: "Newest rowsUpdatedAt date among those regions."
+        data_tests: [not_null]
+      - name: weight_publication_year
+        description: "Year of the RUNT publication of the weights (NULL without weight)."
+      - name: weight_publication_month
+        description: "Month of the RUNT publication of the weights (NULL without weight)."
+
+  - name: fct_regional_fleet_brand_scope
+    description: "Vehicles per source_system and scope_status: included in the regional shares or the reason they are excluded (D140). The sum of all statuses equals the staging total and the manifest total of the load."
+    config:
+      tags: [fleet_brand]
+    data_tests:
+      - unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [source_system, scope_status]
+    columns:
+      - name: source_system
+        description: "Regional source."
+        data_tests: [not_null]
+      - name: scope_status
+        description: "included, excluded_class, excluded_status or excluded_service."
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ['included', 'excluded_class', 'excluded_status', 'excluded_service']
+      - name: vehicle_count
+        description: "Vehicles with that status."
+        data_tests: [not_null]
+      - name: rows_updated
+        description: "UTC date of the rowsUpdatedAt of the source snapshot."
+        data_tests: [not_null]
+      - name: load_id
+        description: "ops.load_run row that wrote the snapshot."
+        data_tests: [not_null]

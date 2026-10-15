@@ -84,6 +84,7 @@ def test_packaged_migrations_are_the_expected_ones():
         "0003_transformer_grants.sql",
         "0004_landing_vehicle_fleet_snapshot.sql",
         "0005_landing_divipola_municipality.sql",
+        "0006_landing_regional_fleet_brand_count.sql",
     ]
 
 

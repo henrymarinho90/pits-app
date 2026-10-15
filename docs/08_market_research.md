@@ -1,5 +1,5 @@
 # 08 — Investigación de mercado y fuentes
-Última actualización: 2026-10-03 (hora Colombia). Fecha de consulta de todas las fuentes: 2026-10-03, salvo indicación. Corrección del 2026-10-12: el corte vigente de `u3vn-bdcy` es OCTUBRE 2026 (Ficha 1). Las citas del corte AGOSTO 2026 de este documento quedan marcadas como superadas; el texto original se conserva.
+Última actualización: 2026-10-14 (hora Colombia; Ficha 9 agregada). Fecha de consulta de todas las fuentes: 2026-10-03, salvo indicación (la Ficha 9 indica 2026-10-14). Corrección del 2026-10-12: el corte vigente de `u3vn-bdcy` es OCTUBRE 2026 (Ficha 1). Las citas del corte AGOSTO 2026 de este documento quedan marcadas como superadas; el texto original se conserva.
 
 Convenciones: **Hecho** = dato leído en la fuente primaria. **Dato de prensa** = no se usó prensa en este documento. **Inferencia** = deducción mía, marcada como tal. Las cifras de ANDI-FENALCO son matrículas nuevas (flujo), no parque (stock). Nunca se mezclan.
 
@@ -206,6 +206,15 @@ Todas las URLs de datos.gov.co: base `https://www.datos.gov.co`. Autenticación:
 ### Ficha 8 — RUNT en cifras
 
 - URL: https://www.runt.gov.co/runt-en-cifras (enlaces a `matriculas-iniciales`, `parque-automotor`, `balance-del-sector-transito-y-transporte`). Dashboards sin API documentada que yo haya visto. No se pudo leer el contenido por marca.
+
+### Ficha 9 — Parque departamental con marca: Boyacá `em3d-hmim` y Risaralda `x9pp-pcn5` (verificado por API, 2026-10-14)
+
+Fecha de consulta: 2026-10-14. Verificado por API (SODA, `count(*)`, metadata y consultas `$group`) por el orquestador. Estas fichas son la fuente de los insumos regionales de D135–D140 (hito A de marca). Son datos regionales de dos departamentos: no son dato nacional (`research/parque_por_marca.md`, sección 7).
+
+- Boyacá `em3d-hmim`: https://www.datos.gov.co/resource/em3d-hmim.json. Filas: 182.379 (`count(*)`). `rowsUpdatedAt` = 1725049480 = 2024-08-30. Columnas: 18 (metadata confirmada). Nombres según la consulta del arquitecto (2026-10-14): n, motivo_ingreso, cod_dane, dane_mun, provincia, municipio, clase, marca, linea, modelo, carroceria, pasajeros, tonelaje, cilindraje, servicio, estado, blindaje, importado. Valores de `servicio` (`$group`): PARTICULAR, OFICIAL, MIXTO, OTRO, PUBLICO (sin tilde), NA y DIPLOMATICO. `estado`: ACTIVO en las 182.379 filas. Requeridos `clase`, `marca`, `linea`, `servicio` y `estado`: 0 filas nulas o vacías. Calibración de D135–D140: servicio PARTICULAR y estado ACTIVO (D52, D59).
+- Risaralda `x9pp-pcn5`: https://www.datos.gov.co/resource/x9pp-pcn5.json. Filas: 453.925 (`count(*)`). `rowsUpdatedAt` = 1783366796 = 2026-07-06. Columnas: 6 (metadata confirmada): clase, placa, marca, modelo, linea, cilindraje. La columna `placa` existe en la fuente; el extractor no la pide (D136). No tiene `servicio` ni `estado` (D55). Requeridos `clase`, `marca` y `linea`: 0 filas nulas o vacías. Clases (`$group`, 18): MOTOCICLETA 251.757; AUTOMOVIL 110.290; CAMIONETA 51.145; CAMPERO 23.393; CAMION 6.431; MOTOCARRO 3.433; VOLQUETA 1.735; MICROBUS 1.629; BUS 1.296; TRACTOCAMION 1.129; BUSETA 954; CUATRIMOTO 360; CICLOMOTOR 329; MOTOTRICICLO 24; CUADRICICLO 13; SIN CLASE 3; AUTOMOVIL ELECTRICO 3; MOTOCICLETA ELECTRICA 1.
+- Licencia: la migración 0006 declara CC BY-SA 4.0 para ambos datasets; la licencia no está verificada en la evidencia de este paso (no verificado). Verificado después (revisión final de M1, 2026-10-14; lectura de archivos): `research/parque_por_marca.md:95-96` registra CC BY-SA 4.0 para Risaralda `x9pp-pcn5` y Boyacá `em3d-hmim` (consulta del 2026-10-10), y el manifest la escribe fija (`src/pits/sources/brand_fleet/contract.py:38`, `LICENSE = "CC_40_BY_SA"`).
+- Límite de fecha: Boyacá (2024-08-30) y Risaralda (2026-07-06) no son del mismo corte. Ninguno es el corte vigente del RUNT (`u3vn-bdcy`, Ficha 1).
 
 ## Hipótesis validadas y refutadas
 

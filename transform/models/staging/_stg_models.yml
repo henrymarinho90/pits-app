@@ -191,3 +191,87 @@ models:
       - name: municipality_name_norm
         description: "municipality_name, same normalization."
         data_tests: [not_null]
+
+  - name: stg_regional_fleet_brand
+    description: "Regional vehicle counts: landing columns as published plus normalized keys (D100), the resolved brand (alias, then AUTECO line map, D139) and the calibration scope. Repeats the source tests on purpose: a failure skips the marts."
+    config:
+      tags: [fleet_brand]
+    data_tests:
+      - unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [source_system, vehicle_class, brand, line, service_name, vehicle_status]
+    columns:
+      - name: source_system
+        description: "Departmental source of the snapshot."
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ['gobernacion_boyaca_parque_automotor', 'gobernacion_risaralda_parque_automotor']
+              config:
+                severity: error
+      - name: rows_updated
+        description: "UTC date of the rowsUpdatedAt of the source snapshot."
+        data_tests: [not_null]
+      - name: vehicle_class
+        description: "Class as published."
+        data_tests: [not_null]
+      - name: brand
+        description: "Brand as published (AUTECO prefixes and the distributor name included)."
+        data_tests: [not_null]
+      - name: line
+        description: "Line as published."
+        data_tests: [not_null]
+      - name: service_name
+        description: "Service as published; NULL when the source does not publish it (Risaralda)."
+      - name: vehicle_status
+        description: "Status as published; NULL when the source does not publish it (Risaralda)."
+      - name: vehicle_count
+        description: "Vehicles in the group (stock, rule 5)."
+        data_tests: [not_null]
+      - name: source_reference
+        description: "Raw manifest the counts were aggregated from (lineage to raw)."
+        data_tests: [not_null]
+      - name: load_id
+        description: "ops.load_run row that wrote the snapshot."
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: source('ops', 'load_run_brand')
+                field: load_id
+      - name: vehicle_class_norm
+        description: "vehicle_class normalized (D100)."
+        data_tests: [not_null]
+      - name: source_brand_norm
+        description: "brand normalized (D100), before alias and AUTECO resolution."
+        data_tests: [not_null]
+      - name: line_norm
+        description: "line normalized (D100)."
+        data_tests: [not_null]
+      - name: service_name_norm
+        description: "service_name normalized (D100); NULL for Risaralda."
+      - name: vehicle_status_norm
+        description: "vehicle_status normalized (D100); NULL for Risaralda."
+      - name: brand_norm
+        description: "Resolved brand: alias, then the AUTECO line map; never AUTECO (SIN ASIGNAR when unknown)."
+        data_tests: [not_null]
+      - name: brand_resolution
+        description: "How brand_norm was obtained."
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ['as_published', 'alias', 'auteco_map', 'auteco_unmapped']
+      - name: brand_evidence
+        description: "Evidence of the AUTECO line map row (dato, inferencia, sin_evidencia); NULL otherwise."
+      - name: calibration_class_norm
+        description: "RUNT vehicle_class_norm from the class map, 'excluded', or 'unmapped'."
+        data_tests: [not_null]
+      - name: scope_status
+        description: "included, or the reason the group is out of the calibration."
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ['included', 'excluded_class', 'excluded_status', 'excluded_service']

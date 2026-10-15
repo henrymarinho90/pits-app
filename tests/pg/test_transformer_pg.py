@@ -134,13 +134,13 @@ def test_new_landing_tables_default_to_transformer_select(warehouse):
 @pytest.mark.parametrize("prefix", [2, 3])
 def test_database_at_a_migration_prefix_receives_only_the_later_ones(pg_settings, tmp_path, prefix):
     packaged = discover_migrations()
-    assert len(packaged) == 5
+    assert len(packaged) == 6
     for m in packaged[:prefix]:
         (tmp_path / m.filename).write_bytes(m.sql.encode())
     first = run_migrate(pg_settings, tmp_path)  # a database as an older real one
     assert (first.applied, first.skipped) == (prefix, 0)
     second = run_migrate(pg_settings)  # packaged set
-    assert (second.applied, second.skipped) == (5 - prefix, prefix)
+    assert (second.applied, second.skipped) == (6 - prefix, prefix)
     conn = connect(pg_settings, Profile.TRANSFORMER, autocommit=True)
     try:
         assert conn.execute("SELECT count(*) FROM landing.fx_rate").fetchone() == (0,)
@@ -148,9 +148,12 @@ def test_database_at_a_migration_prefix_receives_only_the_later_ones(pg_settings
             0,
         )
         assert conn.execute("SELECT count(*) FROM landing.divipola_municipality").fetchone() == (0,)
+        assert conn.execute(
+            "SELECT count(*) FROM landing.regional_fleet_brand_count"
+        ).fetchone() == (0,)
     finally:
         conn.close()
-    assert run_migrate(pg_settings).skipped == 5
+    assert run_migrate(pg_settings).skipped == 6
 
 
 def test_bootstrap_is_idempotent_and_keeps_dbt_privileges(pg_settings):

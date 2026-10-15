@@ -9,13 +9,15 @@ from __future__ import annotations
 
 import os
 from collections.abc import Callable
-from typing import NoReturn
+from typing import Annotated, NoReturn
 
 import typer
 from botocore.client import BaseClient
 from botocore.exceptions import BotoCoreError
 
 from pits.ingestion.raw_store import RawStore, S3RawStore
+from pits.sources.brand_fleet.contract import BrandFleetSourceName, get_source
+from pits.sources.brand_fleet.normalize import normalize_brand_fleet
 from pits.sources.divipola.normalize import normalize_divipola
 from pits.sources.normalize_common import NormalizePermanentError, NormalizeTransientError
 from pits.sources.runt.normalize import normalize_runt
@@ -132,5 +134,30 @@ def divipola() -> None:
     typer.echo(
         f"outcome={result.outcome.value} rows_updated={result.rows_updated.isoformat()} "
         f"fingerprint={result.fingerprint} batch={result.batch_id} rows={result.rows} "
+        f"manifest=s3://{settings.normalized_bucket}/{result.manifest_key}"
+    )
+
+
+@normalize_app.command("brand-fleet")
+def brand_fleet(
+    source: Annotated[
+        BrandFleetSourceName, typer.Option("--source", help="Departmental dataset to normalize.")
+    ],
+) -> None:
+    """Replay the latest committed raw batch of a regional dataset into regional_fleet_brand."""
+    contract = get_source(source.value)
+    settings, raw_store, normalized_store = _connect()
+    try:
+        result = normalize_brand_fleet(
+            raw_store, normalized_store, contract, raw_bucket=settings.raw_bucket
+        )
+    except NormalizeTransientError as exc:
+        _fail(str(exc), 3)
+    except NormalizePermanentError as exc:
+        _fail(str(exc), 1)
+    typer.echo(
+        f"outcome={result.outcome.value} source={contract.key} "
+        f"rows_updated={result.rows_updated.isoformat()} fingerprint={result.fingerprint} "
+        f"batch={result.batch_id} rows={result.rows} vehicles={result.vehicles} "
         f"manifest=s3://{settings.normalized_bucket}/{result.manifest_key}"
     )
